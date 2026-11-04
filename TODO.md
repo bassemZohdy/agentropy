@@ -116,4 +116,4 @@ Implementation and docs agree (contract revision-history row added when a contra
 ## Progress
 
 - Milestones complete: **0 / 4**. M0: **12 / 13** documented items complete; **1** remains (M0-08 scaffold, tooling scripts and CI, including DCO check).
-- Roadmap checkboxes: **15 / 78** complete (**12 M0 decisions/reviews + D-02, D-06, D-23 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
+- Roadmap checkboxes: **16 / 78** complete (**12 M0 decisions/reviews + D-02, D-06, D-23, D-25 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
