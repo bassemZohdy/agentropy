@@ -64,6 +64,12 @@ interface Agent<I = unknown, O = unknown> {
 
 Capability contracts and the actual execution state envelope will evolve before coding begins. Implementations must not confuse optional cancellation requests with guaranteed external side-effect cancellation.
 
+## Extended contracts and version pinning
+
+See [task lifecycle and operation guards](runtime-contract.md), [message envelope](messaging-contract.md) and [human actions](human-actions.md). A DelegatedTask should retain immutable accepted-time snapshots: agent definition/profile revision, capability contract versions, provider/build binding, input schema version and delegated authority metadata. A HumanActionRequest is separately identifiable by stable request ID, input kind/schema, assignee(s), deadline, state and revision. InboxEntry tracks read/presented/resolved independently from authoritative task state.
+
+A task startup is **async-first**, reporting an accepted reference rather than an implied final result. All external messages need schema version, correlation/causation, trust-validated actor and idempotency data. The conceptual state machine below is to be turned into a validated transition matrix before implementation.
+
 ## Lifecycle
 
 Agent instance: `registered -> available -> suspended -> available -> retired` (subject to policy). Retiring an instance does not delete task history.
