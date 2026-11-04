@@ -42,6 +42,10 @@ Requirement IDs are stable for planning. Priority P0 = foundation, P1 = useful f
 
 These are **proposed Agentropy requirements**, derived from patterns documented in [reuse assessment](reuse-from-langgraph-flows.md); none are implemented yet.
 
+| R-31 | P0 | Pluggable AgentCommunication interface with routing and provider metadata | Internal, A2A and custom adapters share logical contracts; unsupported operations fail explicitly |
+| R-32 | P1 | Standards-based A2A interoperability | Agent discovery, delegation, status/results and protocol mapping verified across runtimes |
+| R-33 | P0 | Provider-aware task routing and remote ownership | Route pinned to task, authenticated target, no security/durability downgrade |
+
 ## Functional invariants
 
 - A task is not an agent instance, and an execution attempt is not a task.
