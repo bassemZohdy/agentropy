@@ -50,13 +50,13 @@ Definitions, instances, tasks, and executions are separate persisted concepts. D
 
 ## Initial profiles
 
-| Profile | Required or default behaviors (initial proposal) | Optional additions |
+| Profile | Required / default (see [Capability v1](docs/contracts/capability-v1.md)) | Optional additions |
 |---|---|---|
-| Conversational | Conversation, session context, inbound messages | Delegation, durable memory, tools |
-| Task | Task execution, durable state/recovery, event handling | Scheduling, workflow, AI planning |
-| Monitoring | Monitoring, durable state, event handling | Scheduling, alerts, delegation |
-| Coordinator | Delegation, message correlation, task tracking | Conversation, durability, workflow |
-| Specialist | Domain tools and execution contract | Memory, conversation, durability |
+| Conversational | Conversation, session context; delegation by default | Memory, tools, reasoning |
+| Task | Durable acceptance; notification by default | Scheduling, events, workflow, reasoning, human input |
+| Monitoring | Event handling, durable execution; scheduling and notification by default | Delegation, reasoning |
+| Coordinator | Delegation, durable execution | Conversation, workflow, reasoning |
+| Specialist | Tool use by default | Reasoning, memory, conversation |
 
 Profiles are templates, not a rigid inheritance hierarchy. Required capabilities are enforced; defaults may be overridden. A Task Agent need not be scheduled: scheduling is supported when needed.
 
@@ -71,6 +71,7 @@ Profiles are templates, not a rigid inheritance hierarchy. Required capabilities
 
 - [Vision and scope](docs/vision.md)
 - [Requirements](docs/requirements.md)
+- [Walking skeleton (M1) scope and acceptance checks](docs/poc-scope.md)
 - [Architectural reuse assessment from langgraph-flows](docs/reuse-from-langgraph-flows.md)
 - [Task lifecycle and version compatibility](docs/runtime-contract.md)
 - [Agent messaging contracts](docs/messaging-contract.md)
@@ -79,12 +80,14 @@ Profiles are templates, not a rigid inheritance hierarchy. Required capabilities
 - [Core Agent Contract v1](docs/contracts/agent-v1.md)
 - [Core Capability Contract v1](docs/contracts/capability-v1.md)
 - [Pluggable Communication Contract v1](docs/contracts/communication-v1.md)
+- [Error Contract v1](docs/contracts/errors-v1.md)
 - [Domain model](docs/domain-model.md)
 - [Capabilities and profiles](docs/capabilities.md)
 - [Registry, pool and runtime](docs/registry-runtime.md)
 - [Delegation, inbox and user experience](docs/collaboration.md)
 - [Security, reliability and operability](docs/operations.md)
 - [Architecture decision records](docs/adr/README.md)
+- [Design review 2026-11-04](docs/review/2026-11-04-design-review.md)
 - [Roadmap and implementation tasks](TODO.md)
 - [Change log](CHANGELOG.md)
 
@@ -98,4 +101,4 @@ Keep the core contracts small; prefer composition over inheritance and provider 
 
 ## Status and contributions
 
-Design phase. No API stability or production readiness claims are made. See [TODO.md](TODO.md) for proposed milestones and [ADRs](docs/adr/README.md) for accepted design directions and open decisions. Licensing and contribution policy are not yet selected.
+Design phase; the next step is the [walking skeleton](docs/poc-scope.md) once ADR-0016 (language) and the license are decided. No API stability or production readiness claims are made. See [TODO.md](TODO.md) for milestones and [ADRs](docs/adr/README.md) for accepted design directions and open decisions. Licensing and contribution policy are not yet selected.

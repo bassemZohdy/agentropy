@@ -19,6 +19,11 @@ ADRs capture architectural direction separately from implementation status. **Ac
 | [0013](0013-version-pinned-agent-executions.md) | Definition/provider version pinning | Proposed |
 | [0014](0014-application-isolation-and-test-contracts.md) | Per-app isolation and offline provider contract tests | Proposed |
 | [0015](0015-pluggable-agent-communication.md) | Communication abstraction; internal, A2A and custom providers | Accepted |
+| [0016](0016-implementation-language.md) | TypeScript/Node.js, pnpm monorepo, JSON Schema, Vitest | Proposed — decision needed |
+| [0017](0017-first-persistence-and-activation.md) | SQLite store port, polling wake-up scheduler, in-process bus and outbox (M1) | Proposed |
+| [0018](0018-execution-per-activation.md) | One execution per activation; standing duties as cycling tasks | Proposed |
+
+**Review note (2026-11-04):** ADR-0015 is Accepted while ADR-0008 (provider-neutral runtime) and ADR-0009 (authorization), which it builds on, are still Proposed. Accept or revise 0008–0014 and 0016–0018 together as roadmap item X-01 before M1 starts; see the [design review](../review/2026-11-04-design-review.md).
 
 Use numbered Markdown files and record context, decision, consequences and open questions. Amend the ADR or supersede it with a new one when substantial direction changes.
 

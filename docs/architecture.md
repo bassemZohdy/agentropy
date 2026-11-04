@@ -33,6 +33,10 @@ flowchart TB
 | Providers | Specific workflow, events, scheduling, model, memory, tools | Definition identity and collaboration policy |
 | Inbox | Durable reports, approval requests, notifications and acknowledgement | All agent execution state |
 
+## Call layering
+
+Agent handlers act only through `CapabilityAccess`; delegation goes handler → `delegation` capability → TaskService → (local runtime | CommunicationRouter → A2A/custom provider). Inbound remote calls enter through an adapter that verifies the caller and calls the same TaskService. Diagram: [Agent v1 — call layering](contracts/agent-v1.md#call-layering).
+
 ## Pluggable agent communication
 
 Agents invoke a common [AgentCommunication contract](contracts/communication-v1.md) through a router and interchangeable providers: **internal/direct**, **A2A**, and **custom/broker/RPC**. A2A is the preferred interoperable protocol for independently deployed agents; direct invocation is allowed for co-located agents. Routing is policy- and capability-aware and is pinned for each delegated task. The target's authoritative runtime owns its lifecycle; a remote A2A task is represented locally as a tracked projection, not an independently controlled task. See [ADR-0015](adr/0015-pluggable-agent-communication.md).
@@ -69,4 +73,4 @@ User-facing agency must not depend on adding additional conversational personas.
 
 ## Explicit open design questions
 
-The initial language/runtime, storage backend, event transport, scheduler mechanism, inter-agent protocol and deployment topology remain undecided. Candidate integrations include LangGraph, Temporal and Quarkus Flow as **optional providers**, not framework dependencies. Their supported guarantees require integration tests before any adapter is described as production ready.
+Proposed answers for the first implementation are in [ADR-0016](adr/0016-implementation-language.md) (language/tooling), [ADR-0017](adr/0017-first-persistence-and-activation.md) (storage, scheduler, event transport) and [ADR-0018](adr/0018-execution-per-activation.md) (execution model); they await approval. The A2A SDK/version, production storage and deployment topology remain undecided. Candidate integrations include LangGraph, Temporal and Quarkus Flow as **optional providers**, not framework dependencies. Their supported guarantees require integration tests before any adapter is described as production ready.

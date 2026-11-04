@@ -1,16 +1,42 @@
-# Agentropy Agent Contract v1.0 — Design baseline
+# Agentropy Agent Contract v1.0 — Design baseline (revision 2)
 
-**Status:** Architecture contract finalized for initial implementation; not yet implemented or API-stable.  
+**Status:** Architecture contract for initial implementation; not yet implemented or API-stable.
 **Scope:** Core logical Agent, AgentDefinition, AgentInstance, DelegatedTask and Execution. Transport/runtime are independent.
+**Lifecycle states and edges:** [runtime contract](../runtime-contract.md) is authoritative. **Errors:** [Errors v1](errors-v1.md).
+
+## Revision history
+
+| Rev | Date | Change |
+|---|---|---|
+| 1 | 2026-11-04 | Initial baseline |
+| 2 | 2026-11-04 | Design review: instance states aligned with lifecycle; one execution per activation; `WakeupRequest` extended (timer, child tasks, any-of, timeout); idempotent step keys for side effects; `AgentService` gains `getResult`, `provideHumanInput`, idempotency lookup; explicit call layering ([review](../review/2026-11-04-design-review.md)) |
 
 ## Decisions
 
-1. **Composition over inheritance.** ConversationalAgent, TaskAgent, MonitoringAgent, CoordinatorAgent and SpecialistAgent are **profile IDs**, not required subclasses. An agent may combine capabilities from several roles.
-2. **Four separate identities.** Definition = versioned blueprint; Instance = logical owner-scoped identity; Task = assigned objective; Execution = attempt/continuation. No instance is a worker process.
-3. **Agent implementation is a bounded handler.** It receives a context and an invocation, and returns a typed disposition. It does not directly mutate lifecycle tables or own orchestration.
-4. **Delegation is async-first.** A service validates authorization/capabilities and returns a TaskHandle after acceptance; completion arrives by status/events/inbox. Handler completion is not automatically user notification.
-5. **Always-on = durable responsibility + reactivation.** No permanent worker or continuous LLM call is required.
-6. **Security is mandatory platform context.** Tenant, principal and delegated scope come from trusted services, never from arbitrary model output.
+1. **Composition over inheritance.** Conversational, Task, Monitoring, Coordinator and Specialist are **profile IDs**, not subclasses.
+2. **Four separate identities.** Definition = versioned blueprint; Instance = logical owner-scoped identity; Task = assigned objective; Execution = one activation of the handler for a task. No instance is a worker process.
+3. **Agent implementation is a bounded handler.** It receives a context and an invocation, and returns a typed disposition. It never writes lifecycle state or owns orchestration.
+4. **Delegation is async-first.** Acceptance returns a `TaskHandle`; completion arrives by status/events/inbox. Handler completion is not user notification.
+5. **Always-on = durable responsibility + reactivation.** A long-lived responsibility is a non-terminal task that cycles `waiting ⇄ running`; each wake-up is a new Execution ([ADR-0018](../adr/0018-execution-per-activation.md)).
+6. **Security is mandatory platform context.** Tenant, principal and delegated scope come from trusted services, never from model output.
+
+## Call layering
+
+Handlers never call the TaskService, router or providers directly. Every outbound action goes through the injected `CapabilityAccess`:
+
+```mermaid
+flowchart LR
+  H[Agent handler] -->|capabilities.invoke| CA[CapabilityAccess<br/>authorized bindings only]
+  CA --> DP[delegation capability<br/>built-in provider]
+  CA --> OP[other capability providers<br/>tools, model, memory, workflow]
+  DP --> TS[TaskService / AgentService<br/>authoritative for local tasks]
+  TS -->|local target| RT[AgentRuntime + Pool]
+  TS -->|remote target| CR[CommunicationRouter]
+  CR --> A2A[A2A provider] --> REM[Remote agent runtime]
+  IN[Inbound A2A / API gateway] -->|verified principal| TS
+```
+
+`AgentService` is the public, principal-taking API used by applications, the conversational surface and inbound adapters. `AgentCommunication` ([Communication v1](communication-v1.md)) is an **outbound SPI used only by the TaskService** for remote targets.
 
 ## TypeScript contract (normative conceptual shape)
 
@@ -25,28 +51,25 @@ export type AgentProfileId =
   | "conversational" | "task" | "monitoring"
   | "coordinator" | "specialist" | (string & {});
 
-export interface VersionedRef {
-  id: string;
-  version: Version;
-}
+export interface VersionedRef { id: string; version: Version; }
 
 export interface AgentDefinition {
   id: AgentId;
-  version: Version;
+  version: Version;                 // immutable once registered
   displayName: string;
   profile: VersionedRef;
-  capabilities: CapabilitySelection[];
-  inputSchema: Record<string, unknown>;
-  outputSchema?: Record<string, unknown>;
+  capabilities: CapabilitySelection[];   // additions/removals relative to profile
+  inputSchema: JsonSchema;
+  outputSchema?: JsonSchema;
   runtimeRequirements: RuntimeRequirements;
   policyRef: VersionedRef;
 }
 
 export interface AgentInstance {
   id: AgentInstanceId;
-  definition: VersionedRef;
+  definition: VersionedRef;         // default for FUTURE tasks
   tenantId: string;
-  ownerId: string;
+  ownerId: string;                  // principal that owns the logical agent
   state: "available" | "suspended" | "retired";
   revision: number;
 }
@@ -54,8 +77,12 @@ export interface AgentInstance {
 export interface AgentInvocation<I = unknown> {
   taskId: TaskId;
   executionId: ExecutionId;
-  input: I;
-  trigger: "direct" | "event" | "schedule" | "delegation" | "resume";
+  activation: number;               // 1 for first run, +1 per wake-up
+  attempt: number;                  // retry counter within this activation
+  input: I;                         // original task input
+  trigger: "delegation" | "resume" | "retry";
+  checkpoint?: unknown;             // last committed checkpoint, absent on first activation
+  wakeReason?: WakeReason;          // which condition fired, on resume
 }
 
 export interface AgentContext {
@@ -63,10 +90,11 @@ export interface AgentContext {
   readonly agentInstanceId: AgentInstanceId;
   readonly taskId: TaskId;
   readonly executionId: ExecutionId;
-  readonly principal: TrustedPrincipal;
+  readonly principal: TrustedPrincipal;   // the agent instance acting under delegatedAuthority
   readonly correlationId: string;
   readonly causationId?: string;
-  readonly signal: AbortSignal;
+  readonly deadline?: string;
+  readonly signal: AbortSignal;           // fired on cancel or lease loss
   readonly capabilities: CapabilityAccess;
   readonly progress: ProgressReporter;
 }
@@ -77,30 +105,55 @@ export type AgentDisposition<O> =
   | { kind: "failed"; code: string; retryable: boolean; message: string };
 
 export interface Agent<I = unknown, O = unknown> {
-  readonly definition: AgentDefinition;
+  readonly definition: VersionedRef;
   handle(invocation: AgentInvocation<I>, context: AgentContext):
     Promise<AgentDisposition<O>>;
 }
+
+// --- Wake-ups --------------------------------------------------------------
+
+export type WakeupCondition =
+  | { kind: "timer"; at: string }                         // one-shot ISO instant
+  | { kind: "schedule"; cron: string; timezone: string }  // next occurrence only; re-register each activation
+  | { kind: "event"; subscription: string; filter?: unknown }
+  | { kind: "human-action"; requestId: string }
+  | { kind: "child-tasks"; taskIds: TaskId[]; mode: "all" | "any" };
+
+export interface WakeupRequest {
+  anyOf: WakeupCondition[];          // first condition to fire wins; others are revoked
+  timeoutAt?: string;
+  onTimeout?: "resume" | "fail";     // default "resume" with wakeReason.kind = "timeout"
+}
+
+export type WakeReason =
+  | { kind: WakeupCondition["kind"]; reference: string; payloadRef?: string }
+  | { kind: "timeout" };
+
+// --- Public service --------------------------------------------------------
 
 export interface TaskHandle {
   taskId: TaskId;
   agentInstanceId: AgentInstanceId;
   status: "accepted" | "queued";
   definition: VersionedRef;
+  durability: "none" | "durable-acceptance" | "durable-execution";
 }
 
 export interface AgentService {
-  delegate<I>(request: DelegationRequest<I>, auth: TrustedPrincipal):
-    Promise<TaskHandle>;
-  getTask(taskId: TaskId, auth: TrustedPrincipal): Promise<TaskSnapshot>;
-  cancel(taskId: TaskId, auth: TrustedPrincipal): Promise<void>;
+  delegate<I>(request: DelegationRequest<I>, caller: TrustedPrincipal): Promise<TaskHandle>;
+  getTask(taskId: TaskId, caller: TrustedPrincipal): Promise<TaskSnapshot>;
+  getTaskByIdempotencyKey(key: string, caller: TrustedPrincipal): Promise<TaskSnapshot>;
+  getResult<O>(taskId: TaskId, caller: TrustedPrincipal): Promise<O>;   // NotReady / TaskFailed / TaskCancelled
+  cancel(taskId: TaskId, caller: TrustedPrincipal, reason?: string): Promise<TaskSnapshot>;
+  provideHumanInput(decision: HumanDecision, caller: TrustedPrincipal): Promise<void>;
+  subscribe(taskId: TaskId, caller: TrustedPrincipal, fromRevision?: number): AsyncIterable<TaskEvent>;
 }
 
 export interface TrustedPrincipal {
   id: string;
   type: "user" | "agent" | "service";
   tenantId: string;
-  delegatedAuthorityRef?: string;
+  delegatedAuthorityRef?: string;    // grant chain; narrowed, never widened, on each delegation hop
 }
 
 export interface DelegationRequest<I> {
@@ -110,6 +163,7 @@ export interface DelegationRequest<I> {
   correlationId: string;
   parentTaskId?: TaskId;
   deadline?: string;
+  budget?: { maxCostUnits?: number; maxActivations?: number };
 }
 
 export interface TaskSnapshot {
@@ -117,39 +171,50 @@ export interface TaskSnapshot {
   status: "created" | "assigned" | "running" | "waiting"
     | "completed" | "failed" | "cancelled";
   revision: number;
-}
-
-export interface WakeupRequest {
-  kind: "event" | "schedule" | "human-input";
-  reference: string;
+  agentInstanceId?: AgentInstanceId;
+  parentTaskId?: TaskId;
+  retryOf?: TaskId;
+  cancelRequestedAt?: string;
+  waitingOn?: WakeupRequest;
+  outcome?: { code: string; message: string };   // for failed/cancelled
+  authority: "local" | "remote";                  // remote = projection of an A2A task
 }
 
 export interface ProgressReporter {
-  report(progress: { message: string; percent?: number }): Promise<void>;
+  report(progress: { message: string; percent?: number; stepKey?: string }): Promise<void>;
 }
 
-// Imported from the capability contract, not an Agent subtype:
-export type CapabilitySelection = import("./capability-v1").CapabilitySelection;
-export type RuntimeRequirements = import("./capability-v1").RuntimeRequirements;
-export type CapabilityAccess = import("./capability-v1").CapabilityAccess;
+// Defined elsewhere:
+//   CapabilitySelection, RuntimeRequirements, CapabilityAccess -> capability-v1.md
+//   HumanDecision -> human-actions.md, TaskEvent -> messaging-contract.md
+//   JsonSchema = JSON Schema 2020-12 document
 ```
 
-The import paths are illustrative documentation references, not compiled modules. Unknown input/output payloads are validated against definition schemas at trusted boundaries.
+Import paths are documentation references, not compiled modules.
+
+## Idempotent side effects
+
+A crashed or lost execution is re-run (T6), so handlers must be **replay-safe**:
+
+- Every capability operation is classified `read`, `internal` or `external` ([Capability v1](capability-v1.md#contract-types-normative-conceptual-shape)). `external` and `delegate` operations **require** a `stepKey` in `capabilities.invoke(..., { stepKey })`.
+- The runtime derives the effective idempotency key as `hash(tenantId, taskId, capabilityId, operation, stepKey)`. The same step in a later activation or attempt therefore reuses the same key; the provider (or a platform effect journal for providers without native idempotency) returns the recorded result instead of repeating the effect.
+- `stepKey` must be deterministic from task input + checkpoint (e.g. `"notify:threshold-crossed:2026-11-04"`), never a random value or timestamp of the current run.
+- Child delegations use the same mechanism, so a re-run coordinator does not spawn duplicate children.
 
 ## Lifecycle authority and invariants
 
-- AgentRuntime/TaskService validates transitions using an explicit transition matrix; an Agent handler cannot mark itself completed in storage.
-- `waiting` persists a checkpoint and durable wake-up intent before releasing its worker lease. A checkpoint is not guaranteed to be JSON-serializable until a provider's codec validates it.
-- `completed`, `failed`, `cancelled` are terminal task states. A retry policy creates a **new task linked to the prior task**; execution recovery may create another attempt under the *same nonterminal task*. This resolves the previous ambiguous retry language.
-- The service deduplicates `(tenantId, callerId, idempotencyKey)` and rejects key reuse with a different request fingerprint.
-- Cancellation is requested and may not undo already committed external effects.
-- Definition/profile/capability/provider binding versions are snapshotted at task acceptance. Instances may use newer definitions for **future** tasks only.
-- Authorization is checked at delegation acceptance and again at sensitive side effects, human approvals and protected reads.
+- Transitions are applied only by the TaskService/AgentRuntime using the [transition tables](../runtime-contract.md).
+- `waiting` commits checkpoint + wake-up registration before releasing the lease.
+- `completed`, `failed`, `cancelled` are terminal. Retrying a terminal task creates a **new task linked by `retryOf`**; execution recovery creates a new Execution under the same non-terminal task.
+- Delegation is deduplicated on `(tenantId, caller.id, idempotencyKey)`; reuse with a different request fingerprint fails `IdempotencyConflict`.
+- Cancellation is a request; it never undoes committed external effects.
+- Version snapshot taken at acceptance; instances adopt newer definitions for future tasks only.
+- Authorization is checked at acceptance and again at sensitive side effects, human decisions and protected reads.
 
 ## Agent vs capability boundary
 
-An Agent handler expresses business logic and selects operations through an injected, authorized `CapabilityAccess`. It must not construct providers, query global registries, acquire pool leases or assume a specific LLM/workflow engine. Workflow-backed and model-backed agents satisfy the same handler contract.
+A handler expresses business logic and acts only through the injected `CapabilityAccess`. It must not construct providers, read global registries, acquire leases, generate its own idempotency keys for effects, or assume a specific LLM/workflow engine. Workflow-backed and model-backed agents satisfy the same contract.
 
 ## Validation gate
 
-Implementations must pass: distinct identity tests; profile resolution; task acceptance/idempotency; unauthorized delegation; handler result disposition mapping; wait/restart/resume; stale lease fencing; cancellation; version pinning; multi-instance isolation; deterministic workflow-only agent; conversational agent with delegated task.
+Distinct identity tests; profile resolution; acceptance + idempotency + unknown acceptance; unauthorized delegation; disposition mapping; wait → restart → resume with checkpoint; child-task wait (`all`/`any`); timeout wake-up; stale lease fencing; cancellation with non-cooperative handler; step-key replay without duplicate effect; version pinning; multi-instance isolation; deterministic workflow-only agent; conversational agent with delegated task. Each maps to an acceptance check in [POC scope](../poc-scope.md) or a later milestone.

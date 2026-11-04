@@ -1,85 +1,79 @@
 # Agentropy implementation roadmap
 
-**Project state:** Documentation baseline; implementation not started. All tasks below are open. Reassess this plan when the first proof of concept validates the initial contracts.
+**Project state:** Documentation baseline revised after the [2026-11-04 design review](docs/review/2026-11-04-design-review.md). Implementation not started. M1 is a **walking skeleton** defined in [POC scope](docs/poc-scope.md); reassess M2+ after its retrospective.
 
-## Milestone 0 — Foundation and architectural validation
+Task IDs are stable (former X-/C- items now sit inside the milestone where they are delivered). Requirement IDs refer to [requirements](docs/requirements.md); AC-xx to [POC scope](docs/poc-scope.md).
 
-- [ ] M0-01 Choose initial language/runtime and record ADR (assess TypeScript/Node.js and alternatives).
-- [ ] M0-02 Select repo licensing, contribution policy and code style.
-- [ ] M0-03 Validate the finalized core domain contracts with example journeys and implement/test the full transition matrix (contracts documented).
-- [x] M0-04 Define capability contract and profile resolution schema including required/default/optional semantics (design baseline; implementation tests pending).
-- [ ] M0-05 Define tenancy/identity, delegation and audit threat model.
-- [ ] M0-06 Select first persistence, wake-up/scheduler, event transport and runtime adapter; create ADRs.
-- [ ] M0-07 Define minimum user-visible success scenario and measurable POC acceptance checks.
+## Milestone 0 — Decisions and contract baseline (gate to M1)
 
-## Milestone 1 — Minimal multi-agent core
+- [ ] M0-01 Approve implementation language/tooling — [ADR-0016](docs/adr/0016-implementation-language.md) proposed. **Blocking.**
+- [ ] M0-02 Select license, contribution policy (e.g. DCO) and code style. **Blocking.**
+- [x] M0-03 Core contracts reconciled; example journeys (J1, J2) and full transition tables documented. *Executable tests move to M1-10.*
+- [x] M0-04 Capability contract, canonical capability catalog and profile resolution (design baseline).
+- [ ] M0-05 Trust-boundary note for M1 (principal derivation, tenant scoping, delegated grant narrowing) covering AC-09; full threat model → M2-09.
+- [ ] M0-06 Approve first persistence, wake-up scheduler and event transport — [ADR-0017](docs/adr/0017-first-persistence-and-activation.md) proposed.
+- [x] M0-07 Minimum success scenario and measurable acceptance checks — [POC scope](docs/poc-scope.md).
+- [ ] X-01 Accept or revise ADR-0008…0014 and ADR-0016…0018 as a set.
+- [x] X-02 Canonical lifecycle transition tables, typed operation errors and guards specified ([runtime contract](docs/runtime-contract.md), [Errors v1](docs/contracts/errors-v1.md)). *Tests in M1-10.*
+- [x] X-03 Versioned envelopes, actor trust boundary and idempotency fingerprint specified ([messaging contract](docs/messaging-contract.md)).
+- [x] X-04 Exact pinning and upgrade policy specified ([runtime contract](docs/runtime-contract.md#version-pinning-and-upgrade)).
+- [x] C-01 Communication v1 reconciled with Agent v1 (outbound SPI, call context, route binding).
+- [ ] M0-08 Repository scaffold per ADR-0016: workspace, CI (lint, typecheck, test, offline), package skeletons, contribution docs.
 
-- [ ] M1-01 Implement AgentDefinition/Profile/Instance/Task/Execution contracts and validation.
-- [ ] M1-02 Implement capability descriptor, dependency/conflict resolver and effective config snapshot.
-- [ ] M1-03 Implement local versioned definition registry, instance directory and capability discovery.
-- [ ] M1-04 Implement task delegation with bounded agent selection, identity, correlation and parent-child tracking.
-- [ ] M1-05 Implement in-process runtime and bounded execution pool; distinguish logical agents from leases.
-- [ ] M1-06 Implement durable task/execution store, idempotency and compare-and-swap state transitions.
-- [ ] M1-07 Implement structured progress/outcome event envelopes.
-- [ ] M1-08 Add simple Conversational, Task and Monitoring profile examples.
-- [ ] M1-09 Test immediate task delegation, multiple tasks per instance, failure, unauthorized delegation and concurrent execution.
+## Milestone 1 — Walking skeleton (single process, SQLite, offline CI)
 
-## Milestone 2 — Always-on and durable collaboration
+Exit: all AC-01…AC-14 green ([POC scope](docs/poc-scope.md#exit-criteria)).
 
-- [ ] M2-01 Persistent monitoring responsibility and durable wake-up registration.
-- [ ] M2-02 Scheduled and event-driven activation adapters with deduplication.
-- [ ] M2-03 Shared durable inbox, outbox publication, acknowledgement and replay.
-- [ ] M2-04 Session start inbox retrieval and policy-based urgent vs deferred notifications.
-- [ ] M2-05 Agent task inspection, pause/resume/cancel contracts and access controls.
-- [ ] M2-06 Recovery tests: crash/restart, duplicate events, lease expiry, provider outage.
-- [ ] M2-07 Deterministic workflow-backed agent (no model required).
-- [ ] M2-08 AI-powered task/monitoring agent example using bounded tool permissions.
+- [ ] M1-01 `core`: contract types, JSON Schemas, error catalog, transition tables as data (R-01, R-21, R-22).
+- [ ] M1-02 Capability catalog, resolver and `EffectiveCapabilitySnapshot` (R-02, R-03).
+- [ ] M1-03 Definition registry, instance directory and capability discovery (R-06).
+- [ ] M1-04 TaskService/AgentService: delegate with idempotency + unknown acceptance, parent/child, depth/fan-out bounds (R-05, R-20). *Includes X-05.*
+- [ ] M1-05 Runtime + bounded in-process pool, leases with epochs, execution-per-activation (R-07, R-37).
+- [ ] M1-06 SQLite store: tasks, executions, checkpoints, wake-ups, effect journal, outbox, inbox, human actions in one transaction boundary (R-08, R-34).
+- [ ] M1-07 Outbox relay, `TaskEvent` publication, inbox projection with markers, turn-start briefing (R-12, R-29, R-36).
+- [ ] M1-08 Wake-ups: polling scheduler (timer/schedule), in-process event bus, child-task and human-action wake-ups.
+- [ ] M1-09 Human actions: request, claim, decide, expire (R-24). *Includes X-06 (basic).*
+- [ ] M1-10 Testkit: fake clock, fake model, failure injection; lifecycle edge generator; AC-01…AC-14.
+- [ ] M1-11 Direct communication provider + router conformance suite (R-31). *Was C-02.*
+- [ ] M1-12 Examples: `price-watch` (J1), `expense-approval` (J2) (R-17).
+- [ ] M1-13 Retrospective: contract revisions forced by implementation, recorded in `docs/review/`.
+
+## Milestone 2 — Always-on, interoperability and control
+
+- [ ] M2-01 Persistent monitoring responsibilities at scale: history compaction, checkpoint limits (R-37).
+- [ ] M2-02 Scheduled and event-driven activation adapters with deduplication beyond in-process (R-11).
+- [ ] M2-03 Inbox reconciliation/rebuild and independent markers (R-25). *Was X-07.*
+- [ ] M2-04 Session briefing policy with urgent vs deferred delivery; shared priority resolver with policy floors (R-26). *Includes X-08.*
+- [ ] M2-05 Owner visibility and control: list/cancel tasks, suspend/resume instances, access controls (R-13).
+- [ ] M2-06 Recovery tests across provider outage and delayed callbacks; transport-neutral outbox lease and replay (R-29). *Includes X-09.*
+- [ ] M2-07 Deterministic workflow-backed agent through a `workflow` provider (R-11, R-17).
+- [ ] M2-08 AI task/monitoring agent with real `reasoning` provider, bounded tools and budget (R-35).
+- [ ] M2-09 Full threat model: identity flows, token lifetimes, cross-boundary trust (ADR-0009).
+- [ ] C-03 A2A provider: outbound and inbound, remote task mapping, authorization (R-32, R-33).
+- [ ] C-04 Custom-provider SPI sample (broker/RPC) without a mandatory broker dependency.
+- [ ] M2-10 Observability: OpenTelemetry traces/metrics, correlation through delegation, redaction (R-15, R-38).
+- [ ] M2-11 Tenant isolation and quotas (R-16).
 
 ## Milestone 3 — Extensibility and production hardening
 
-- [ ] M3-01 Add second execution/workflow adapter and document feature coverage and limitations.
-- [ ] M3-02 Validate worker pool concurrency isolation, quotas, backpressure and fairness.
-- [ ] M3-03 Provider version compatibility, checkpoints, schema migrations and upgrade strategy.
-- [ ] M3-04 Observability: traces/metrics/logs/audit and user/task correlation.
-- [ ] M3-05 Harden secrets, tenant isolation, delegated authority and approval enforcement.
-- [ ] M3-06 Benchmark throughput/latency/recovery and define deployment SLOs.
-- [ ] M3-07 Package optional Kubernetes/OpenShift and air-gapped self-hosting examples.
-- [ ] M3-08 Evaluate agent-to-agent protocol/federation and registry discovery standards.
-- [ ] M3-09 Document API reference, quickstarts and compatibility matrix.
-
-## Cross-project architecture adoption tasks (documentation review)
-
-The following backlog is informed by [langgraph-flows reuse assessment](docs/reuse-from-langgraph-flows.md). These refine existing milestones; they do not commit us to Python, Temporal or a web UI.
-
-- [ ] X-01 (M0): Approve or revise ADRs 0010–0014 after reviewing Agentropy-specific semantics.
-- [ ] X-02 (M0): Specify and test a canonical task lifecycle transition matrix, typed operation errors and capability guards.
-- [ ] X-03 (M0): Define versioned agent command/query/event envelopes, actor trust boundary and idempotency fingerprint.
-- [ ] X-04 (M0): Specify exact definition/profile/capability/provider pinning and rolling-upgrade compatibility policies.
-- [ ] X-05 (M1): Design the async-first accepted task handle, bounded executeAndWait and unknown-acceptance recovery.
-- [ ] X-06 (M1/M2): Define HumanActionRequest with assignee, expiry, revision and atomic authorized decision.
-- [ ] X-07 (M2): Define inbox projection/reconciliation and separate read/presented/resolved/acknowledged status.
-- [ ] X-08 (M2): Specify shared priority resolver (business, user context, non-downgradable policy floor).
-- [ ] X-09 (M2): Test transport-neutral idempotency, reliable outbox lease, duplicate/out-of-order and crash replay.
-- [ ] X-10 (M3): Build reusable offline provider conformance tests, validate per-app context isolation and deployment failure matrix.
-
-## Communication implementation (ADR-0015)
-
-- [ ] C-01 (M0): Validate the AgentCommunication v1 contract, provider metadata and router policy against Agent v1.
-- [ ] C-02 (M1): Implement internal/direct provider and routing registry with explicit unsupported-operation errors.
-- [ ] C-03 (M2): Implement and test A2A provider with remote task state mapping and authorization.
-- [ ] C-04 (M2): Validate custom-provider SPI and sample broker/RPC adapter without forcing a broker dependency.
-- [ ] C-05 (M2/M3): Add cross-provider conformance tests for idempotency, streaming, recovery, task ownership and security.
+- [ ] M3-01 Second execution/workflow adapter with feature coverage and limitations (R-14).
+- [ ] M3-02 Multi-worker pool: concurrency isolation, quotas, backpressure and fairness (R-10).
+- [ ] M3-03 Provider version compatibility, checkpoint codecs, schema migrations and upgrade strategy (R-23, R-30).
+- [ ] M3-04 Audit: tamper-evident sequence and retention (R-09, R-38).
+- [ ] M3-05 Harden secrets, delegated authority and approval enforcement.
+- [ ] M3-06 Benchmark throughput/latency/recovery and set SLOs from measurements.
+- [ ] M3-07 PostgreSQL store adapter passing the same conformance suite (ADR-0017).
+- [ ] M3-08 Kubernetes/OpenShift and air-gapped self-hosting examples.
+- [ ] M3-09 Registry federation and discovery standards (R-18).
+- [ ] M3-10 API reference, quickstarts and compatibility matrix.
+- [ ] X-10 Reusable offline provider conformance kit published; per-app isolation and deployment failure matrix (R-28, R-30).
+- [ ] C-05 Cross-provider conformance: idempotency, streaming, recovery, ownership, security.
 
 ## Definition of done per task
 
-Implementation and docs agree; tests cover the affected behavior; errors and unsupported guarantees are explicit; security and data-boundary implications reviewed; CHANGELOG records meaningful changes. Keep examples small and avoid unrelated workflow-engine features.
-
-## Contract baseline
-
-Core Agent and Capability design contracts are now documented in [Agent v1](docs/contracts/agent-v1.md) and [Capability v1](docs/contracts/capability-v1.md). They are **architecture baselines**, not published runtime APIs. Their conformance tests, runtime providers and state-transition implementation remain open.
+Implementation and docs agree (contract revision-history row added when a contract changes); tests cover the behavior including failure paths; errors use the [catalog](docs/contracts/errors-v1.md); unsupported guarantees fail explicitly; security and data-boundary impact reviewed; CHANGELOG updated. Keep examples small; no workflow-engine features.
 
 ## Progress
 
-- Architecture baseline: published.
-- Implemented milestones: **0 / 4**.
-- Implementation tasks complete: **0 / 51**.
+- Milestones complete: **0 / 4** (M0 has 7 of 13 items done; 4 open items need maintainer decisions).
+- Tasks: **7 / 51** complete (all documentation/specification).

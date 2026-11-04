@@ -1,59 +1,36 @@
 # Composable capabilities and agent profiles
 
-**Contract baseline:** [Capability Contract v1](contracts/capability-v1.md) defines provider operations, versioned bindings, resolution, guarantees, errors and conformance gates. This document provides taxonomy and examples; the contract is authoritative where examples differ.
+**Authoritative:** [Capability Contract v1](contracts/capability-v1.md) owns the capability ID catalog, profile defaults, resolution order and errors. This page explains the model with examples and does not restate those tables (revision 1 kept a second, diverging profile table here).
 
 ## Model
 
-An Agent is defined by **identity + profile + capability bindings + policies**. A profile provides stable required/default/optional sets. The capability resolver calculates effective capabilities, rejects incompatible combinations and validates required provider guarantees.
+An agent is **identity + profile + capability bindings + policies**. A profile supplies required/default/optional capability sets; the resolver computes the effective set, rejects incompatible combinations, validates guarantee levels against the real runtime and pins the result to each accepted task.
 
-Capabilities are **contracts**, not arbitrary boolean labels. Each contract specifies input/output semantics, configuration schema, version, dependencies, authorization and observable guarantees. A provider implements that contract; configuration binds providers to a definition or instance.
+Capabilities are **contracts**, not boolean labels: each declares operations (with schemas, permissions and an `effect` class), configuration schema, version and dependencies. A provider implements a contract; configuration binds a provider to a definition or instance.
 
-## Initial capability taxonomy
+Four things are deliberately **not** capabilities:
 
-| Category | Capability | Contract / key concern |
+- **Policies** — autonomy level, allowed targets/tools, budgets, approval rules, delegation depth/fan-out. Referenced via `policyRef`. Configuring an LLM provider never grants autonomy.
+- **Platform obligations** — identity validation, audit, telemetry, progress reporting, inbound message delivery and the handler contract itself. Always on.
+- **Durability as a flag** — it is a *guarantee* with levels (`none`, `durable-acceptance`, `durable-execution`) that the runtime must prove.
+- **Monitoring** — currently a *profile* combining `event-handling`, `scheduling` and `durable-execution` (open question Q-03 in [the review](review/2026-11-04-design-review.md)).
+
+## Choosing a profile
+
+| You want… | Profile | Typical additions |
 |---|---|---|
-| Interaction | Conversation | Multi-turn input/output, session ownership |
-| Interaction | Notification | Progress/outcome communication and inbox policy |
-| Coordination | Delegation | Create governed child tasks and report status |
-| Coordination | Event handling | Subscription, acknowledgement and deduplication |
-| Activation | Scheduling | Time-based wakeups with durable schedule records |
-| Activation | Monitoring | Evaluate events, signals or conditions over time |
-| Execution | Workflow | Invoke deterministic flows with explicit durability and failure semantics |
-| Execution | Tool use | Execute approved APIs, MCP tools or adapters |
-| Execution | AI reasoning/planning | Model choice bounded by budget/policy |
-| State | Memory | Context and knowledge storage, retention controls |
-| State | Durability | Persist, recover, resume, and reconcile execution state |
-| Control | Human approval | Suspend for authorized user input |
-| Control | Autonomy | Policy: permitted decisions, actions, limits, escalation |
-| Reliability | Retry/idempotency | Bounded retries, deduplication, side-effect fencing |
-| Observability | Audit/telemetry | Correlate decisions, delegations and outcomes |
+| The user's main assistant | `conversational` | `reasoning`, `memory`, `tool-use` |
+| A one-off or event-driven job | `task` | `workflow`, `human-input`, `tool-use` |
+| A standing watch that reports when something happens | `monitoring` | `delegation`, `reasoning` |
+| An agent that splits work across others and waits for them | `coordinator` | `reasoning`, `workflow` |
+| A narrow tool-backed expert | `specialist` | `reasoning`, `memory` |
 
-**Important:** Durability is a guarantee requiring durable storage and tested providers; autonomy and permissions are **policies**, not interchangeable with execution capabilities. Telemetry and identity security are cross-cutting core runtime requirements even when advertised in capability descriptors.
-
-## Profiles (proposed initial defaults)
-
-| Profile | Required | Defaults | Optional |
-|---|---|---|---|
-| ConversationalAgent | conversation, identity context | message handling, session context | delegation, tools, memory, durability |
-| TaskAgent | task execution, durable state | event activation, progress reporting | scheduled, workflow, reasoning, tools |
-| MonitoringAgent | monitoring, event activation, durable state | status/notification | schedule, delegation, AI evaluation |
-| CoordinatorAgent | delegation, task tracking | messaging, correlation | conversation, durable state, workflow |
-| SpecialistAgent | defined task/tool contract | tool execution | reasoning, memory, conversation, durability |
-
-TaskAgent scheduling is **not required** for one-off or event-driven tasks; it can be enabled by profile policy, instance config or task requirement. MonitoringAgent may combine event and scheduled polling. Any profile can gain conversation capability when authorized and supported.
-
-## Resolution algorithm
-
-1. Load immutable profile version and agent definition.
-2. Apply profile defaults and explicitly requested capabilities.
-3. Preserve required capabilities; allow default overrides where declared overridable.
-4. Check dependency/compatibility constraints and contradictory policies.
-5. Verify provider offers necessary semantics (durability, resumption, delivery).
-6. Resolve effective permissions and tenant constraints; reject unapproved elevations.
-7. Persist effective binding snapshot with version for reproducibility.
-
-Do not silently coerce strong durability into in-memory execution or grant autonomy merely because an LLM provider is configured.
+Profiles are templates, not types: any profile can add `conversation` when authorized, and a TaskAgent needs `scheduling` only if it actually waits on time.
 
 ## Examples
 
-A price-monitoring agent could combine `monitoring + events + scheduled + durable + notification + delegation`, while an expense-review task agent could combine `durable + workflow + human-approval + AI-reasoning`. Both use the same core Agent contract. A deterministic workflow controlled by a MonitoringAgent still counts as an agent-managed responsibility; it does not require an LLM invocation on each trigger.
+**Price watch (no LLM).** Profile `monitoring` + `notification`. Each activation reads the observed price from the wake-up event, compares it with the threshold kept in the checkpoint, and either yields again (`waiting` on the next event) or calls `notification.notify` with step key `"crossed:<threshold>"` and completes. Re-delivery of the same event cannot produce a second notification.
+
+**Expense review (LLM + human).** Profile `task` + `reasoning` + `human-input` + `workflow`. The handler asks the model for a risk summary, creates a HumanActionRequest with step key `"approval"`, yields on `{ kind: "human-action" }`, and on resume starts the payout workflow with step key `"payout"` if approved.
+
+Both use the same Agent contract; neither handler knows whether it runs in-process or behind a workflow engine.

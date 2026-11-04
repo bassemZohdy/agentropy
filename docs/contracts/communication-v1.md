@@ -1,15 +1,28 @@
 # Agentropy Communication Contract v1 — Architecture baseline
 
 **Status:** Agreed architecture direction; interface design proposed for implementation validation. **No implementation exists yet.**  
-**Decision:** [ADR-0015](../adr/0015-pluggable-agent-communication.md).
+**Decision:** [ADR-0015](../adr/0015-pluggable-agent-communication.md). **Errors:** [Errors v1](errors-v1.md).
+
+## Revision history
+
+| Rev | Date | Change |
+|---|---|---|
+| 1 | 2026-11-04 | Initial baseline |
+| 2 | 2026-11-04 | Design review: AgentCommunication is an **outbound SPI of the TaskService**, not a handler API; every operation carries a `CallContext` (caller principal); duplicate `target` parameter removed from `delegate`; inbound path defined; remote task projection fields named |
+
+## Position in the call stack
+
+Handlers delegate through the `delegation` capability; the TaskService decides whether the target is local or remote. Only for **remote** targets (and for local targets when policy forces A2A) does it call the router. Inbound A2A requests terminate at an A2A server adapter that verifies the caller and calls `AgentService.delegate`. See the layering diagram in [Agent v1](agent-v1.md#call-layering).
+
+For local, co-located targets the TaskService calls the runtime directly; the "internal/direct provider" exists so that the **same router conformance suite** can run without a network, and so a deployment can force all traffic through the router for uniform policy.
 
 ## Core principle
 
-Agents depend only on a **logical AgentCommunication API**. The CommunicationRouter selects a compatible, authorized provider. A2A is preferred for independently deployed agents, while local in-process communication and third-party/custom providers are equally valid implementations of the abstraction. Transport and protocol details never leak into Agent handlers.
+Agent handlers never see transports: they delegate through the `delegation` capability, and the TaskService uses the **AgentCommunication SPI** for remote targets. The CommunicationRouter selects a compatible, authorized provider. A2A is preferred for independently deployed agents, while local in-process communication and third-party/custom providers are equally valid implementations of the abstraction. Transport and protocol details never leak into Agent handlers.
 
 ```mermaid
 flowchart TD
-  A[Agent / Agent Service] --> C[AgentCommunication API]
+  A[TaskService] --> C[AgentCommunication SPI]
   C --> R[CommunicationRouter]
   R --> D[Internal Direct Provider]
   R --> X[A2A Provider]
@@ -27,12 +40,28 @@ export interface AgentRef {
   instanceId?: string;
   version?: string;
   tenantId: string;
+  endpoint?: string;            // resolved by the registry for remote agents; never taken from message content
 }
 
-export interface TaskRef {
-  taskId: string;
+export interface CallContext {
+  caller: TrustedPrincipal;     // verified by the TaskService before the router is called
+  correlationId: string;
+  causationId?: string;
+  deadline?: string;
+  signal?: AbortSignal;
+}
+
+export interface RouteBinding {        // persisted on the local task at acceptance; never re-selected
   providerId: string;
-  remoteTaskId?: string;
+  protocol: string;
+  protocolVersion: string;
+  target: AgentRef;
+}
+
+export interface RemoteTaskRef {
+  localTaskId: string;          // Agentropy projection record
+  route: RouteBinding;
+  remoteTaskId: string;
 }
 
 export type CommunicationOperation =
@@ -47,34 +76,39 @@ export interface CommunicationFeatures {
   protocolVersion: string;
 }
 
-export interface AgentCommunication {
-  delegate<I>(target: AgentRef, request: DelegationRequest<I>): Promise<TaskHandle>;
-  send(target: AgentRef, message: AgentMessage): Promise<MessageReceipt>;
-  getTask(ref: TaskRef): Promise<TaskSnapshot>;
-  cancel(ref: TaskRef): Promise<void>;
-  subscribe(ref: TaskRef): AsyncIterable<AgentEvent>;
-}
-
-export interface AgentCommunicationProvider extends AgentCommunication {
+/** Outbound SPI implemented by each provider. */
+export interface AgentCommunicationProvider {
   readonly id: string;
   readonly features: CommunicationFeatures;
   supports(target: AgentRef, operation: CommunicationOperation): boolean;
+  delegate<I>(route: RouteBinding, request: DelegationRequest<I>, ctx: CallContext): Promise<RemoteTaskRef>;
+  send(route: RouteBinding, message: AgentMessage, ctx: CallContext): Promise<MessageReceipt>;
+  getTask(ref: RemoteTaskRef, ctx: CallContext): Promise<RemoteTaskState>;
+  cancel(ref: RemoteTaskRef, ctx: CallContext): Promise<RemoteTaskState>;
+  subscribe(ref: RemoteTaskRef, ctx: CallContext): AsyncIterable<AgentEvent>;
 }
 
-export interface CommunicationRouter extends AgentCommunication {
+/** Used only by the TaskService. Selects and pins a route, then delegates to the provider. */
+export interface CommunicationRouter {
   register(provider: AgentCommunicationProvider): void;
+  selectRoute(target: AgentRef, operation: CommunicationOperation, ctx: CallContext): Promise<RouteBinding>;
+  provider(route: RouteBinding): AgentCommunicationProvider;   // NoCompatibleRoute if unregistered
+}
+
+export interface RemoteTaskState {
+  remoteState: string;          // provider's own state value, stored verbatim
+  normalized: TaskSnapshot["status"] | "unknown";
+  observedAt: string;
 }
 
 // References to Agentropy's existing contracts; no parallel task schema:
-export type DelegationRequest<I> = import("./agent-v1").DelegationRequest<I>;
-export type TaskHandle = import("./agent-v1").TaskHandle;
-export type TaskSnapshot = import("./agent-v1").TaskSnapshot;
-export type AgentMessage = import("../messaging-contract").AgentMessage;
+//   DelegationRequest, TaskSnapshot, TrustedPrincipal -> agent-v1.md
+//   AgentMessage -> messaging-contract.md
 export interface MessageReceipt { messageId: string; accepted: boolean; }
-export interface AgentEvent { eventId: string; taskId: string; type: string; payload: unknown; }
+export interface AgentEvent { eventId: string; taskId: string; type: string; revision?: number; payload: unknown; }
 ```
 
-The import paths are documentation references, not compiled TypeScript modules. Provider-specific IDs are tracked by the router; public task references must be resolved to their authoritative owner. Avoid adding a `providerId` requirement to the existing public `TaskHandle` until routing and remote-task mapping are validated.
+Callers never see `RemoteTaskRef`: the public `TaskHandle`/`TaskSnapshot` always carry the **local** task ID, with `authority: "remote"` marking a projection. The TaskService keeps the `RouteBinding` and `RemoteTaskRef` on the task record.
 
 ## Provider routing rules
 
@@ -83,7 +117,7 @@ The import paths are documentation references, not compiled TypeScript modules. 
 3. Filter providers by protocol version, supported operation, target compatibility, policy and required guarantees.
 4. Prefer **A2A for independently addressable agents**, **direct for co-located agents** unless policy explicitly requires A2A; allow configured custom adapters.
 5. Persist route ownership/remote task mapping for later status/cancel/subscription calls; do not reselect a different provider mid-task.
-6. Fail with typed `NoCompatibleRoute`, `Unauthorized`, `UnsupportedOperation`, `RemoteUnavailable` or `UnknownAcceptance` errors. No silent security/durability downgrade.
+6. Fail with typed `NoCompatibleRoute`, `PermissionDenied`, `UnsupportedOperation`, `RemoteUnavailable` or `UnknownAcceptance` errors ([Errors v1](errors-v1.md)). No silent security/durability downgrade.
 
 ## Delivery and state semantics
 

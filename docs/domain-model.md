@@ -1,85 +1,61 @@
-# Agent domain model and lifecycle
+# Agent domain model
 
-**Contract baseline:** [Agent Contract v1](contracts/agent-v1.md) and [Capability Contract v1](contracts/capability-v1.md). The TypeScript examples below are historical illustrative sketches; the versioned contract documents govern implementation. In particular, Agent v1 uses `handle(invocation, context)` and returns a disposition rather than `execute(input, context)`.
+**Authoritative sources:** types in [Agent v1](contracts/agent-v1.md) and [Capability v1](contracts/capability-v1.md); states and edges in the [runtime contract](runtime-contract.md). This page is the entity map and glossary; it deliberately contains **no** type definitions or state lists of its own (revision 1 duplicated both and drifted).
 
 ## Entities
 
-| Entity | Key fields | Purpose |
-|---|---|---|
-| AgentDefinition | definitionId, version, profileId, capability specs, runtime requirements, policy | Immutable/versioned reusable specification |
-| AgentProfile | profileId, version, required, defaults, optional, constraints | Reusable configuration template |
-| AgentInstance | instanceId, definitionRef, owner, tenant, effective capabilities, lifecycle | Logical identity independent of process |
-| DelegatedTask | taskId, parentTaskId, instanceId, principal, objective, state, deadlines, limits | Bounded obligation and coordination unit |
-| Execution | executionId, taskId, attempt, state, checkpointRef, timestamps, leaseId | Running or suspended attempt |
-| CapabilityBinding | capabilityId, contractVersion, providerId, config, policy | Validated implementation selection |
-| InboxEntry | entryId, userId, taskId, severity, category, payloadRef, status | Durable notification/approval/result |
-| AgentLease | leaseId, executionId, provider, expiry | Short-lived execution capacity grant |
+| Entity | Key fields | Purpose | Lifetime |
+|---|---|---|---|
+| AgentDefinition | `id`, `version`, `profile`, capability selections, schemas, `policyRef` | Immutable versioned blueprint | Forever (versions immutable) |
+| AgentProfile | `id`, `version`, required/defaults/optional | Reusable capability template | Forever |
+| AgentInstance | `id`, `definition`, `tenantId`, `ownerId`, `state`, `revision` | Logical, owner-scoped agent identity, independent of any process | Until retired; history kept |
+| DelegatedTask | `taskId`, `parentTaskId`, `retryOf`, `agentInstanceId`, `principal`, input, `status`, `revision`, `deadline`, `budget`, version snapshot, `authority`, route binding (remote) | Bounded obligation; also the unit for long-lived responsibilities | Until terminal; retained per policy |
+| Execution | `executionId`, `taskId`, `activation`, `attempt`, `trigger`, `state`, `leaseEpoch`, timestamps | One activation of the handler | Seconds–minutes; always terminates |
+| Checkpoint | `taskId`, `revision`, codec, payload ref | Handler state between activations | Latest kept; older pruned per policy |
+| WakeupRegistration | `id`, `taskId`, condition, `dueAt`, `status` (`armed`/`fired`/`revoked`) | Durable wake-up intent; the scheduler/event layer reads only this | Until fired or revoked |
+| EffectiveCapabilitySnapshot | `snapshotId`, bindings, `policyRef` | Exact resolved capability/provider versions pinned to a task | Immutable |
+| EffectJournalEntry | `idempotencyKey`, `taskId`, `stepKey`, result ref | Records completed external effects for replay safety | Retained ≥ task lifetime |
+| OutboxRecord | `eventId`, aggregate id + `revision`, type, payload, `publishedAt`, lease | Transactional event publication | Until published + retention |
+| HumanActionRequest | `requestId`, `taskId`, kind, schema, assignees, `dueAt`, `status`, `revision` | Typed approval/input request | Until resolved/expired/revoked |
+| InboxEntry | `entryId`, `userId`, `tenantId`, source event ref, category, effective priority, delivery markers | User-scoped projection of significant events | Retention policy |
+| AgentLease | `leaseId`, `executionId`, `epoch`, `expiresAt` | Short-lived execution capacity grant | Seconds–minutes |
 
-IDs are opaque and globally unambiguous within the configured tenancy namespace. Include actor identity, delegated authority, trace context, and idempotency keys in all state-changing envelopes.
+IDs are opaque and unambiguous within the tenancy namespace. Every state-changing envelope carries actor identity, delegated authority, trace context and an idempotency key.
 
-## Representative TypeScript contracts (illustrative; not implemented)
+## Relationships
 
-```ts
-type AgentRole = 'conversational' | 'task' | 'monitoring' | 'coordinator' | 'specialist';
-type TaskState =
-  | 'created' | 'assigned' | 'running' | 'waiting'
-  | 'completed' | 'failed' | 'cancelled';
-
-interface CapabilitySpec {
-  id: string;
-  version: string;
-  config?: Record<string, unknown>;
-}
-
-interface AgentProfile {
-  id: string;
-  version: string;
-  required: CapabilitySpec[];
-  defaults: CapabilitySpec[];
-  optional: string[];
-}
-
-interface AgentDefinition {
-  id: string;
-  version: string;
-  role: AgentRole;
-  profile: { id: string; version: string };
-  capabilities: CapabilitySpec[];
-  runtime: { requiredGuarantees: string[] };
-}
-
-interface AgentContext {
-  executionId: string;
-  taskId: string;
-  tenantId: string;
-  principalId: string;
-  correlationId: string;
-  idempotencyKey: string;
-  signal: AbortSignal;
-}
-
-interface Agent<I = unknown, O = unknown> {
-  readonly definition: AgentDefinition;
-  execute(input: I, context: AgentContext): Promise<O>;
-}
+```mermaid
+erDiagram
+  AgentProfile ||--o{ AgentDefinition : "templates"
+  AgentDefinition ||--o{ AgentInstance : "instantiated as"
+  AgentInstance ||--o{ DelegatedTask : "owns"
+  DelegatedTask ||--o{ DelegatedTask : "parent of (bounded)"
+  DelegatedTask ||--o{ Execution : "activations"
+  DelegatedTask ||--o| Checkpoint : "latest"
+  DelegatedTask ||--o{ WakeupRegistration : "waits on"
+  DelegatedTask ||--|| EffectiveCapabilitySnapshot : "pinned to"
+  DelegatedTask ||--o{ HumanActionRequest : "requests"
+  DelegatedTask ||--o{ EffectJournalEntry : "records"
+  Execution ||--o| AgentLease : "holds while running"
+  DelegatedTask ||--o{ OutboxRecord : "emits"
+  OutboxRecord ||--o{ InboxEntry : "projected to"
 ```
 
-Capability contracts and the actual execution state envelope will evolve before coding begins. Implementations must not confuse optional cancellation requests with guaranteed external side-effect cancellation.
+## Long-lived responsibilities
 
-## Extended contracts and version pinning
+A monitoring or "always-on" agent's standing duty is a **non-terminal task** that cycles `waiting → assigned → running → waiting`. Each cycle is a new Execution; the checkpoint carries what must be remembered between cycles; a wake-up registration (schedule/event) carries what wakes it. It ends only by `completed` (condition met), `cancelled` (user) or `failed`. See [ADR-0018](adr/0018-execution-per-activation.md).
 
-See [task lifecycle and operation guards](runtime-contract.md), [message envelope](messaging-contract.md) and [human actions](human-actions.md). A DelegatedTask should retain immutable accepted-time snapshots: agent definition/profile revision, capability contract versions, provider/build binding, input schema version and delegated authority metadata. A HumanActionRequest is separately identifiable by stable request ID, input kind/schema, assignee(s), deadline, state and revision. InboxEntry tracks read/presented/resolved independently from authoritative task state.
+## Glossary
 
-A task startup is **async-first**, reporting an accepted reference rather than an implied final result. All external messages need schema version, correlation/causation, trust-validated actor and idempotency data. The conceptual state machine below is to be turned into a validated transition matrix before implementation.
-
-## Lifecycle
-
-Agent instance: `registered -> available -> suspended -> available -> retired` (subject to policy). Retiring an instance does not delete task history.
-
-Task: `created -> assigned -> running -> waiting -> running -> completed|failed|cancelled`. A task may transition directly from running to completed/failed/cancelled. Recovery of an active task may create new execution attempts; retrying a terminal task creates a linked new task. Terminal states are not reopened.
-
-Execution: `queued -> leased -> running -> checkpointed/waiting -> resumed -> completed|failed|aborted`. Crash recovery can replace a lost attempt. Each transition must carry compare-and-swap/version fencing to avoid concurrent competing ownership.
-
-## Correlation and delivery
-
-Task IDs identify work; correlation IDs link conversations and events; delegation IDs track parent-child assignment. Delivery records are separate from completion state. An agent can have many tasks, while the same objective may have explicitly distinct invocations.
+| Term | Meaning |
+|---|---|
+| Activation | One run of a handler for a task (= one Execution). Triggered by delegation, wake-up or retry |
+| Attempt | Retry counter within an activation after a retryable failure or lost lease |
+| Correlation ID | Groups everything caused by one user intent across tasks and agents |
+| Causation ID | The message/event that directly caused this one |
+| Delegated authority | The grant chain under which an agent acts for a principal; narrowed at each hop |
+| Effective priority | Output of the priority resolver ([human actions](human-actions.md)) |
+| Projection | A read model derived from authoritative events (inbox entries, remote task records) that never drives state |
+| Revision | Monotonic per-entity integer used for compare-and-swap and event ordering |
+| Step key | Deterministic handler-chosen name for an external effect; basis of its idempotency key |
+| Wake-up | A durable condition (timer, schedule, event, human action, child tasks) that reactivates a waiting task |
