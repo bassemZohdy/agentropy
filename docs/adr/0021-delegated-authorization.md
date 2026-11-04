@@ -30,6 +30,16 @@ Agents may invoke other agents, tools, workflow providers and external systems o
 - **Policy-driven terminal handling:** configurable bounded waits, expiry, administrative cancellation or failure resolution may end the task explicitly; a task must not wait indefinitely without visibility or controls.
 - **Operational boundary:** tasks that do not need delegated access may perform permitted non-sensitive internal processing during a grant gap, subject to their own service identity, task policy and tenant restrictions.
 
+## Accepted credential and secret management architecture (2026-11-04)
+
+- Use a **pluggable CredentialProvider abstraction** rather than binding agents to Vault, Kubernetes Secrets, a particular cloud secret manager, or a particular identity provider.
+- **Never persist secret values, access tokens, refresh tokens, private keys, or other credential material in agent definitions, task/execution state, checkpoints, messages, inboxes, audit records, or telemetry.** Persist only opaque, tenant-scoped credential references or non-sensitive metadata when required.
+- A trusted service/runtime resolves credentials just in time for an authorized operation. Both requesting agent and target capability/resource must pass current authorization and tenant boundaries; avoid handing unrestricted raw credentials to arbitrary agent code.
+- Support expiry, renewal, rotation, revocation and short-lived scoped credentials through provider-specific capabilities. Do not require every implementation to support every feature; unsupported guarantees are explicit.
+- Long-running tasks re-resolve or renew credentials at protected-use boundaries and cannot assume credentials captured when a task was accepted remain valid. If valid credentials cannot be obtained, hold the affected operation under the approved authorization-blocked/waiting policy, without silently canceling the task.
+- Minimize credential lifetime and exposure; redact secret-bearing errors/logs, protect credential caches and invalidate stale entries on rotation/revocation where feasible. External calls must be idempotent/reconcilable when credential failure coincides with uncertain remote execution.
+- Support local development and air-gapped deployments through adapters without changing the core contracts. **The selection and configuration of concrete backends, token exchange, rotation protocols, and cache policy are deferred.**
+
 ## Boundaries and deferred implementation decisions
 
 - Select identity/token exchange standards and specific Keycloak or other IdP flows separately after threat modeling. This ADR does **not** claim that RFC 8693 token exchange or any specific Keycloak feature is available in the target environment.
