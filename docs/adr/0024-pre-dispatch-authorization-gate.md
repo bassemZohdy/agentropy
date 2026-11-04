@@ -1,13 +1,13 @@
 # ADR-0024: Durable pre-dispatch authorization deferral
 
-- Status: **Proposed** (2026-11-04) — requires explicit acceptance and conformance tests
+- Status: **Accepted** (2026-11-04) — architectural eligibility-gate principle; implementation and conformance pending
 - Scope: Agentropy M0-05 lifecycle/security compatibility; no implementation authorized
 
 ## Problem
 
 ADR-0021 requires an accepted durable task to survive a transient PDP outage or expired authorization without dispatching a protected side effect. The canonical runtime contract permits `running → waiting` only through handler yield (T4). It does **not** permit `created/assigned → waiting`. Inventing a status would break the current transition matrix and potentially stale downstream consumers.
 
-## Proposed solution: activation eligibility gate (no new task state)
+## Accepted solution: activation eligibility gate (no new task state)
 
 1. Preserve task status `created` or `assigned` while authorization cannot be established. Keep durable task/queue record, retry policy and effective grant reference; do **not** create an execution or lease and do not invoke a protected handler.
 2. Add a **non-lifecycle scheduler/queue eligibility field** or durable gate record (e.g. `nextEligibilityCheckAt`, `blockReason = policy-indeterminate | grant-expired | revoked`, `gateRevision`). This is *not* a `DelegatedTask.status`, a transition, or a new `TaskEvent` lifecycle edge.
@@ -32,4 +32,4 @@ Adding `created/assigned → waiting` transitions and a new `authorization-block
 
 ## Decision boundary
 
-This remains a proposal. The exact gate schema, typed error mapping, retry parameters, wake-up strategy and conflict with task deadlines need contract review and tests. Acceptance would allow updating runtime-contract.md and AC scope, not starting implementation.
+The activation-gate pattern is accepted. Exact gate schema, typed error mapping, retry parameters, and checkpoint/revocation races require tests. Acceptance does **not** authorize a source-code implementation or expand AC-01…AC-20 automatically.
