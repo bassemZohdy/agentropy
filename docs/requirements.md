@@ -42,7 +42,7 @@
 | R-31 | P0 | Pluggable AgentCommunication SPI with routing and provider metadata | Router conformance suite passes against the direct provider; unsupported operations fail explicitly (AC-18) | Communication v1, ADR-0015 | M1 (direct) |
 | R-32 | P1 | Standards-based A2A interoperability | An Agentropy agent delegates to and is delegated from an external A2A agent; status, result and cancel mapped | Communication v1 | M2 |
 | R-33 | P1 | Provider-aware routing and remote ownership | Route pinned at acceptance; remote task shown as `authority: "remote"`; no downgrade of security/durability. *Was P0; only meaningful once a remote provider exists* | Communication v1 | M2 |
-| R-34 | P0 | Replay-safe external side effects via step keys | Crash after an external effect but before commit does not repeat the effect on re-run (AC-07) | Agent v1 | M1 |
+| R-34 | P0 | Replay-safe effects through deterministic step keys and effect journal | Internal effects commit atomically with their journal; externally idempotent providers deduplicate replays; non-idempotent providers explicitly expose at-least-once effects (AC-07) | Agent v1 | M1 |
 | R-35 | P1 | Model provider contract with budget accounting | Model calls go through `reasoning`; per-task cost budget enforced with `BudgetExceeded` | Capability v1 | M2 |
 | R-36 | P0 | Conversational surface: delegation as a tool and turn-start briefing | Conversational agent delegates via `delegation`; next turn's briefing includes the new inbox entry exactly once (AC-02) | Collaboration | M1 |
 | R-37 | P0 | Long-lived responsibilities as cycling tasks | A monitoring task survives ≥ 100 activations with bounded checkpoint size and pruned execution history (AC-20) | ADR-0018 | M1 |
