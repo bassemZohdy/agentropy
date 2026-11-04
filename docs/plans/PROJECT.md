@@ -85,6 +85,10 @@ The currently checked-in `TODO.md` is a multi-section checklist, **not** todo-sk
 
 Before activation, check the readiness matrix, schema/ADR crosslinks, all previous stable IDs, no dropped tasks and no false completed markers. Once implementation exists, use the test commands proven by CI; **do not invent test commands for packages not yet created**.
 
+## M0 decision review
+
+See [M0-DECISION-REVIEW](M0-DECISION-REVIEW.md) for explicit accept/revise/defer recommendations and unresolved implementation gates. No technology or license has been approved by creating that document.
+
 ## Open questions
 
 - Approve TypeScript + Node.js tooling from ADR-0016?
