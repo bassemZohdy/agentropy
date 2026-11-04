@@ -114,4 +114,4 @@ Implementation and docs agree (contract revision-history row added when a contra
 ## Progress
 
 - Milestones complete: **0 / 4**. M0: **7 / 13** documented items complete; **6** remain (4 require maintainer decisions/reviews: M0-01, M0-02, M0-06, X-01; plus M0-05 trust-boundary signoff and M0-08 scaffold).
-- Roadmap checkboxes: **8 / 76** complete (**7 M0 design items + D-23 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
+- Roadmap checkboxes: **8 / 78** complete (**7 M0 design items + D-23 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
