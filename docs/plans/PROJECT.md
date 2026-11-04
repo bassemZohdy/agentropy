@@ -43,8 +43,8 @@ Still open: review [ADR-0025](../adr/0025-security-infrastructure-errors.md) can
 
 | Gate | Required evidence | Status |
 |---|---|---|
-| G0-01 Architecture consistency | Task durability contract reconciled; pre-dispatch eligibility gate accepted in ADR-0024; detailed races/route conformance remain test work | PARTIAL |
-| G0-02 Requirements completeness | Communication families and configuration precedence reconciled; failure/security contract tests and final cross-document review remain | PARTIAL |
+| G0-01 Architecture consistency | Durability, ADR-0024 and communication/config overlays reconciled; eligibility gate races/errors still need precise contract validation | PARTIAL |
+| G0-02 Requirements completeness | Communication/config/tenant/audit mappings documented; ADR-0025 error taxonomy and gate tests still unresolved | PARTIAL |
 | G0-03 ADR review | Individual ADR-0008…0018 dispositions recorded; proposals with unresolved implementation mechanisms remain proposed | PARTIAL |
 | G0-04 Technology/tooling | ADR-0016/0017/0023 accepted; canonical LICENSE + CONTRIBUTING and ESLint/Prettier style set; scaffold/CI and dependency version testing pending | PARTIAL |
 | G0-05 Test scope | [M1 security scope accepted](M1-SECURITY-ACCEPTANCE-DECISION.md): SEC-01/02/03/04/07 required; SEC-05/06 full coverage deferred | CLOSED (design only) |
@@ -82,6 +82,10 @@ The currently checked-in `TODO.md` is a multi-section checklist, **not** todo-sk
 5. One branch/worktree per task, tests first, review, targeted verification plus full regression, merge verified changes, drain completed roots to CHANGELOG per `/todo-continue`. Do not claim a command ran in chat if it did not.
 6. Configure `.todo/check.sh` and lint/CI once the approved scaffold and test command exist. `/todo-report` creates `docs/status.html` only after the migrated tree is valid.
 7. Do not silently push or merge as part of the todo-skills commands; GitHub sync is an explicit separate action.
+
+## Final architecture readiness review
+
+See [architecture readiness report](../review/2026-11-04-architecture-readiness.md) for open issues that remain before implementation signoff. This report is not a claim that executable conformance passed.
 
 ## Verification
 
