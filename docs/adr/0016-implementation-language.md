@@ -1,13 +1,13 @@
 # ADR-0016: Initial implementation language and tooling
 
-- Status: Proposed (2026-11-04) — **decision needed from the maintainer**
+- Status: Accepted (2026-11-04) — TypeScript/Node.js M1 stack; specific dependency versions and package names remain setup choices
 - Resolves: roadmap M0-01
 
 ## Context
 
 Every contract (Agent, Capability, Communication, Errors) is already written in TypeScript notation, but the language was never decided (M0-01). Implementation cannot start without it. Requirements that bear on the choice: offline deterministic tests (R-28), JSON Schema at boundaries (R-22), A2A interoperability (R-32), an embeddable library rather than a server product, and contributors who may also write agents in Python.
 
-## Proposal
+## Accepted M1 decision
 
 - **TypeScript (strict) on the current Node.js Active LTS**, ESM only.
 - **pnpm workspaces** monorepo with the layout in [POC scope](../poc-scope.md).
@@ -25,6 +25,6 @@ Contracts translate directly to code; `AbortSignal`/`AsyncIterable` in the contr
 - **Python:** best ML ecosystem and matches langgraph-flows, but weaker static typing for the contract-heavy core.
 - **Go:** good runtime characteristics, weaker fit for generic, schema-driven handler contracts.
 
-## Open
+## Remaining setup choices
 
-Package scope/name on npm; minimum supported Node version policy.
+Package scope/name on npm; exact minimum supported Node version, concrete schema authoring library, and lint/format preference will be fixed at setup and verified with offline CI. No implementation has started. Temporal + LangGraph TypeScript integration remains explicitly deferred.
