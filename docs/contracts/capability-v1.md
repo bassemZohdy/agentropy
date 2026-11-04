@@ -9,6 +9,7 @@
 | 1 | 2026-11-04 | Initial baseline |
 | 3 | 2026-11-04 | Re-review: `reasoning`/`tool-use` usable in POC with fake providers; operation I/O for `delegate`, `notify`, `requestAction`, `subscribe`, `briefing`; durable event subscriptions |
 | 2 | 2026-11-04 | Design review: canonical capability ID catalog; guarantees modelled once (as `kind: "guarantee"` selections with levels); operation `effect` classification and step keys; `task-execution` and `messaging` removed as capabilities; profile table reconciled with [capabilities](../capabilities.md) |
+| 4 | 2026-11-04 | Align TaskAgent required `durable-execution` guarantee with accepted ADR-0019; no downgrade to `durable-acceptance` |
 
 ## Classification
 
@@ -162,12 +163,12 @@ Durability is expressed exactly once: as a `kind: "guarantee"` selection with a 
 | Profile | Required | Defaults | Optional examples |
 |---|---|---|---|
 | conversational | `conversation`, `session-context` | `delegation`, `durability: durable-acceptance` | `memory`, `tool-use`, `reasoning` |
-| task | `durability: durable-acceptance` | `notification` | `scheduling`, `event-handling`, `workflow`, `reasoning`, `human-input`, `tool-use`, `delegation` |
+| task | `durability: durable-execution` | `notification` | `scheduling`, `event-handling`, `workflow`, `reasoning`, `human-input`, `tool-use`, `delegation` |
 | monitoring | `event-handling`, `durability: durable-execution` | `scheduling`, `notification` | `delegation`, `reasoning` |
 | coordinator | `delegation`, `durability: durable-execution` | `notification` | `conversation`, `workflow`, `reasoning` |
 | specialist | — | `tool-use` | `reasoning`, `memory`, `conversation`, `durability` |
 
-Rationale for changes from rev 1: coordinators wait on children, so they need `durable-execution`; scheduling stays optional for tasks; `inbound-message`/`progress-reporting` are platform obligations.
+Rationale: TaskAgent must preserve resumable execution state even without scheduling (accepted in ADR-0019). Coordinators and monitoring profiles also require `durable-execution` because they wait across activations; scheduling remains optional for task agents. A lightweight ephemeral helper uses a specialist/custom profile, not a downgraded task profile. `inbound-message`/`progress-reporting` are platform obligations.
 
 ## Resolution algorithm (authoritative ordering)
 
