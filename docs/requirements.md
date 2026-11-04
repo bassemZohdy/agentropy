@@ -24,6 +24,24 @@ Requirement IDs are stable for planning. Priority P0 = foundation, P1 = useful f
 | R-18 | P2 | Federation and remote agent discovery | Authorized cross-runtime routing and version compatibility |
 | R-19 | P2 | Advanced agent-team user experience | Optional dashboard and configurable status notifications |
 
+## Additional requirements from langgraph-flows architecture review
+
+| ID | Priority | Requirement | Acceptance intent |
+|---|---|---|---|
+| R-20 | P0 | Asynchronous-first delegation and accepted-task handles | A disconnected conversation does not terminate an accepted task; start timeout is reconciled by idempotency key |
+| R-21 | P0 | Single authoritative lifecycle table and capability-guarded operations | Invalid transitions and unsupported cancel/pause/retry/input operations fail with typed errors |
+| R-22 | P0 | Versioned, transport-neutral agent command/query/event envelopes | Correlation, causation, principal, idempotency and message versions validated across transports |
+| R-23 | P0 | Durable definition and provider version pinning for accepted tasks | Old tasks preserve compatible semantics across rolling upgrades or fail explicitly |
+| R-24 | P1 | Stable human action requests and final authoritative authorization | Expired, duplicate, reassigned or conflicting approvals cannot cause repeated or unauthorized effects |
+| R-25 | P1 | User-scoped actionable inbox as projection of task events | Inbox is reconciled against runtime; read, presented, delivered and resolved markers remain distinct |
+| R-26 | P1 | Shared business, personal and policy priority model | Personal priority cannot downgrade hard business/policy minimums; adjustments have provenance |
+| R-27 | P0 | Trusted identity enforcement before delegation and at sensitive actions | Principal spoofing, scope escalation, expired grants and unauthorized discovery fail closed |
+| R-28 | P1 | Isolated app contexts, external configuration and offline contract tests | Two app instances do not share mutable state; CI needs no paid model |
+| R-29 | P1 | Reliable, pluggable event publication and reconciliation | Outbox restart/lease, replay, duplicate and out-of-order scenarios tested |
+| R-30 | P1 | Compatible deployments across stateful process/runtime boundaries | Crash-survival and version compatibility matrix documented per provider |
+
+These are **proposed Agentropy requirements**, derived from patterns documented in [reuse assessment](reuse-from-langgraph-flows.md); none are implemented yet.
+
 ## Functional invariants
 
 - A task is not an agent instance, and an execution attempt is not a task.
