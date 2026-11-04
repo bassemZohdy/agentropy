@@ -37,14 +37,14 @@ Produce an embeddable, provider-neutral Agentropy framework delivering the appro
 
 Accepted architecture direction: ADR-0019…0024, with ADR-0024's pre-dispatch eligibility gate retaining existing task states; TypeScript/Node.js/pnpm and SQLite/polling/in-process M1 in ADR-0016/0017; Apache-2.0/DCO and ESLint/Prettier as recorded in ADR-0023 and repository policy. None of these decisions proves a working implementation.
 
-Still open: adopted [ADR-0025](../adr/0025-security-infrastructure-errors.md) PDP/audit error codes and defined gate shape; executable race/restart tests, final full contract/documentation consistency, executable offline M0 scaffold, and approved lossless TODO-to-todo-skills migration. Temporal + LangGraph TypeScript remains explicitly deferred. Earlier Proposed ADRs stay Proposed where provider-specific guarantees are untested.
+ADR-0025 security failure codes and the ADR-0024 minimal gate shape are accepted design decisions. Still open: executable race/restart conformance, final cross-document acceptance, M0-08 offline scaffold, and the lossless TODO-to-todo-skills migration. Temporal + LangGraph TypeScript remains explicitly deferred. Earlier Proposed ADRs stay Proposed where provider-specific guarantees are untested.
 
 ### Mandatory readiness gates (complete BEFORE /todo-init migration)
 
 | Gate | Required evidence | Status |
 |---|---|---|
-| G0-01 Architecture consistency | Durability, ADR-0024 and communication/config overlays reconciled; eligibility gate races/errors still need precise contract validation | PARTIAL |
-| G0-02 Requirements completeness | Communication/config/tenant/audit mappings documented; ADR-0025 error taxonomy and gate tests still unresolved | PARTIAL |
+| G0-01 Architecture consistency | Durability, communication/config and ADR-0024 gate shape and ADR-0025 errors are aligned; runnable race/recovery tests remain M1 | CLOSED (design only) |
+| G0-02 Requirements completeness | Communication/config/security requirements and accepted error taxonomy aligned; runnable conformance and final document signoff remain open | PARTIAL |
 | G0-03 ADR review | Individual ADR-0008…0018 dispositions recorded; proposals with unresolved implementation mechanisms remain proposed | PARTIAL |
 | G0-04 Technology/tooling | ADR-0016/0017/0023 accepted; canonical LICENSE + CONTRIBUTING and ESLint/Prettier style set; scaffold/CI and dependency version testing pending | PARTIAL |
 | G0-05 Test scope | [M1 security scope accepted](M1-SECURITY-ACCEPTANCE-DECISION.md): SEC-01/02/03/04/07 required; SEC-05/06 full coverage deferred | CLOSED (design only) |
