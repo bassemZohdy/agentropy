@@ -20,6 +20,16 @@ Agents may invoke other agents, tools, workflow providers and external systems o
 8. **Cross-tenant and cross-boundary:** Enforce tenant isolation by default. Cross-tenant calls require explicit authorization and trusted delegation exchange; never forward raw user tokens or trust unverified envelope fields merely because an A2A endpoint accepted a message.
 9. **Credential separation:** Store secrets and refresh credentials outside ordinary task state, messages, logs and traces. Pass only scoped references/capabilities where safe; apply expiry and rotation policies.
 
+## Accepted long-running task authorization semantics (2026-11-04)
+
+- **Durability is independent of grant lifetime:** expiration, revocation, or loss of the initiating user's interactive session does not automatically delete or cancel an accepted durable task.
+- **Bounded autonomous authority:** an agent may continue work under an independently valid, task-scoped delegated authorization, with least privilege and a defined expiry; a past user session or the task's original acceptance is not sufficient authority by itself.
+- **Fresh checks at protected boundaries:** before each sensitive tool call, external side effect, confidential data read, onward delegation, or other protected operation, verify current effective authorization including expiry, revocation and policy changes. Previously pinned task/configuration versions cannot bypass these checks.
+- **Expired or revoked grant:** deny the affected operation and persist the task at an explicit authorization-blocked/waiting boundary where safe. Raise a reauthorization or human-action request to an authorized principal when supported, without silently granting new authority or automatically cancelling the task.
+- **Resume:** only after a newly verified valid grant is issued and policy is rechecked; preserve task state, idempotency and the audit chain through suspension/resumption. If an operation has already been dispatched, record its uncertain outcome and reconcile before retrying.
+- **Policy-driven terminal handling:** configurable bounded waits, expiry, administrative cancellation or failure resolution may end the task explicitly; a task must not wait indefinitely without visibility or controls.
+- **Operational boundary:** tasks that do not need delegated access may perform permitted non-sensitive internal processing during a grant gap, subject to their own service identity, task policy and tenant restrictions.
+
 ## Boundaries and deferred implementation decisions
 
 - Select identity/token exchange standards and specific Keycloak or other IdP flows separately after threat modeling. This ADR does **not** claim that RFC 8693 token exchange or any specific Keycloak feature is available in the target environment.
