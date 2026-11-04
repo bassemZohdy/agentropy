@@ -1,5 +1,7 @@
 # Composable capabilities and agent profiles
 
+**Contract baseline:** [Capability Contract v1](contracts/capability-v1.md) defines provider operations, versioned bindings, resolution, guarantees, errors and conformance gates. This document provides taxonomy and examples; the contract is authoritative where examples differ.
+
 ## Model
 
 An Agent is defined by **identity + profile + capability bindings + policies**. A profile provides stable required/default/optional sets. The capability resolver calculates effective capabilities, rejects incompatible combinations and validates required provider guarantees.
