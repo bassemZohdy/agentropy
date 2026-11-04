@@ -9,9 +9,9 @@ M1 needs durable tasks, checkpoints, wake-ups, an effect journal, an outbox and 
 
 ## Proposal
 
-- **Storage port** (`Store` interface with an explicit `transaction(fn)` unit of work) in `core`; **SQLite** adapter for M1 (WAL mode, single process). All lifecycle writes, wake-up registrations, effect-journal entries and outbox records for one transition happen in one SQLite transaction.
+- **Storage port** (`Store` interface with an explicit `transaction(fn)` unit of work) in `core`; **SQLite** adapter for M1 (WAL mode, single process). All lifecycle writes, wake-up registrations and outbox records for one transition happen in one SQLite transaction. **Effect-journal entries are not part of the disposition transaction**: each is committed at invocation time, together with the effect itself when the effect is platform-internal (inbox entry, child task, human action) — see [Agent v1](../contracts/agent-v1.md#idempotent-side-effects). Otherwise a crash before the disposition commits would lose the journal and repeat the effect (AC-07).
 - **Scheduler:** a polling loop over the `wakeup_registrations` table (`status = armed AND due_at <= now`), driven by an injectable clock; fires via `AgentRuntime.fireWakeup`, which consumes the registration with a conditional update (exactly-once consumption, at-least-once delivery).
-- **Event transport:** in-process bus for event sources; inbound events are first recorded, then matched to armed `event` registrations in a transaction.
+- **Event transport:** in-process bus for event sources. Each inbound event is recorded and appended to the mailbox of every matching **durable subscription** in one transaction; a waiting task whose `event` condition now has a pending mailbox entry is woken. Events arriving while a task runs stay in its mailbox ([runtime contract](../runtime-contract.md#event-subscriptions-no-lost-events-between-activations)).
 - **Outbox relay:** in-process worker leasing unpublished outbox rows → inbox projector and subscribers.
 - **Second adapter (M3):** PostgreSQL with `SELECT … FOR UPDATE SKIP LOCKED` for multi-worker leasing; the same conformance suite gates both.
 

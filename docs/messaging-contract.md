@@ -43,17 +43,22 @@ Lifecycle events share one payload shape:
 interface TaskEvent {
   eventId: string;
   taskId: string;
-  revision: number;            // task revision AFTER the transition; consumers drop revision <= last seen
-  type: "taskAccepted" | "taskAssigned" | "taskStarted" | "taskWaiting" | "taskCompleted"
-      | "taskFailed" | "taskCancelled" | "taskCancelRequested" | "humanActionRequested"
-      | "humanActionResolved" | "agentProgressUpdated";
+  revision: number;            // task revision current when the event was committed
+  sequence: number;            // 0 for the transition event itself, 1.. for later non-transition events at that revision
+  type:
+    // transition events (one per applied transition; bump revision)
+    | "taskAccepted" | "taskAssigned" | "taskStarted" | "taskWaiting" | "taskCompleted"
+    | "taskFailed" | "taskCancelled"
+    // non-transition events (do NOT bump revision; increment sequence)
+    | "taskCancelRequested" | "agentProgressUpdated" | "notificationCreated"
+    | "humanActionRequested" | "humanActionResolved";
   status: TaskSnapshot["status"];
   occurredAt: string;
   data?: unknown;              // e.g. progress message, waitingOn, outcome
 }
 ```
 
-`agentProgressUpdated` does not change `status` and reuses the current revision with a per-revision sequence number.
+Consumers order and deduplicate by `(revision, sequence)` and by `eventId`; they drop anything `<=` the last seen pair. `notificationCreated.data` is the `notification.notify` input plus `entryId` and `stepKey`; it is the **only** source of user notification inbox entries. `humanActionRequested/Resolved.data` carries the request ID and revision.
 
 The sending-side actor field is evidence of **claimed** identity, not proof. Trusted gateways/services must derive or verify principals and delegation grants, and reject tenant/actor spoofing.
 

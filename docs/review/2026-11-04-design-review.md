@@ -52,3 +52,35 @@ Severity: **High** = would block or derail implementation; **Medium** = would ca
 ## Not changed (deliberately)
 
 Vision, non-goals, operations, collaboration and the reuse assessment were left substantively as they are: they are consistent with the revised contracts at the level of detail they target.
+
+## Re-review after merge
+
+An independent reviewer (no access to the first pass) read every document after PR #1 merged and reported 25 findings. All were verified against the text and fixed on the follow-up branch. Several were defects introduced by the first pass itself (R-01, R-06, R-09).
+
+| # | Sev | Finding | Fix |
+|---|---|---|---|
+| R-01 | High | Effect journal committed with the disposition transaction, so AC-07's crash lost it | Journal committed at invocation time; internal effects exactly-once with their journal ([Agent v1](../contracts/agent-v1.md#idempotent-side-effects), ADR-0017) |
+| R-02 | High | J2 used `reasoning`/`tool-use`, which were M2-only | Both POC-phase with fake providers |
+| R-03 | High | J1 used a fake model, contradicting R-17 "no model provider" | J1 conversational agent is rule-based |
+| R-04 | High | Events arriving while a task was running matched no armed registration and were lost | Durable subscriptions with per-task mailbox ([runtime contract](../runtime-contract.md#event-subscriptions-no-lost-events-between-activations)) |
+| R-05 | High | Two overlapping expiry mechanisms (`onExpiry` vs `onTimeout`); `requestAction` output undefined | One mechanism: request `dueAt` + `onExpiry`; `requestAction` returns `requestId` |
+| R-06 | High | `provideHumanInput` task-state guard made duplicate/conflict outcomes in AC-08 impossible | Decision checked against the request first |
+| R-07 | High | No event path from `notify` to the inbox; `notify` input undefined | `notificationCreated` event + operation I/O table |
+| R-08 | High | No entry point for a user turn; `CapabilityAccess` only inside executions | Turn model: `submitTurn` creates a turn task; briefing at start |
+| R-09 | High | Attempt budget/backoff/retry policy undefined | `retryPolicy` on definitions; thrown errors retryable |
+| R-10 | Med | No `register`, no handler binding for AC-10/R-01 | `AgentRegistry.register`, `HandlerRegistry` |
+| R-11 | Med | Cancel grace → `lost` not an execution edge; grace period undefined | E8 trigger + `cancelGracePeriod` |
+| R-12 | Med | Queued execution had no terminal edge when task failed/cancelled | E7 for queued/leased without handler; E7b for running |
+| R-13 | Med | Revision-drop rule discarded progress and non-transition events | `(revision, sequence)` ordering |
+| R-14 | Med | `delegate` refusal list incomplete for AC-09 | Full list; AC-09 names expected codes |
+| R-15 | Med | Idempotency checked last, so retries could fail after state changes | Replay right after schema check |
+| R-16 | Med | `child-tasks` semantics and outcome delivery undefined | Over terminal states; outcomes in `wakeReason.children` |
+| R-17 | Med | `payloadRef` not dereferenceable | Event payload inline |
+| R-18 | Med | R-37 not covered by any AC; roadmap put it in M2 | AC-20; M2-01 rescoped |
+| R-19 | Med | R-02/03/06/22/31 had no AC; several mappings wrong | AC-15…AC-18 added; mappings fixed; AC-13 uses specialist profile |
+| R-20 | Med | Handler could not build a `DelegationRequest` without generating keys | `DelegateInput`; runtime fills key, correlation, parent |
+| R-21 | Med | `TaskHandle.status` not task states; record types and instance creation missing | Fixed; record types and instance operations added |
+| R-22 | Med | Registry sketch used undefined types and a competing `AuthorizationContext` | `TrustedPrincipal` everywhere; types defined |
+| R-23 | Low | Leftover pause/resume and "resumes executions" wording | Reworded |
+| R-24 | Low | Activation counter and retire semantics inconsistent | One rule each in the runtime contract |
+| R-25 | Low | P0/P1 vs M1 assignment; undefined X-items; no claim API | P1 "M1 (basic)" defined; X-items inlined; claim/release added |

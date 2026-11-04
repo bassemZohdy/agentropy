@@ -8,20 +8,32 @@
 
 **Execution Pool:** Allocates *physical* worker slots/leases, enforces limits and isolates concurrency. It does not own an agent's durable identity. A sleeping always-on agent must not consume a permanent slot.
 
-**Agent Runtime:** Validates tasks and capabilities, starts/resumes/cancels executions, checkpoints state, handles durable wait/activation and ensures observable transitions. Providers may implement their own checkpoint and queue mechanics behind adapters.
+**Agent Runtime:** Validates tasks and capabilities, activates executions (start, wake-up, retry), requests cancellation, checkpoints state, handles durable wait/activation and ensures observable transitions. Providers may implement their own checkpoint and queue mechanics behind adapters.
 
 ## Candidate interfaces (conceptual)
 
 ```ts
 interface AgentRegistry {
-  resolve(id: string, version?: string): Promise<AgentDefinition>;
-  discover(query: AgentQuery, authorization: AuthorizationContext): Promise<AgentDefinition[]>;
+  /** Idempotent for identical content; same id@version with different content -> InvalidConfiguration. */
+  register(definition: AgentDefinition, caller: TrustedPrincipal): Promise<void>;
+  resolve(ref: { id: string; version?: string }, caller: TrustedPrincipal): Promise<AgentDefinition>; // latest if version omitted
+  discover(query: AgentQuery, caller: TrustedPrincipal): Promise<AgentDefinition[]>; // deterministic order: id, then version desc
+}
+
+interface AgentQuery {
+  capabilities?: string[];     // all must be present in the effective set
+  profile?: string;
+  text?: string;               // matches displayName
+  limit?: number;
 }
 
 interface AgentInstanceDirectory {
-  get(instanceId: string, authorization: AuthorizationContext): Promise<AgentInstance>;
-  listByOwner(ownerId: string, authorization: AuthorizationContext): Promise<AgentInstance[]>;
+  get(instanceId: string, caller: TrustedPrincipal): Promise<AgentInstance>;
+  listByOwner(ownerId: string, caller: TrustedPrincipal): Promise<AgentInstance[]>;
 }
+
+interface ExecutionRequest { executionId: string; taskId: string; tenantId: string; priority: number; }
+interface ExecutionLease { leaseId: string; executionId: string; epoch: number; expiresAt: string; }
 
 interface AgentPool {
   acquire(request: ExecutionRequest): Promise<ExecutionLease>;   // lease carries a fencing epoch
@@ -37,7 +49,7 @@ interface AgentRuntime {
 }
 ```
 
-Names are illustrative and not implemented. Revision 2: executions are no longer suspended/resumed — each activation is a new execution ([ADR-0018](adr/0018-execution-per-activation.md)); instance suspension is an AgentService operation.
+Names are illustrative and not implemented. `TrustedPrincipal`, `AgentDefinition` and `AgentInstance` are from [Agent v1](contracts/agent-v1.md); handler code is bound to definition versions through its `HandlerRegistry`. Revision 2: executions are no longer suspended/resumed — each activation is a new execution ([ADR-0018](adr/0018-execution-per-activation.md)); instance suspension is an AgentService operation.
 
 ## Pool and lease safety
 

@@ -7,6 +7,7 @@
 | Rev | Date | Change |
 |---|---|---|
 | 1 | 2026-11-04 | Initial baseline |
+| 3 | 2026-11-04 | Re-review: `reasoning`/`tool-use` usable in POC with fake providers; operation I/O for `delegate`, `notify`, `requestAction`, `subscribe`, `briefing`; durable event subscriptions |
 | 2 | 2026-11-04 | Design review: canonical capability ID catalog; guarantees modelled once (as `kind: "guarantee"` selections with levels); operation `effect` classification and step keys; `task-execution` and `messaging` removed as capabilities; profile table reconciled with [capabilities](../capabilities.md) |
 
 ## Classification
@@ -26,11 +27,11 @@ IDs below are the only valid capability IDs in v1. Other documents must use thes
 | `session-context` | behavior | Session-scoped context store | `get` (read), `put` (internal) | POC |
 | `delegation` | behavior | Create, query, cancel and wait on child tasks | `delegate` (external, step key), `getTask` (read), `cancel` (external) | POC |
 | `notification` | behavior | Create user-facing inbox entries with priority | `notify` (external, step key) | POC |
-| `event-handling` | behavior | Subscribe to named event sources; wake on events | `subscribe` / `unsubscribe` (internal) | POC |
+| `event-handling` | behavior | Durable per-task subscriptions with an event mailbox ([runtime contract](../runtime-contract.md#event-subscriptions-no-lost-events-between-activations)) | `subscribe` / `unsubscribe` (internal, step key) | POC |
 | `scheduling` | behavior | Timer and cron wake-ups | used via `WakeupRequest`; `nextOccurrence` (read) | POC |
 | `human-input` | behavior | Create typed HumanActionRequests | `requestAction` (external, step key) | POC |
-| `tool-use` | behavior | Invoke approved tools (incl. MCP) | `listTools` (read), `call` (external, step key) | M2 |
-| `reasoning` | behavior | Model calls bounded by budget/policy | `complete` (read*), `plan` (read*) | M2 |
+| `tool-use` | behavior | Invoke approved tools (incl. MCP) | `listTools` (read), `call` (external, step key) | POC (fake provider); real/MCP M2 |
+| `reasoning` | behavior | Model calls bounded by budget/policy | `complete` (read*), `plan` (read*) | POC (fake provider); real M2 |
 | `memory` | behavior | Durable agent knowledge with retention | `recall` (read), `remember` (internal) | M2 |
 | `workflow` | behavior | Start/await a deterministic workflow on a provider | `start` (external, step key), `status` (read) | M2 |
 | `durability` | guarantee | Survival semantics: `none` \| `durable-acceptance` \| `durable-execution` | — | POC |
@@ -135,6 +136,20 @@ export interface CapabilityAccess {
 ```
 
 `supports()` from rev 1 is replaced by the static `contracts` declaration so resolution is data-driven and testable without calling the provider.
+
+### Operation I/O for POC capabilities
+
+| Operation | Input | Output |
+|---|---|---|
+| `delegation.delegate` | `DelegateInput` ([Agent v1](agent-v1.md)) | `TaskHandle` |
+| `delegation.getTask` | `{ taskId }` (own children only) | `TaskSnapshot` |
+| `delegation.cancel` | `{ taskId, reason? }` | `TaskSnapshot` |
+| `notification.notify` | `{ severity: "critical" \| "high" \| "normal" \| "low"; title: string; body: string; dedupeKey?: string }` | `{ entryId }` — writes an outbox `notificationCreated` event in the same transaction ([messaging](../messaging-contract.md)) |
+| `human-input.requestAction` | `{ kind, prompt, inputSchema, assignees, dueAt?, onExpiry }` | `{ requestId, dueAt? }` |
+| `event-handling.subscribe` | `{ source: string; filter?: unknown }` | `{ subscription: string }` |
+| `conversation.briefing` | `{ sessionId, limit? }` | `{ entries: InboxEntry[] }` (marks them `presented`) |
+| `conversation.reply` | `{ sessionId, text }` | `{ messageId }` |
+| `session-context.get` / `put` | `{ sessionId, key }` / `{ sessionId, key, value }` | `{ value? }` / `{}` |
 
 **Provider execution:** `CapabilityAccess` is runtime-created per Execution and exposes only resolved, authorized bindings. Secrets are resolved at trusted boundaries and never appear in config snapshots.
 

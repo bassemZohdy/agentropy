@@ -10,9 +10,10 @@
 | AgentProfile | `id`, `version`, required/defaults/optional | Reusable capability template | Forever |
 | AgentInstance | `id`, `definition`, `tenantId`, `ownerId`, `state`, `revision` | Logical, owner-scoped agent identity, independent of any process | Until retired; history kept |
 | DelegatedTask | `taskId`, `parentTaskId`, `retryOf`, `agentInstanceId`, `principal`, input, `status`, `revision`, `deadline`, `budget`, version snapshot, `authority`, route binding (remote) | Bounded obligation; also the unit for long-lived responsibilities | Until terminal; retained per policy |
-| Execution | `executionId`, `taskId`, `activation`, `attempt`, `trigger`, `state`, `leaseEpoch`, timestamps | One activation of the handler | Seconds–minutes; always terminates |
+| Execution | `executionId`, `taskId`, `activation`, `attempt`, `trigger`, `state`, `leaseEpoch`, timestamps | One run of the handler (one attempt of one activation) | Seconds–minutes; always terminates |
 | Checkpoint | `taskId`, `revision`, codec, payload ref | Handler state between activations | Latest kept; older pruned per policy |
-| WakeupRegistration | `id`, `taskId`, condition, `dueAt`, `status` (`armed`/`fired`/`revoked`) | Durable wake-up intent; the scheduler/event layer reads only this | Until fired or revoked |
+| WakeupRegistration | `id`, `taskId`, conditions, `timeoutAt`, `status` (`armed`/`fired`/`revoked`) | Durable wake-up intent; the scheduler/event layer reads only this | Until fired or revoked |
+| EventSubscription + mailbox | `subscription`, `taskId`, source, filter; pending events in arrival order | Buffers matching events between activations so none are lost | Until task terminal or unsubscribed |
 | EffectiveCapabilitySnapshot | `snapshotId`, bindings, `policyRef` | Exact resolved capability/provider versions pinned to a task | Immutable |
 | EffectJournalEntry | `idempotencyKey`, `taskId`, `stepKey`, result ref | Records completed external effects for replay safety | Retained ≥ task lifetime |
 | OutboxRecord | `eventId`, aggregate id + `revision`, type, payload, `publishedAt`, lease | Transactional event publication | Until published + retention |
@@ -49,8 +50,8 @@ A monitoring or "always-on" agent's standing duty is a **non-terminal task** tha
 
 | Term | Meaning |
 |---|---|
-| Activation | One run of a handler for a task (= one Execution). Triggered by delegation, wake-up or retry |
-| Attempt | Retry counter within an activation after a retryable failure or lost lease |
+| Activation | The first run of a task or a run caused by a wake-up. Retries of a failed run stay in the same activation with a higher `attempt`; every run (attempt) is its own Execution |
+| Attempt | Retry counter within an activation (1..`maxAttempts`) |
 | Correlation ID | Groups everything caused by one user intent across tasks and agents |
 | Causation ID | The message/event that directly caused this one |
 | Delegated authority | The grant chain under which an agent acts for a principal; narrowed at each hop |
