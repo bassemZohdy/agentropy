@@ -31,6 +31,7 @@ ADRs capture architectural direction separately from implementation status. **Ac
 | [0022](0022-security-audit-governance.md) | Audit access, retention, legal hold and integrity | Accepted (baseline) |
 | [0023](0023-license-and-contributions.md) | Apache-2.0 license and DCO policy | Accepted |
 | [0024](0024-pre-dispatch-authorization-gate.md) | Durable pre-dispatch eligibility gate without new task states | Accepted (design) |
+| [0025](0025-security-infrastructure-errors.md) | Explicit PDP-unavailable and audit-commit failure error outcomes | Proposed |
 
 Use numbered Markdown files and record context, decision, consequences and open questions. Amend the ADR or supersede it with a new one when substantial direction changes.
 
