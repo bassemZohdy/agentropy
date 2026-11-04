@@ -33,6 +33,10 @@ flowchart TB
 | Providers | Specific workflow, events, scheduling, model, memory, tools | Definition identity and collaboration policy |
 | Inbox | Durable reports, approval requests, notifications and acknowledgement | All agent execution state |
 
+## Pluggable agent communication
+
+Agents invoke a common [AgentCommunication contract](contracts/communication-v1.md) through a router and interchangeable providers: **internal/direct**, **A2A**, and **custom/broker/RPC**. A2A is the preferred interoperable protocol for independently deployed agents; direct invocation is allowed for co-located agents. Routing is policy- and capability-aware and is pinned for each delegated task. The target's authoritative runtime owns its lifecycle; a remote A2A task is represented locally as a tracked projection, not an independently controlled task. See [ADR-0015](adr/0015-pluggable-agent-communication.md).
+
 ## Core relationships
 
 - **Definition 1 -> N Instances** (including on-demand instances).
