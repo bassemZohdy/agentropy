@@ -9,6 +9,7 @@
 |---|---|---|
 | 1 | 2026-11-04 | Initial baseline |
 | 2 | 2026-11-04 | Design review: AgentCommunication is an **outbound SPI of the TaskService**, not a handler API; every operation carries a `CallContext` (caller principal); duplicate `target` parameter removed from `delegate`; inbound path defined; remote task projection fields named |
+| 3 | 2026-11-04 | Map ADR-0019 five logical families to existing v1 SPI and document extensions, declared guarantees and transport-neutral tracing |
 
 ## Position in the call stack
 
@@ -109,6 +110,24 @@ export interface AgentEvent { eventId: string; taskId: string; type: string; rev
 ```
 
 Callers never see `RemoteTaskRef`: the public `TaskHandle`/`TaskSnapshot` always carry the **local** task ID, with `authority: "remote"` marking a projection. The TaskService keeps the `RouteBinding` and `RemoteTaskRef` on the task record.
+
+## Logical communication families and v1 SPI coverage (ADR-0019)
+
+The five families are **protocol-neutral semantics**, not five A2A endpoints or a promise that every adapter implements them. The current `CommunicationOperation` union intentionally contains only the **v1 implemented-by-design SPI surface**, and no additional method is silently implied:
+
+| Family | Existing v1 SPI mapping | Support boundary |
+|---|---|---|
+| Message / request-response | `send` and `MessageReceipt` | Receipt acknowledges the declared transport acceptance only, not recipient processing or task creation |
+| Message/progress streaming | `subscribe` as `AsyncIterable<AgentEvent>` for task events | Does **not** yet provide general bidirectional streaming messages; that requires a negotiated extension |
+| Task delegation/lifecycle | `delegate`, `cancel` | Caller receives a local handle; remote authority and unknown-acceptance semantics retained |
+| Inquiry/query | `getTask`; public `getResult` is owned by TaskService | A generic inquiry is **not** an extra mandatory v1 method; map a supported query or message/task interaction per provider |
+| Subscription/notification/events | `subscribe`; `send` for explicitly supported non-task notifications | Push/webhook transport and durable notification guarantees remain optional/provider-declared |
+
+**Extension contract (architectural rule, not an implemented TypeScript API):** Providers advertise distinct, versioned extension IDs and operation/guarantee capabilities during route selection. Unknown mandatory extensions or missing requirements fail with `UnsupportedOperation` / `GuaranteeUnavailable`; no silent fallback from streaming to polling, durable to best-effort, or authenticated to unauthenticated transport. Discovery through Registry and context continuation are optional extensions, not new mandatory SPI methods. Schema and SDK design for general message streaming and future A2A bindings are deferred.
+
+**Delivery vs execution:** Best-effort is permissible only for explicitly noncritical progress/telemetry; task-changing commands and critical notifications require durable intent, idempotency and replay/reconciliation. A2A compatibility alone does not prove durable persistence. The provider's advertised guarantee must be verified and the remote task remains authoritative.
+
+**Observability responsibility:** CommunicationProvider manages injection/extraction on the actual carrier; ObservabilityProvider owns span creation/export. W3C `traceparent`/`tracestate` are diagnostic context only, never identity, authority or an A2A-standard-required carrier across non-HTTP bindings.
 
 ## Provider routing rules
 
