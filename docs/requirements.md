@@ -64,3 +64,18 @@ R-04 ⊂ R-21 · R-05 ⊂ R-20/R-22 · R-09 ⊂ R-27 · R-12 ⊂ R-25 · R-14 �
 ## Quality attributes
 
 State safety, idempotency, bounded retries, at-least-once processing and explicit failure handling are mandatory. Exactly-once external effects are not assumed: they require step keys, provider idempotency or reconciliation. Recovery tests simulate crashes, lost leases, duplicate events, delayed callbacks and restarts with outstanding work. Numeric scale/latency/HA targets will be set after the M1 baseline measurement (M3-06), not invented now.
+
+
+## Security and governance alignment (2026-11-04; documentation follow-up)
+
+The decisions in [ADR-0019](adr/0019-operational-and-communication-decisions.md), [ADR-0020](adr/0020-opentelemetry-observability.md), [ADR-0021](adr/0021-delegated-authorization.md), and [ADR-0022](adr/0022-security-audit-governance.md) refine existing requirements without renumbering them. See the [security closeout](review/2026-11-04-security-governance-closeout.md) for gaps and suggested tests.
+
+| Existing requirement | Alignment to add to contract / POC acceptance checks |
+|---|---|
+| R-04, R-07, R-08, R-21 | Model authorization/policy waiting via canonical lifecycle, durable wakeups and guarded transitions; do not introduce ad-hoc states from ADR prose |
+| R-05, R-09, R-20, R-27, R-31–R-33 | Non-forgeable principal/agent/tenant, bounded delegation, mandatory PEPs, fail-closed PDP, protected-action reauthorization, A2A trust boundary and cancellation limits |
+| R-09, R-22, R-29, R-34 | Durable audit intent and event delivery, transactional outbox/commit semantics, no unaudited protected commit, dedup/recovery, honest unknown external side effects |
+| R-12, R-16, R-25, R-28 | Strict per-user/per-tenant access to inbox, registry, tasks, checkpoints, memory and audit; independently authorized audit read/export |
+| R-15, R-38 | Trace context never authorizes access; independent unsampled security audit, redaction, retention floor, legal hold, tamper verification and controlled disposal |
+
+These are **accepted design constraints**, not claims that the v1 contract or runnable tests already implement them. Numeric retention durations, legal jurisdiction rules and specific IAM/audit/PDP providers are deferred. Failure, revocation and data-isolation tests must be added to the appropriate milestones before their security acceptance criteria can be considered complete.
