@@ -25,7 +25,7 @@ Four things are deliberately **not** capabilities:
 | An agent that splits work across others and waits for them | `coordinator` | `reasoning`, `workflow` |
 | A narrow tool-backed expert | `specialist` | `reasoning`, `memory` |
 
-Profiles are templates, not types: any profile can add `conversation` when authorized, and a TaskAgent needs `scheduling` only if it actually waits on time.
+Profiles are templates, not types: any profile can add `conversation` when authorized. The TaskAgent profile requires `durable-execution` independently of scheduling; it needs `scheduling` only if it actually waits on time. A non-durable helper belongs to a specialist/custom profile rather than a downgraded task.
 
 ## Examples
 
