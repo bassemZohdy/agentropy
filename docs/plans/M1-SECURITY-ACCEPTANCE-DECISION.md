@@ -1,14 +1,14 @@
 # M1 Security Acceptance — scope recommendation and decision gate
 
 - Date: 2026-11-04
-- Status: **Proposed scope assignment; not yet an approved amendment to M1 exit**
+- Status: **Accepted M1 security scope** (2026-11-04); executable tests and implementation pending
 - References: [POC scope](../poc-scope.md), [security closeout](../review/2026-11-04-security-governance-closeout.md), [ADR-0021](../adr/0021-delegated-authorization.md), [ADR-0024](../adr/0024-pre-dispatch-authorization-gate.md)
 
 ## Why the gate is needed
 
 Current M1 exit is AC-01…AC-20. Accepted security design adds PDP/PEP failure, durable audit intent, runtime revocation and pre-dispatch eligibility semantics. Turning every enterprise feature into M1 would overbuild the walking skeleton; ignoring all of them would leave unsafe defaults.
 
-## Recommended split (confirmation pending)
+## Accepted security scope split
 
 | Candidate | M1 offline fake-provider minimum | Later depth |
 |---|---|---|
@@ -20,13 +20,13 @@ Current M1 exit is AC-01…AC-20. Accepted security design adds PDP/PEP failure,
 | SEC-05 Audit authorization/hold/integrity | **Not a full M1 gate** beyond mandatory event redaction/tenant ownership | M2 read/export control; M3 legal hold/archive integrity |
 | SEC-06 Credential rotation | **Not M1** beyond proof tokens are never persisted in checkpoints/messages/audit | M2 credential provider rotation and recovery |
 
-## Definition of done when approved
+## Definition of done when implemented
 
-- Add exact AC labels and test file targets to the POC only when the testkit package/scripts exist.
+- SEC-01/02/03/04/07 are mandatory M1 acceptance checks alongside AC-01…AC-20; assign exact executable test targets once the testkit exists.
 - Tests run offline with fake identity/PDP/audit/clock and SQLite; no live Keycloak, Vault, OPA, A2A endpoint or hosted LLM.
 - A claimed PASS requires actual test execution. Design acceptance alone does not pass these checks.
 - Failures must use catalogued or explicitly proposed typed codes. Unknown external effects must be reconciled, not reported as rollback/exactly-once.
 
-## Current decision
+## Recorded decision
 
-Proposed to include M1 minimal SEC-01/02/03/04/07 with its thin fake providers, and defer SEC-05/06 full coverage. **Do not update the M1 exit gate before explicit scope confirmation.**
+M1 requires offline SEC-01/02/03/04/07. SEC-05/06 full suites remain deferred to M2/M3. Their foundational tenant isolation and secret redaction still apply in M1. This is scope approval, not a claim of passing tests.
