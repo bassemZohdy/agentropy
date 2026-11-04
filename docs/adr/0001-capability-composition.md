@@ -17,4 +17,4 @@ Agent profiles are reusable without inheriting implementation assumptions. Capab
 
 ## Open
 
-Exact TypeScript API shape and capability version compatibility rules require implementation validation.
+The initial API shape, provider binding and compatibility rules are now specified in [Agent Contract v1](../contracts/agent-v1.md) and [Capability Contract v1](../contracts/capability-v1.md). Implementation and conformance validation remain outstanding.
