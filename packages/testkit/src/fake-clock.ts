@@ -11,7 +11,9 @@ export class FakeClock {
   private scheduled: ScheduledCall[] = [];
 
   constructor(initialEpochMs = 0) {
-    if (!Number.isSafeInteger(initialEpochMs)) throw new RangeError('Invalid initial time');
+    if (!Number.isSafeInteger(initialEpochMs)) {
+      throw new RangeError('Invalid initial time');
+    }
     this.timestamp = initialEpochMs;
   }
 
@@ -52,7 +54,9 @@ export class FakeClock {
   }
 
   advanceBy(milliseconds: number): void {
-    if (!Number.isSafeInteger(milliseconds) || milliseconds < 0 || !Number.isSafeInteger(this.timestamp + milliseconds)) {
+    const invalidDelta = !Number.isSafeInteger(milliseconds) || milliseconds < 0;
+    const invalidResult = !Number.isSafeInteger(this.timestamp + milliseconds);
+    if (invalidDelta || invalidResult) {
       throw new RangeError('Invalid time delta');
     }
     this.advanceTo(this.timestamp + milliseconds);
