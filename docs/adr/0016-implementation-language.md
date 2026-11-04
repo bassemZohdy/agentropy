@@ -13,7 +13,7 @@ Every contract (Agent, Capability, Communication, Errors) is already written in 
 - **pnpm workspaces** monorepo with the layout in [POC scope](../poc-scope.md).
 - **JSON Schema 2020-12** is the canonical schema format in contracts; a TypeScript-first validator that emits JSON Schema (e.g. TypeBox or Zod 4) is chosen at setup, with Ajv for validating stored/remote schemas.
 - **Vitest** for tests; the testkit package exposes conformance suites as plain functions so provider authors can run them in their own repos.
-- Lint/format: ESLint + Prettier (or Biome — one tool, chosen at setup).
+- **Code style (M1 decision):** ESLint for linting and Prettier for formatting. Use strict TypeScript, ESM, consistent imports and automated CI checks. Reevaluate one-tool alternatives only if the initial developer experience demonstrates a concrete issue.
 
 ## Consequences
 
@@ -27,4 +27,4 @@ Contracts translate directly to code; `AbortSignal`/`AsyncIterable` in the contr
 
 ## Remaining setup choices
 
-Package scope/name on npm; exact minimum supported Node version, concrete schema authoring library, and lint/format preference will be fixed at setup and verified with offline CI. No implementation has started. Temporal + LangGraph TypeScript integration remains explicitly deferred.
+Package scope/name on npm; exact minimum supported Node version, concrete schema authoring library, and exact ESLint/Prettier versions will be fixed at setup and verified with offline CI. No implementation has started. Temporal + LangGraph TypeScript integration remains explicitly deferred.
