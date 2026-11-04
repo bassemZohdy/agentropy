@@ -93,6 +93,18 @@ The earlier `registered` state is removed: registration applies to **definitions
 
 `pending → claimed → resolved | expired | revoked`, `pending → resolved | expired | revoked`, `claimed → pending` (claim released or expired). Full rules in [human actions](human-actions.md).
 
+## Security wait and policy recovery — contract alignment note (2026-11-04)
+
+**This note aligns ADR-0021 with the existing v1 lifecycle; it does not introduce a new state or transition.** `authorization-blocked`, `policy-waiting`, and `revocation-blocked` are **reason classifications**, not valid persisted `DelegatedTask.status` values. The only appropriate existing non-terminal durable wait state is `waiting`, reached through T4 when a running handler safely yields with a checkpoint and an armed wake-up. A retryable PDP outage is not itself proof that a business task failed.
+
+- **Before T1 acceptance:** lack of authenticated/authorized acceptance is a typed refusal; no task is created. A request rejected before acceptance is not inserted into `waiting`.
+- **Already `running`:** where the runtime can safely suspend *before any protected effect is dispatched*, handler/runtime yields through T4 with a redacted `waitingOn` reason and an authorized policy/reauthorization wake-up. T4 still requires the atomic checkpoint + wake registration. A revocation during an already-dispatched external effect cannot be treated as an immediate yield; reconcile confirmed/unknown effect outcome and apply cooperative cancellation when supported.
+- **Already `created`/`assigned`/`waiting`:** do not invent direct T4 edges. Guard starting the next execution; if authorization cannot be established, keep pending work durably and use an existing deferred wake-up/scheduling mechanism. The exact scheduling of this deferral and its representation is a **contract gap requiring a versioned design decision before implementation**. A failed grant must never be converted into a successful task completion.
+- **On recovery:** only T5 or the defined runnable route can resume, with fresh principal/delegation/policy validation at sensitive boundaries, idempotent step keys and explicit audit. Scope/expiry revocation cannot be bypassed by the pinned version/configuration snapshot.
+- **Timeout/terminal disposition:** use existing T9 or an authorized cancel path only when its stated guards actually apply. A policy wait does not silently create a new terminal edge. Alert/operator handling and maximum waiting time are configurable subject to governance.
+
+A same-fingerprint idempotency replay may reveal only the original outcome to a currently authorized requester; it does **not** grant authority to repeat a side effect or authorize access after revocation. For details see [ADR-0021](adr/0021-delegated-authorization.md) and the [security review](review/2026-11-04-security-governance-closeout.md).
+
 ## Operation guards
 
 Guards are evaluated **before** any adapter is invoked, in this order:
