@@ -71,6 +71,10 @@ Profiles are templates, not a rigid inheritance hierarchy. Required capabilities
 
 - [Vision and scope](docs/vision.md)
 - [Requirements](docs/requirements.md)
+- [Architectural reuse assessment from langgraph-flows](docs/reuse-from-langgraph-flows.md)
+- [Task lifecycle and version compatibility](docs/runtime-contract.md)
+- [Agent messaging contracts](docs/messaging-contract.md)
+- [Human actions and proactive priority](docs/human-actions.md)
 - [Architecture](docs/architecture.md)
 - [Domain model](docs/domain-model.md)
 - [Capabilities and profiles](docs/capabilities.md)
@@ -80,6 +84,10 @@ Profiles are templates, not a rigid inheritance hierarchy. Required capabilities
 - [Architecture decision records](docs/adr/README.md)
 - [Roadmap and implementation tasks](TODO.md)
 - [Change log](CHANGELOG.md)
+
+## Cross-project design reuse
+
+The [langgraph-flows assessment](docs/reuse-from-langgraph-flows.md) captures reusable patterns from an existing Flow-centered platform, adapted here for Agentropy's **agent-centered** abstractions. It contributes requirements and design considerations only: no code or runtime dependency has been imported.
 
 ## Working principles
 
