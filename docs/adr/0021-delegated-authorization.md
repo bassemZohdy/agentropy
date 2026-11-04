@@ -40,11 +40,21 @@ Agents may invoke other agents, tools, workflow providers and external systems o
 - Minimize credential lifetime and exposure; redact secret-bearing errors/logs, protect credential caches and invalidate stale entries on rotation/revocation where feasible. External calls must be idempotent/reconcilable when credential failure coincides with uncertain remote execution.
 - Support local development and air-gapped deployments through adapters without changing the core contracts. **The selection and configuration of concrete backends, token exchange, rotation protocols, and cache policy are deferred.**
 
+## Accepted policy decision and enforcement architecture (2026-11-04)
+
+- **PDP (Policy Decision Point) is a pluggable policy evaluation contract**. Agentropy may use an internal evaluator or an external engine such as OPA without coupling agent contracts to the selected implementation. Decisions use authenticated principal and agent identities, effective scoped delegation, tenant, target resource/capability, action and applicable policy context.
+- **PEPs (Policy Enforcement Points) are mandatory framework-controlled security boundaries**, including task acceptance/delegation, inbound and outbound communication, capability/tool invocation, access to protected task/data/inbox resources, and sensitive execution actions. Internal, A2A and custom transports must not bypass them.
+- **Default deny:** every protected operation requires an explicit Allow decision. Invalid or missing identity/grant, PDP errors/timeouts, or indeterminate decisions fail closed; operational handling may hold the associated durable task for authorized retry but must never execute the protected side effect.
+- **Trust and validation:** PEPs derive and verify the caller identity and tenant from trusted authentication, never from unverified message fields or telemetry context. Delegation narrowing and current authorization are checked at protected-operation time.
+- **Auditability:** record policy version, action/resource, outcome and reason code with safe principal/task/correlation references; redact secrets and sensitive data. Policy outcomes do not replace the business task lifecycle.
+- **Extensibility:** multiple PDP implementations and deployment strategies are allowed; provider capability and consistency limitations must be declared. Identity-provider protocols, OPA adoption, decision caching strategy and exact PDP/PEP interface signatures remain implementation choices.
+- **Policy precedence:** framework and tenant security floors cannot be weakened by agent profile, definition, instance, transport or capability overrides. Explicit policy grants govern exceptions, including any impersonation.
+
 ## Boundaries and deferred implementation decisions
 
 - Select identity/token exchange standards and specific Keycloak or other IdP flows separately after threat modeling. This ADR does **not** claim that RFC 8693 token exchange or any specific Keycloak feature is available in the target environment.
 - Determine secure remote delegation proofs, trust federation, service-to-service authentication, revocation propagation and credential refresh mechanisms during implementation design.
-- The precise policy decision point (PDP) and policy enforcement point (PEP) interfaces and error types require contract work.
+- The PDP/PEP architecture is accepted; precise interface signatures, error types, engine choices, availability/caching and decision consistency require contract work.
 - Existing ADR-0009 remains proposed for its unresolved mechanism-level details; this ADR records the accepted general security direction.
 
 ## Acceptance expectations
