@@ -23,7 +23,7 @@ export class FakeClock {
 
   scheduleAt(dueAt: number, callback: () => void): number {
     if (!Number.isSafeInteger(dueAt) || dueAt < this.timestamp) {
-      throw new RangeError('Scheduled time must be a safe integer in the future');
+      throw new RangeError('Invalid scheduled time');
     }
     const id = ++this.nextId;
     this.scheduled.push({ id, dueAt, callback });
@@ -54,11 +54,11 @@ export class FakeClock {
   }
 
   advanceBy(milliseconds: number): void {
-    const invalidDelta = !Number.isSafeInteger(milliseconds) || milliseconds < 0;
-    const invalidResult = !Number.isSafeInteger(this.timestamp + milliseconds);
-    if (invalidDelta || invalidResult) {
+    const validDelta = Number.isSafeInteger(milliseconds) && milliseconds >= 0;
+    const nextTime = this.timestamp + milliseconds;
+    if (!validDelta || !Number.isSafeInteger(nextTime)) {
       throw new RangeError('Invalid time delta');
     }
-    this.advanceTo(this.timestamp + milliseconds);
+    this.advanceTo(nextTime);
   }
 }
