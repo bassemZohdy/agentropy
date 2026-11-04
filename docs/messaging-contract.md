@@ -78,6 +78,16 @@ The API validates schema, ownership, policy and capability support **before acce
 
 The runtime owns valid state transitions and rejects unsupported optional operations **before side effects**. Operator and requester can distinguish unauthorized, capability unavailable, invalid state, expired input, stale version, and transient provider errors.
 
+## Security metadata and mandatory audit intent
+
+The `actor` and `tenantId` envelope fields are **claims and routing context only**, never independent authentication. Trusted ingress supplies verified identities and effective delegated grants to the runtime; a remote A2A peer, internal adapter or custom provider cannot promote caller-supplied metadata into authorization. W3C `traceparent` and other telemetry context are likewise non-authoritative.
+
+All protected state-changing commands pass mandatory framework PEP checks before effect dispatch. A same-key idempotent replay is allowed to recover the original acceptance only after checking whether the requester remains entitled to see it; it never re-grants expired permissions.
+
+For mandatory security audit events, a protected local state change must durably commit the **audit intent** with the authoritative transition (or via a transactionally committed outbox). A remote audit sink may ingest asynchronously: local durability is not evidence of remote delivery. Failed local audit-intent persistence blocks committing a new protected change. An already-dispatched remote effect may need reconciliation rather than presumed rollback. The audit trail is separate from sampled OpenTelemetry and must apply equivalent tenant isolation and redaction.
+
+This is an architectural clarification; the detailed audit event schema and storage provider remain deferred in [ADR-0021](adr/0021-delegated-authorization.md) and [ADR-0022](adr/0022-security-audit-governance.md).
+
 ## Publication and inbox reconciliation
 
 Within a durable boundary, persist task transitions and an outbox event transactionally where supported. Delivery workers lease work, retry transient failure, dedupe consumers and maintain replay cursors. The inbox projects only user-relevant events and reconciles against the authoritative task/runtime state. Reconciliation repairs missing or stale projections; inbox cannot independently advance task state.
