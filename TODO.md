@@ -62,6 +62,14 @@ The following backlog is informed by [langgraph-flows reuse assessment](docs/reu
 - [ ] X-09 (M2): Test transport-neutral idempotency, reliable outbox lease, duplicate/out-of-order and crash replay.
 - [ ] X-10 (M3): Build reusable offline provider conformance tests, validate per-app context isolation and deployment failure matrix.
 
+## Communication implementation (ADR-0015)
+
+- [ ] C-01 (M0): Validate the AgentCommunication v1 contract, provider metadata and router policy against Agent v1.
+- [ ] C-02 (M1): Implement internal/direct provider and routing registry with explicit unsupported-operation errors.
+- [ ] C-03 (M2): Implement and test A2A provider with remote task state mapping and authorization.
+- [ ] C-04 (M2): Validate custom-provider SPI and sample broker/RPC adapter without forcing a broker dependency.
+- [ ] C-05 (M2/M3): Add cross-provider conformance tests for idempotency, streaming, recovery, task ownership and security.
+
 ## Definition of done per task
 
 Implementation and docs agree; tests cover the affected behavior; errors and unsupported guarantees are explicit; security and data-boundary implications reviewed; CHANGELOG records meaningful changes. Keep examples small and avoid unrelated workflow-engine features.
@@ -74,4 +82,4 @@ Core Agent and Capability design contracts are now documented in [Agent v1](docs
 
 - Architecture baseline: published.
 - Implemented milestones: **0 / 4**.
-- Implementation tasks complete: **0 / 46**.
+- Implementation tasks complete: **0 / 51**.
