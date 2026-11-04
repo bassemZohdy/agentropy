@@ -60,7 +60,7 @@ Architecture direction reviewed in [security/governance closeout](docs/review/20
 
 ## Milestone 1 — Walking skeleton (single process, SQLite, offline CI)
 
-Exit: all AC-01…AC-20 green ([POC scope](docs/poc-scope.md#exit-criteria)).
+Exit: all AC-01…AC-20 plus SEC-01/02/03/04/07 green in offline CI ([POC scope](docs/poc-scope.md#exit-criteria)).
 
 - [ ] M1-01 `core`: contract types, JSON Schemas, error catalog, transition tables as data (R-01, R-21, R-22).
 - [ ] M1-02 Capability catalog, resolver and `EffectiveCapabilitySnapshot` (R-02, R-03).
@@ -71,7 +71,7 @@ Exit: all AC-01…AC-20 green ([POC scope](docs/poc-scope.md#exit-criteria)).
 - [ ] M1-07 Outbox relay, `TaskEvent` publication with `(revision, sequence)`, inbox projection, `submitTurn` + turn-start briefing (R-12, R-29, R-36).
 - [ ] M1-08 Wake-ups: polling scheduler (timer/schedule), in-process event bus with durable subscriptions and mailboxes, child-task and human-action wake-ups.
 - [ ] M1-09 Human actions: request, claim/release, decide, expire (R-24). *Includes X-06 (HumanActionRequest with assignee, expiry, revision, atomic authorized decision), basic.*
-- [ ] M1-10 Testkit: fake clock, fake model, failure injection; lifecycle edge generator; AC-01…AC-20.
+- [ ] M1-10 Testkit: fake clock/model/policy/identity/audit, failure injection; AC-01…AC-20 plus SEC-01/02/03/04/07.
 - [ ] M1-11 Direct communication provider + router conformance suite (R-31). *Was C-02.*
 - [ ] M1-12 Examples: `price-watch` (J1), `expense-approval` (J2) (R-17).
 - [ ] M1-13 Retrospective: contract revisions forced by implementation, recorded in `docs/review/`.
