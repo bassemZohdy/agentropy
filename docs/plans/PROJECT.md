@@ -37,7 +37,7 @@ Produce an embeddable, provider-neutral Agentropy framework delivering the appro
 
 Accepted architecture direction: ADR-0019…0024, with ADR-0024's pre-dispatch eligibility gate retaining existing task states; TypeScript/Node.js/pnpm and SQLite/polling/in-process M1 in ADR-0016/0017; Apache-2.0/DCO and ESLint/Prettier as recorded in ADR-0023 and repository policy. None of these decisions proves a working implementation.
 
-ADR-0025 security failure codes and the ADR-0024 minimal gate shape are accepted design decisions. Still open: executable race/restart conformance, final cross-document acceptance, M0-08 offline scaffold, and the lossless TODO-to-todo-skills migration. Temporal + LangGraph TypeScript remains explicitly deferred. Earlier Proposed ADRs stay Proposed where provider-specific guarantees are untested.
+ADR-0025 security failure codes and the ADR-0024 minimal gate shape are accepted design decisions. Still open: executable race/restart conformance, final cross-document acceptance, reproducible dependency lockfile, DCO PR test, and lossless TODO-to-todo-skills migration. The M0-08 smoke-tested scaffold is present. Temporal + LangGraph TypeScript remains explicitly deferred. Earlier Proposed ADRs stay Proposed where provider-specific guarantees are untested.
 
 ### Mandatory readiness gates (complete BEFORE /todo-init migration)
 
@@ -46,7 +46,7 @@ ADR-0025 security failure codes and the ADR-0024 minimal gate shape are accepted
 | G0-01 Architecture consistency | Durability, communication/config and ADR-0024 gate shape and ADR-0025 errors are aligned; runnable race/recovery tests remain M1 | CLOSED (design only) |
 | G0-02 Requirements completeness | Communication/config/security requirements and accepted error taxonomy aligned; runnable conformance and final document signoff remain open | PARTIAL |
 | G0-03 ADR review | Individual ADR-0008…0018 dispositions recorded; proposals with unresolved implementation mechanisms remain proposed | PARTIAL |
-| G0-04 Technology/tooling | ADR-0016/0017/0023 accepted; canonical LICENSE + CONTRIBUTING and ESLint/Prettier style set; scaffold/CI and dependency version testing pending | PARTIAL |
+| G0-04 Technology/tooling | Node.js 24, pnpm 10.34.9, strict TypeScript and four package shells verified by scaffold CI; frozen lockfile and DCO PR verification still pending | PARTIAL (scaffold verified) |
 | G0-05 Test scope | [M1 security scope accepted](M1-SECURITY-ACCEPTANCE-DECISION.md): SEC-01/02/03/04/07 required; SEC-05/06 full coverage deferred | CLOSED (design only) |
 | G0-06 Todo skills migration readiness | Lossless ID/priority mapping, runnable test command from a real scaffold, `Done when` per leaf, `TODO.md` <=120 lines and lint pass | OPEN |
 | G0-07 Final design signoff | Requirements, architecture, ADRs, contract schemas, documentation indexes and implementation backlog reviewed together | OPEN |
@@ -55,7 +55,7 @@ No gate is marked closed merely because a proposal was written.
 
 ## Execution order — proposed
 
-**Wave 0 / readiness:** resolve gates G0-01…G0-05, then create testable initial scaffold and migrate to todo-skills only after G0-06/07 approval. Preserve `TODO.md` as the canonical current roadmap until migration is confirmed.
+**Wave 0 / readiness:** M0 scaffold exists and passed build/lint/smoke tests; close remaining G0-02/G0-07 review, reproducible lockfile, DCO PR validation and lossless todo-skills migration. Preserve `TODO.md` as the canonical legacy roadmap until migration is confirmed. See [first-wave tasks](FIRST-WAVE.md).
 
 **Wave 1 / M1 walking skeleton:**
 
@@ -99,10 +99,10 @@ See [M0-DECISION-REVIEW](M0-DECISION-REVIEW.md) for the accepted M1 decisions an
 
 - TypeScript + Node.js tooling accepted in ADR-0016; concrete versions to validate at setup.
 - SQLite/polling/in-process M1 infrastructure accepted in ADR-0017; concrete packages and settings at setup.
-- Apache-2.0 LICENSE and DCO CONTRIBUTING files are already present; automated checks remain under M0-08.
+- Apache-2.0 LICENSE, DCO CONTRIBUTING and pull-request sign-off workflow are present; actual DCO positive/negative PR tests remain.
 - TaskAgent durable-execution and ADR-0024 eligibility gate are accepted; define concrete gate persistence, fencing, failure taxonomy and runnable tests.
 - SEC-01/02/03/04/07 are mandatory M1 checks; still need actual test files and CI evidence.
-- Approve the lossless todo-skills backlog migration after the above closure?
+- Approve/verify lossless todo-skills backlog migration after the remaining architecture/documentation signoff and a genuine lockfile.
 
 ## Revisions
 
