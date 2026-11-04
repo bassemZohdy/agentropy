@@ -55,7 +55,7 @@ The discussion's accepted operational choices are recorded in [ADR-0019](docs/ad
 - [x] D-25 Document accepted [ADR-0024 gate shape](docs/adr/0024-pre-dispatch-authorization-gate.md), [ADR-0025 security error codes](docs/adr/0025-security-infrastructure-errors.md) and approved [M1 security test scope](docs/plans/M1-SECURITY-ACCEPTANCE-DECISION.md); executable SEC conformance remains M1-10.
 - [ ] D-26 Close G0-01…G0-07 design gates in [PROJECT plan](docs/plans/PROJECT.md), reconcile approved security/profile requirements, and review the [todo-skills migration](docs/plans/TODO-SKILLS-MIGRATION.md) before any replacement of this TODO.
 - [ ] D-27 After readiness signoff, migrate backlog through todo-skills /todo-init and /todo-plan with exact runnable Done-when checks, <=120 active lines, verified ID crosswalk and unchanged unimplemented task statuses; keep future waves in plans.
-- [ ] D-28 Lockfile [committed](https://github.com/bassemZohdy/agentropy/commit/7608c3c0353c0880ef62e87cba8f8ae2d2fce41f) by pnpm 10.34.9 and frozen install passed in generator; CI now uses frozen-lockfile/cache. **Await final main CI success** before closing.
+- [x] D-28 Lockfile [committed](https://github.com/bassemZohdy/agentropy/commit/7608c3c0353c0880ef62e87cba8f8ae2d2fce41f) by pnpm 10.34.9; frozen install and cache validated by [successful main CI](https://github.com/bassemZohdy/agentropy/actions/runs/41867123312).
 - [ ] D-29 Signed/unsigned temporary-git DCO unit tests pass in [CI](https://github.com/bassemZohdy/agentropy/actions/runs/41866666152); verify DCO workflow on a real PR before claiming PR enforcement complete.
 
 ## Security/Governance review closure
@@ -118,4 +118,4 @@ Implementation and docs agree (contract revision-history row added when a contra
 ## Progress
 
 - Milestones complete: **0 / 4** by final-readiness signoff. M0 checklist: **13 / 13** tasks completed (minimal scaffold verified); final design signoff, lockfile and DCO PR validation remain tracked separately.
-- Roadmap checkboxes: **17 / 80** complete (**13 M0 decisions/scaffold tasks + D-02, D-06, D-23, D-25 documentation alignment**). M0-08 has a verified smoke-tested scaffold only; **no M1 agent runtime implementation** has started.
+- Roadmap checkboxes: **18 / 80** complete (**13 M0 decisions/scaffold tasks + D-02, D-06, D-23, D-25 documentation alignment**). M0-08 has a verified smoke-tested scaffold only; **no M1 agent runtime implementation** has started.
