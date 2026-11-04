@@ -6,8 +6,8 @@
 
 - [ ] M0-01 Choose initial language/runtime and record ADR (assess TypeScript/Node.js and alternatives).
 - [ ] M0-02 Select repo licensing, contribution policy and code style.
-- [ ] M0-03 Validate domain entities and state transition tables with example journeys.
-- [ ] M0-04 Define capability contract and profile resolution schema including required/default/optional semantics.
+- [ ] M0-03 Validate the finalized core domain contracts with example journeys and implement/test the full transition matrix (contracts documented).
+- [x] M0-04 Define capability contract and profile resolution schema including required/default/optional semantics (design baseline; implementation tests pending).
 - [ ] M0-05 Define tenancy/identity, delegation and audit threat model.
 - [ ] M0-06 Select first persistence, wake-up/scheduler, event transport and runtime adapter; create ADRs.
 - [ ] M0-07 Define minimum user-visible success scenario and measurable POC acceptance checks.
@@ -65,6 +65,10 @@ The following backlog is informed by [langgraph-flows reuse assessment](docs/reu
 ## Definition of done per task
 
 Implementation and docs agree; tests cover the affected behavior; errors and unsupported guarantees are explicit; security and data-boundary implications reviewed; CHANGELOG records meaningful changes. Keep examples small and avoid unrelated workflow-engine features.
+
+## Contract baseline
+
+Core Agent and Capability design contracts are now documented in [Agent v1](docs/contracts/agent-v1.md) and [Capability v1](docs/contracts/capability-v1.md). They are **architecture baselines**, not published runtime APIs. Their conformance tests, runtime providers and state-transition implementation remain open.
 
 ## Progress
 
