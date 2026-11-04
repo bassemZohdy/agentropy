@@ -48,6 +48,22 @@ All checks run offline in CI with a fake clock, fake model and failure injection
 | AC-19 | Crash between transition commit and outbox publish: after restart the relay publishes the event once; consumers see it once | R-29 |
 | AC-20 | A monitoring task processes 150 events: checkpoint stays under the configured limit and only the last N execution records are kept | R-37 |
 
+## Security conformance extensions — proposed, not part of approved AC-01…AC-20
+
+The security design review found missing failure tests. These checks are **candidates for M1 basic security acceptance and M2 production-hardening**, and need explicit scope approval before making them mandatory exit gates:
+
+| Candidate | Expected behavior | Likely milestone |
+|---|---|---|
+| SEC-01 | PDP unavailable/timeout: protected effect not dispatched, task remains recoverable via the canonical transition rules; after recovery authority rechecked | M1 basic / M2 robust |
+| SEC-02 | Grant revoked after acceptance: next protected operation denied; in-flight cancellation is best-effort and uncertain effects reconciled | M1 basic / M2 cross-provider |
+| SEC-03 | Mandatory audit intent write fails: no new protected state-changing operation reports committed success; relay crash/replay deduplicates audit delivery | M1 basic / M2 audit sink |
+| SEC-04 | Spoofed actor/tenant/trace headers cannot influence authorization; direct/remote adapters enforce equivalent PEP boundaries | M1 direct / M2 A2A |
+| SEC-05 | Audit read/export across tenants or without independent audit permission is denied without disclosure; legal hold blocks disposal; integrity verification detects tamper | M2 / M3 archive integrity |
+| SEC-06 | Missing/rotated credential blocks protected operation without persisting secrets or deleting the durable task; authorized refresh resumes safely | M2 |
+| SEC-07 | Human approver decision after grant expiry or task revision change fails without privilege extension | M1 basic / M2 |
+
+These tests must use fake policy/identity/audit/credential adapters, run offline, and not rely on a live OPA, Vault, Keycloak or A2A endpoint in M1. In particular, SEC-01 must **not** imply that `authorization-blocked` is a v1 lifecycle state; see the [runtime contract](runtime-contract.md#security-wait-and-policy-recovery--contract-alignment-note-2026-11-04). The original M1 scope and AC-01…AC-20 remain unchanged until a separate M0 decision approves additions.
+
 ## Included components (thin)
 
 Core types + JSON Schema validation · error catalog · transition tables · definition registry (in-memory, loaded from code) · instance directory · capability resolver (catalog in [Capability v1](contracts/capability-v1.md), POC-phase capabilities only; `reasoning` and `tool-use` with fake providers) · TaskService/AgentService · runtime + bounded in-process pool with leases and epochs · SQLite store (tasks, executions, checkpoints, wake-ups, effect journal, outbox, inbox, human actions) · polling scheduler for timer/schedule wake-ups · in-process event bus with durable subscriptions and per-task mailboxes · history compaction (last N executions) · outbox relay → inbox projection · `submitTurn` + turn-start briefing (ordering: severity, then time) · direct communication provider + router conformance suite · testkit (fake clock, fake model, failure injection).
