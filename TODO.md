@@ -27,11 +27,11 @@ Task IDs are stable (former X-/C- items now sit inside the milestone where they 
 The discussion's accepted operational choices are recorded in [ADR-0019](docs/adr/0019-operational-and-communication-decisions.md). This **does not start M0 or M1**; outstanding implementation/tooling and persistence decisions remain open.
 
 - [ ] D-01 Reconcile TaskAgent durability-required / scheduling-optional and MonitoringAgent scheduling-default in profiles, requirements and capability conformance.
-- [ ] D-02 Reconcile protocol-independent communication contract against five A2A-inspired logical families (message, stream, task, inquiry, subscription/event); document extension negotiation, provider-support errors and optional discovery/context continuation.
+- [x] D-02 Map the five logical communication families to v1 SPI, explicitly separate optional generic streaming/inquiry/discovery extensions and declare guarantees in [Communication v1](docs/contracts/communication-v1.md); implementation conformance remains M1/M2.
 - [ ] D-03 Integrate central governance policy contracts and operational lifecycle (suspend, drain, retire, cancelTask), including interruption/checkpoint limitations.
 - [ ] D-04 Document provider outage recovery, bounded retries, state retention and compatibility-gated migration/failover.
 - [ ] D-05 Document configurable concurrency/queue/timeouts/retries/quotas, measurable metrics and post-POC SLO selection.
-- [ ] D-06 Document configuration precedence (framework → profile → definition → instance), security floors, acceptance-time snapshot and live revocation checks.
+- [x] D-06 Document configuration precedence, non-weakening security floors, acceptance-time snapshot and live revocation checks in [Capability v1](docs/contracts/capability-v1.md); implementation tests remain open.
 - [ ] D-07 Reconcile immutable version pinning, explicit audited migration, rollback and retirement constraints with ADR-0013.
 - [ ] D-08 Document agent owner/share vs task ownership, user-level task isolation, strict tenant boundaries and explicit cross-tenant A2A grants.
 - [ ] D-09 Retain Temporal–LangGraph TypeScript integration as an explicitly deferred decision; treat Codex collaboration and model-verification as optional non-core extensions.
@@ -114,4 +114,4 @@ Implementation and docs agree (contract revision-history row added when a contra
 ## Progress
 
 - Milestones complete: **0 / 4**. M0: **12 / 13** documented items complete; **1** remains (M0-08 scaffold, tooling scripts and CI, including DCO check).
-- Roadmap checkboxes: **13 / 78** complete (**12 M0 decisions/reviews + D-23 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
+- Roadmap checkboxes: **15 / 78** complete (**12 M0 decisions/reviews + D-02, D-06, D-23 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
