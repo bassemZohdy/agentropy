@@ -89,6 +89,10 @@ Before activation, check the readiness matrix, schema/ADR crosslinks, all previo
 
 See [M0-DECISION-REVIEW](M0-DECISION-REVIEW.md) for explicit accept/revise/defer recommendations and unresolved implementation gates. No technology or license has been approved by creating that document.
 
+## M0 decision review
+
+See [remaining M0 choices](M0-DECISION-REVIEW.md). These recommendations are not approved decisions.
+
 ## Open questions
 
 - Approve TypeScript + Node.js tooling from ADR-0016?
