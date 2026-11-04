@@ -65,3 +65,16 @@ Rules:
 ## Migration from earlier names
 
 `NoCompatibleRoute`, `Unauthorized` → `PermissionDenied`, `RemoteUnavailable`, `UnknownAcceptance` (Communication v1); `CapabilityUnavailable` … `ProviderUnavailable` (Capability v1) are kept as-is; `Unauthorized` is the only rename.
+
+
+## Security failure classification — follow-up, not new v1 codes (2026-11-04)
+
+The existing catalog distinguishes `PermissionDenied`, `AuthorityExpired`, `ProviderUnavailable`, `UnknownAcceptance`, and `Internal`. Do **not** introduce unreviewed persisted lifecycle states or silently map security failures to business `failed`:
+
+- Explicit denial or revoked/expired grant is **non-retryable without new authority**; fail closed. A renewed grant starts a newly authorized attempt at the next protected boundary, not a replay under the old grant.
+- PDP timeout/unavailability can be *operationally* retryable after backoff, but the protected effect is **not allowed** while the decision is indeterminate. The exact public error name and retryability metadata need a separate catalog revision.
+- Mandatory audit persistence failure blocks a new protected commit; whether it is a storage-specific or explicit audit error needs a catalog decision. Do not return `PermissionDenied` for an infrastructure outage.
+- An unknown already-dispatched external side effect remains `UnknownAcceptance`/reconciliation semantics; do not retry with a fresh idempotency key.
+- Unauthenticated/wrong-tenant/wrong-owner audit reads must not reveal object existence. Trace IDs are not authorization tokens.
+
+Future testkit should assert these distinctions and redacted error details; until then they are architecture requirements, not implemented error codes. [Security review](../review/2026-11-04-security-governance-closeout.md).
