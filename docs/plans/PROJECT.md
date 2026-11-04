@@ -44,7 +44,7 @@ Already accepted: ADR-0019…0022 design directions and earlier unambiguous arch
 | G0-01 Architecture consistency | Task profile durability contradiction reconciled in ADR-0019/profile catalog/README; **policy wait pre-dispatch behavior** and routing/security invariants remain | PARTIAL |
 | G0-02 Requirements completeness | Stable traceable requirements and acceptance criteria covering communication families, failures, audit, tenant isolation, credentials and configuration precedence; no fake v1 claims | OPEN |
 | G0-03 ADR review | Review accepted/proposed status of ADR-0008…0018, adopt or explicitly defer M0 decisions; no silent defaults | OPEN |
-| G0-04 Technology/tooling | Approval of ADR-0016 and ADR-0017 and license/contribution model | OPEN |
+| G0-04 Technology/tooling | ADR-0016 and ADR-0017 accepted for M1; license/contribution model remains open | PARTIAL |
 | G0-05 Test scope | Confirm which SEC-01…SEC-07 supplement AC-01…AC-20 for M1 and which move to M2/M3 | OPEN |
 | G0-06 Todo skills migration readiness | Lossless ID/priority mapping, runnable test command from a real scaffold, `Done when` per leaf, `TODO.md` <=120 lines and lint pass | OPEN |
 | G0-07 Final design signoff | Requirements, architecture, ADRs, contract schemas, documentation indexes and implementation backlog reviewed together | OPEN |
@@ -95,8 +95,8 @@ See [remaining M0 choices](M0-DECISION-REVIEW.md). These recommendations are not
 
 ## Open questions
 
-- Approve TypeScript + Node.js tooling from ADR-0016?
-- Approve SQLite/polling/in-process M1 infrastructure from ADR-0017?
+- TypeScript + Node.js tooling accepted in ADR-0016; concrete versions to validate at setup.
+- SQLite/polling/in-process M1 infrastructure accepted in ADR-0017; concrete packages and settings at setup.
 - Select the license and contribution standard?
 - Clarify the TaskAgent durability contract and pre-dispatch policy waiting.
 - Which SEC checks are required at M1 exit?
