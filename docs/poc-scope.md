@@ -33,7 +33,7 @@ All checks run offline in CI with a fake clock, fake model and failure injection
 | AC-04 | Generated test: every unlisted task/execution edge rejected with `InvalidState`; unauthorized caller on a terminal task gets `NotFound`, not `InvalidState` | R-04, R-21 |
 | AC-05 | Kill and restart while J1 is `waiting`; next event still wakes it; the same inbound event ID delivered twice is appended to the mailbox once | R-08 |
 | AC-06 | Kill during `running`: lease expires, execution `lost`, new attempt (`attempt` 2, same `activation`) succeeds; a write with the old epoch is rejected | R-08 |
-| AC-07 | Crash injected after `notification.notify` returns but before the disposition commits: re-run produces no second inbox entry | R-34 |
+| AC-07 | Crash after internal `notification.notify` commits but before task disposition: replay produces one inbox entry. Separately, a fake external provider honoring the same idempotency key returns the original effect; a non-idempotent provider must explicitly advertise at-least-once semantics, not exactly-once | R-34 |
 | AC-08 | J2: duplicate approve = no-op; approve then reject = `ActionConflict`; stale `expectedRevision` = `StaleRevision`; non-assignee = `NotAssignee`; separate run with clock +49h → request `expired`, task `failed` | R-24 |
 | AC-09 | Forged `actor` in envelope ignored in favor of trusted principal; cross-tenant delegate → `TenantMismatch`; expired grant → `AuthorityExpired`; unauthenticated → `Unauthenticated` | R-27, R-09 |
 | AC-10 | J2 task waiting on definition v1; register v2; approve → resumes on the v1 handler. `HandlerRegistry.unregister(v1)` while waiting → task `failed` with `IncompatibleVersion` | R-23 |
