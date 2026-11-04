@@ -53,6 +53,12 @@ flowchart TB
 7. Progress and outcomes are written to the task record and emitted to the inbox using a reliable publication pattern.
 8. Main assistant reads pending inbox updates at session start or on authorized push, then delivers user-relevant updates; user can inspect or cancel work.
 
+## Transport and lifecycle overlays
+
+The baseline collaboration contract is **asynchronous-first**: a successful delegation returns a task reference, and status/results arrive independently. The AgentRuntime owns the authoritative task lifecycle; no conversational tool or message transport may mutate task state directly. Use [messaging contracts](messaging-contract.md) for versioned commands/queries/events, [runtime contract](runtime-contract.md) for state transitions and durable upgrade rules, and [human actions](human-actions.md) for validated approvals and shared priority.
+
+The shared inbox is a **projection** of relevant task events: a durable event/outbox boundary and reconciliation with task state repair missed or duplicated publication. Persistent agent identity and task obligations survive conversation disconnects. Runtime-specific workflow histories remain internal to providers; LangGraph/Temporal integration is optional. These patterns are adapted from [langgraph-flows](reuse-from-langgraph-flows.md), not copied as a Flow-first runtime.
+
 ## Critical boundaries
 
 User-facing agency must not depend on adding additional conversational personas. Provider failures must not silently break agent lifecycle guarantees. On resumption, idempotency keys must protect external side effects; recoverability is a property of the complete state/event/provider chain, not an in-memory boolean flag.
