@@ -8,14 +8,14 @@ Task IDs are stable (former X-/C- items now sit inside the milestone where they 
 
 ## Milestone 0 — Decisions and contract baseline (gate to M1)
 
-- [ ] M0-01 Approve implementation language/tooling — [ADR-0016](docs/adr/0016-implementation-language.md) proposed. **Blocking.**
-- [ ] M0-02 Select license, contribution policy (e.g. DCO) and code style. **Blocking.**
+- [x] M0-01 Approve implementation language/tooling — [ADR-0016](docs/adr/0016-implementation-language.md) accepted for M1; concrete packages at scaffold setup.
+- [ ] M0-02 Publish canonical Apache-2.0 LICENSE, DCO contribution guidance and choose code style; [ADR-0023](docs/adr/0023-license-and-contributions.md) accepted policy, repository setup outstanding.
 - [x] M0-03 Core contracts reconciled; example journeys (J1, J2) and full transition tables documented. *Executable tests move to M1-10.*
 - [x] M0-04 Capability contract, canonical capability catalog and profile resolution (design baseline).
 - [ ] M0-05 Trust-boundary note for M1 (principal derivation, tenant scoping, delegated grant narrowing) covering AC-09; full threat model → M2-09. Security closeout identifies tests and unresolved contract details; not yet signed off.
 - [x] M0-06 Approve first persistence, wake-up scheduler and event transport — [ADR-0017](docs/adr/0017-first-persistence-and-activation.md) accepted (SQLite/polling/in-process M1).
 - [x] M0-07 Minimum success scenario and measurable acceptance checks — [POC scope](docs/poc-scope.md).
-- [ ] X-01 Accept or revise ADR-0008…0014 and ADR-0016…0018 as a set.
+- [x] X-01 Review ADR-0008…0018 individually: [status reconciliation](docs/review/2026-11-04-adr-status-reconciliation.md) recorded; proposed mechanisms remain proposed pending separate validation.
 - [x] X-02 Canonical lifecycle transition tables, typed operation errors and guards specified ([runtime contract](docs/runtime-contract.md), [Errors v1](docs/contracts/errors-v1.md)). *Tests in M1-10.*
 - [x] X-03 Versioned envelopes, actor trust boundary and idempotency fingerprint specified ([messaging contract](docs/messaging-contract.md)).
 - [x] X-04 Exact pinning and upgrade policy specified ([runtime contract](docs/runtime-contract.md#version-pinning-and-upgrade)).
@@ -113,5 +113,5 @@ Implementation and docs agree (contract revision-history row added when a contra
 
 ## Progress
 
-- Milestones complete: **0 / 4**. M0: **9 / 13** documented items complete; **4** remain (M0-02 license/contribution policy, M0-05 trust-boundary signoff, X-01 older ADR status review, and M0-08 scaffold).
-- Roadmap checkboxes: **10 / 78** complete (**9 M0 decisions/design items + D-23 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
+- Milestones complete: **0 / 4**. M0: **10 / 13** documented items complete; **3** remain (M0-02 canonical license/DCO files plus style, M0-05 pre-dispatch trust/lifecycle signoff, M0-08 scaffold).
+- Roadmap checkboxes: **11 / 78** complete (**10 M0 decisions/reviews + D-23 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
