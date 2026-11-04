@@ -12,7 +12,7 @@ The design review identified open choices around default agent capabilities, com
 
 ### 1. Agent profile capability defaults
 
-- `TaskAgent` **requires durability**: resumable task state and recoverable execution are part of its baseline contract. Implementations must declare and enforce actual guarantees; a volatile provider must not claim durable support.
+- `TaskAgent` **requires `durable-execution`** (not just `durable-acceptance`): resumable task state, checkpoints and recoverable execution are its baseline guarantee, regardless of whether scheduling is enabled. Implementations must declare and enforce actual guarantees; a volatile or acceptance-only provider cannot bind this profile. Lightweight volatile helpers can use `specialist`/custom profiles, not silently downgrade `task`.
 - `Scheduling` is **optional** for `TaskAgent`, and default-enabled for the `MonitoringAgent` profile. A task may run on demand without scheduling.
 - Profiles supply defaults; effective capabilities are resolved and checked before task acceptance.
 
