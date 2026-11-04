@@ -60,6 +60,16 @@ Agents may invoke other agents, tools, workflow providers and external systems o
 - **Audit and diagnostics:** record policy-evaluation failures, waits, retries, recovery decisions and cache usage without logging credentials or confidential policy inputs. Timeouts, queue thresholds, wait durations and cache settings are configurable subject to non-weakening security floors.
 - **Deferred details:** precise PDP health checks, cache invalidation protocol, revocation freshness bounds and fail-closed error taxonomy are contract/implementation follow-ups rather than assumed guarantees.
 
+## Accepted runtime revocation and in-flight side effects (2026-11-04)
+
+- **Not yet started:** revocation takes effect at the next protected-operation policy checkpoint. A revoked or expired grant must never authorize dispatching new protected work.
+- **Already executing:** propagate a cooperative cancellation/revocation signal when the execution or external provider supports it; stop at a safe boundary, persist the durable task state, and record whether cancellation was confirmed, refused, unsupported, or the outcome remains unknown. A policy revocation does not guarantee immediate termination of an already-dispatched external operation.
+- **Already committed:** treat completed external side effects as committed; do not claim they were automatically undone. If business policy requires reversal, request a separately authorized, idempotent compensation workflow with auditable outcome.
+- **Checkpoint enforcement:** all subsequent protected actions (including retries, reactivation, onward delegation, tool calls and credential resolution) require a current Allow decision against revocation/expiry status, never a stale acceptance-time snapshot.
+- **Lifecycle and audit:** distinguish revocation-blocked/waiting work from failure or explicit task cancellation; record the revocation cause, task/execution identity, operation state, cancellation attempts, and confirmed versus uncertain outcomes without exposing secrets.
+- **Distributed limits:** internal, A2A and custom providers must declare cancellation support and limitations. Preserve unknown-outcome reconciliation and idempotency safeguards before retrying to avoid duplicate effects.
+- **Deferred implementation details:** exact cancellation signal APIs, compensation orchestration and revocation-event transport/consistency guarantees require contract-level validation.
+
 ## Boundaries and deferred implementation decisions
 
 - Select identity/token exchange standards and specific Keycloak or other IdP flows separately after threat modeling. This ADR does **not** claim that RFC 8693 token exchange or any specific Keycloak feature is available in the target environment.
