@@ -50,7 +50,7 @@ The discussion's accepted operational choices are recorded in [ADR-0019](docs/ad
 - [ ] D-22 Reconcile accepted ADR-0022: audit permissions, tenant-isolated query/export, legal hold, retention floors, tamper-evidence anchors, verified disposal and audit-of-audit; define conformance tests and leave durations/backends deferred.
 - [x] D-23 Document the [security/governance closeout](docs/review/2026-11-04-security-governance-closeout.md) and add non-normative contract clarification for policy waiting, audit atomicity and candidate security checks; **implementation resolution and scope approval remain open**.
 - [ ] D-24 Resolve or explicitly defer proposed defaults (break-glass, operational quarantine, dual control, audit schema, privacy/data residency) without treating them as accepted security policy.
-- [ ] D-25 Finish concrete gate schema/error taxonomy and SEC-01…SEC-07 test scope for accepted [ADR-0024](docs/adr/0024-pre-dispatch-authorization-gate.md); design approved, executable conformance pending.
+- [ ] D-25 Finish gate schema/error taxonomy and approve proposed [M1 security test scope](docs/plans/M1-SECURITY-ACCEPTANCE-DECISION.md) for accepted [ADR-0024](docs/adr/0024-pre-dispatch-authorization-gate.md); executable conformance pending.
 - [ ] D-26 Close G0-01…G0-07 design gates in [PROJECT plan](docs/plans/PROJECT.md), reconcile approved security/profile requirements, and review the [todo-skills migration](docs/plans/TODO-SKILLS-MIGRATION.md) before any replacement of this TODO.
 - [ ] D-27 After readiness signoff, migrate backlog through todo-skills /todo-init and /todo-plan with exact runnable Done-when checks, <=120 active lines, verified ID crosswalk and unchanged unimplemented task statuses; keep future waves in plans.
 
