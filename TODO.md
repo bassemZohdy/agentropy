@@ -36,7 +36,7 @@ The discussion's accepted operational choices are recorded in [ADR-0019](docs/ad
 - [ ] D-10 Add contract/conformance acceptance checks for the above before implementation, and review statuses of related older ADRs.
 - [ ] D-11 Specify best-effort vs durable delivery requirements, provider guarantee negotiation, outbox/idempotency and no exactly-once claims (ADR-0019).
 - [ ] D-12 Specify POC observability baseline: delegation success/latency, task outcomes, delivery failures, retry/deduplication, recovery duration, correlation and sensitive-data redaction (ADR-0019).
-- [ ] D-13 Reconcile accepted OpenTelemetry baseline in ADR-0020 with contracts and POC criteria; finalize proposed span boundaries, trace propagation, span links, sampling/redaction and conformance tests after discussion.
+- [ ] D-13 Reconcile accepted OpenTelemetry baseline in ADR-0020 with contracts and POC criteria; reconcile accepted per-execution/delegation spans and async span links; finalize specific instrumentation names, sampling/redaction and conformance tests later.
 
 ## Milestone 1 — Walking skeleton (single process, SQLite, offline CI)
 
