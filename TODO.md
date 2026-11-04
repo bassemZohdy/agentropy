@@ -13,7 +13,7 @@ Task IDs are stable (former X-/C- items now sit inside the milestone where they 
 - [x] M0-03 Core contracts reconciled; example journeys (J1, J2) and full transition tables documented. *Executable tests move to M1-10.*
 - [x] M0-04 Capability contract, canonical capability catalog and profile resolution (design baseline).
 - [ ] M0-05 Trust-boundary note for M1 (principal derivation, tenant scoping, delegated grant narrowing) covering AC-09; full threat model → M2-09. Security closeout identifies tests and unresolved contract details; not yet signed off.
-- [ ] M0-06 Approve first persistence, wake-up scheduler and event transport — [ADR-0017](docs/adr/0017-first-persistence-and-activation.md) proposed.
+- [x] M0-06 Approve first persistence, wake-up scheduler and event transport — [ADR-0017](docs/adr/0017-first-persistence-and-activation.md) accepted (SQLite/polling/in-process M1).
 - [x] M0-07 Minimum success scenario and measurable acceptance checks — [POC scope](docs/poc-scope.md).
 - [ ] X-01 Accept or revise ADR-0008…0014 and ADR-0016…0018 as a set.
 - [x] X-02 Canonical lifecycle transition tables, typed operation errors and guards specified ([runtime contract](docs/runtime-contract.md), [Errors v1](docs/contracts/errors-v1.md)). *Tests in M1-10.*
@@ -113,5 +113,5 @@ Implementation and docs agree (contract revision-history row added when a contra
 
 ## Progress
 
-- Milestones complete: **0 / 4**. M0: **7 / 13** documented items complete; **6** remain (4 require maintainer decisions/reviews: M0-01, M0-02, M0-06, X-01; plus M0-05 trust-boundary signoff and M0-08 scaffold).
-- Roadmap checkboxes: **8 / 78** complete (**7 M0 design items + D-23 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
+- Milestones complete: **0 / 4**. M0: **9 / 13** documented items complete; **4** remain (M0-02 license/contribution policy, M0-05 trust-boundary signoff, X-01 older ADR status review, and M0-08 scaffold).
+- Roadmap checkboxes: **10 / 78** complete (**9 M0 decisions/design items + D-23 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
