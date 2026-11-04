@@ -36,6 +36,7 @@ Rules:
 | `PermissionDenied` | authorization | no | Principal lacks the permission/scope |
 | `TenantMismatch` | authorization | no | Cross-tenant access attempted |
 | `AuthorityExpired` | authorization | no | Delegated grant expired or revoked |
+| `PolicyDecisionUnavailable` | authorization | no | No trustworthy current PDP decision (timeout, outage, error or indeterminate); protected action is blocked, but independently scheduled re-evaluation can occur |
 | `InvalidState` | lifecycle | no | Transition/operation not legal from current state |
 | `StaleRevision` | lifecycle | yes* | Compare-and-swap failed; re-read then retry |
 | `NotReady` | lifecycle | yes | Result requested for a non-terminal task |
@@ -59,6 +60,7 @@ Rules:
 | `ActionConflict` | human-action | no | A different decision already resolved the request |
 | `NotAssignee` | human-action | no | Caller not eligible for the request |
 | `Internal` | internal | no | Bug; always logged with correlation |
+| `AuditCommitUnavailable` | internal | no | Mandatory security audit intent could not be durably committed; protected state change must not report committed success |
 
 \* `StaleRevision` is retryable only after re-reading current state.
 
@@ -67,14 +69,12 @@ Rules:
 `NoCompatibleRoute`, `Unauthorized` → `PermissionDenied`, `RemoteUnavailable`, `UnknownAcceptance` (Communication v1); `CapabilityUnavailable` … `ProviderUnavailable` (Capability v1) are kept as-is; `Unauthorized` is the only rename.
 
 
-## Security failure classification — follow-up, not new v1 codes (2026-11-04)
+## Security infrastructure failures — accepted 2026-11-04
 
-The existing catalog distinguishes `PermissionDenied`, `AuthorityExpired`, `ProviderUnavailable`, `UnknownAcceptance`, and `Internal`. Do **not** introduce unreviewed persisted lifecycle states or silently map security failures to business `failed`:
+[ADR-0025](../adr/0025-security-infrastructure-errors.md) adopts `PolicyDecisionUnavailable` and `AuditCommitUnavailable` as v1 catalog codes. Their public `retryable: false` **does not prohibit** a separate bounded internal scheduling retry for an accepted durable task. Explicit policy denial remains `PermissionDenied`; expired/revoked authority remains `AuthorityExpired`. A remote side-effect outcome still unknown remains `UnknownAcceptance`, not a false success/failure.
 
-- Explicit denial or revoked/expired grant is **non-retryable without new authority**; fail closed. A renewed grant starts a newly authorized attempt at the next protected boundary, not a replay under the old grant.
-- PDP timeout/unavailability can be *operationally* retryable after backoff, but the protected effect is **not allowed** while the decision is indeterminate. Candidate `PolicyDecisionUnavailable` is described in [ADR-0025](../adr/0025-security-infrastructure-errors.md) (Proposed, not yet a valid ErrorCode); internal bounded policy reevaluation must not authorize execution.
-- Mandatory audit persistence failure blocks a new protected commit; Candidate `AuditCommitUnavailable` is described in [ADR-0025](../adr/0025-security-infrastructure-errors.md) (Proposed); mandatory audit-intent failure blocks new protected state commit. Do not return `PermissionDenied` for an infrastructure outage.
-- An unknown already-dispatched external side effect remains `UnknownAcceptance`/reconciliation semantics; do not retry with a fresh idempotency key.
-- Unauthenticated/wrong-tenant/wrong-owner audit reads must not reveal object existence. Trace IDs are not authorization tokens.
+- `PolicyDecisionUnavailable`: no protected effect is dispatched. The activation gate may preserve an existing task/queue entry without changing its status.
+- `AuditCommitUnavailable`: no new protected state change is reported committed when mandatory local audit intent cannot be persisted. Already-dispatched remote side effects require reconciliation rather than an invented rollback.
+- Public responses redact secrets and inaccessible object existence; HTTP mappings and versioned client compatibility must be tested before releasing endpoints.
+- Existing v1 categories remain unchanged; no promise of exactly-once effects.
 
-Future testkit should assert these distinctions and redacted error details; until then they are architecture requirements, not implemented error codes. [Security review](../review/2026-11-04-security-governance-closeout.md).
