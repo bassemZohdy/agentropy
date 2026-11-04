@@ -70,6 +70,22 @@ The design review identified open choices around default agent capabilities, com
 - Authorize access separately at agent, task and capability boundaries. Enforce user-level task isolation by default; any team/tenant visibility requires explicit policy.
 - Cross-tenant A2A communication is an explicit, authorized cross-trust-boundary delegation/exchange, never an implicit shared namespace.
 
+### 10. Message delivery guarantees
+
+- The logical communication contract distinguishes **best-effort** messages from **durable** delivery requirements.
+- Best-effort is permitted for non-critical progress/telemetry where loss is explicitly acceptable.
+- Commands that change task state and critical notifications/events **require durable acceptance, retry and idempotency** as appropriate for their side-effect semantics. Persist the intent and use a transactional outbox where state and outgoing messages must commit atomically.
+- Providers publish delivery capabilities and failure semantics; a route must reject unmet mandatory guarantees rather than downgrade silently.
+- At-least-once handling is expected for durable delivery; consumer deduplication/idempotent effects are required. **Do not promise exactly-once network delivery or exactly-once external side effects.**
+- A2A protocol conformance must not be conflated with persistence guarantees. Internal and custom providers must pass the same declared-guarantee conformance tests.
+
+### 11. POC observability baseline
+
+- Capture structured, correlated lifecycle events and metrics for delegation attempts/acceptance/completion/failure, task and execution transitions, retry and unknown-acceptance reconciliation, provider delivery outcomes, and recovery after forced process restart.
+- Correlate by tenant-scoped identifiers, agent definition/version and instance, task/parent task, execution, message/correlation/causation ID, and provider/route. Never log credentials or raw sensitive user content.
+- Minimum POC metrics: delegation accepted/failed counts and latency; completed/failed/cancelled task counts and duration; running/queued tasks; retry/deduplication counts; provider transport failure counts; checkpoint-to-recovery latency and recovered/stranded task counts.
+- Use OpenTelemetry-compatible names/semantics where feasible; **full tracing infrastructure and dashboards remain later milestones**. Record benchmark evidence before specifying numeric SLOs; distinguish metric definitions from configurable policy thresholds.
+
 ## Explicitly deferred
 
 - **Temporal + LangGraph integration / TypeScript runtime selection details** remain undecided; do not assume a production-ready official TypeScript integration from the Python announcement.
