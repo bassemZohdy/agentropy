@@ -2,6 +2,8 @@
 
 **Project state:** Documentation baseline revised after the [2026-11-04 design review](docs/review/2026-11-04-design-review.md). Implementation not started. M1 is a **walking skeleton** defined in [POC scope](docs/poc-scope.md); reassess M2+ after its retrospective.
 
+**Execution planning:** [Staged todo-skills plan](docs/plans/PROJECT.md) and [lossless migration mapping](docs/plans/TODO-SKILLS-MIGRATION.md) are prepared. **Do not migrate this legacy TODO or start implementation** until architecture/requirements readiness gates, concrete test commands, and migration review are approved.
+
 Task IDs are stable (former X-/C- items now sit inside the milestone where they are delivered). Requirement IDs refer to [requirements](docs/requirements.md); AC-xx to [POC scope](docs/poc-scope.md).
 
 ## Milestone 0 — Decisions and contract baseline (gate to M1)
@@ -49,6 +51,8 @@ The discussion's accepted operational choices are recorded in [ADR-0019](docs/ad
 - [x] D-23 Document the [security/governance closeout](docs/review/2026-11-04-security-governance-closeout.md) and add non-normative contract clarification for policy waiting, audit atomicity and candidate security checks; **implementation resolution and scope approval remain open**.
 - [ ] D-24 Resolve or explicitly defer proposed defaults (break-glass, operational quarantine, dual control, audit schema, privacy/data residency) without treating them as accepted security policy.
 - [ ] D-25 Resolve pre-execution policy-wait scheduling for created/assigned tasks as a versioned lifecycle decision (no ad-hoc new state), plus PDP/audit error taxonomy and SEC-01…SEC-07 scope assignment before M1 acceptance.
+- [ ] D-26 Close G0-01…G0-07 design gates in [PROJECT plan](docs/plans/PROJECT.md), reconcile approved security/profile requirements, and review the [todo-skills migration](docs/plans/TODO-SKILLS-MIGRATION.md) before any replacement of this TODO.
+- [ ] D-27 After readiness signoff, migrate backlog through todo-skills /todo-init and /todo-plan with exact runnable Done-when checks, <=120 active lines, verified ID crosswalk and unchanged unimplemented task statuses; keep future waves in plans.
 
 ## Security/Governance review closure
 
