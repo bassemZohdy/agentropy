@@ -19,6 +19,8 @@ This project follows a human-readable changelog. Release versions will be introd
 
 - Finalized initial Agent v1 and Capability v1 architecture contracts covering profile resolution, agent identity, lifecycle ownership, provider guarantees, authorization, version pinning and conformance criteria.
 
+- Adopted ADR-0015: transport-neutral agent communication with internal, A2A and custom provider implementations, and documented a Communication Contract v1 architecture baseline.
+
 ### Notes
 
 Architecture and conceptual APIs are **not an implementation or production-ready release**.
