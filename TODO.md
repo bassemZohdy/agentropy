@@ -47,6 +47,21 @@
 - [ ] M3-08 Evaluate agent-to-agent protocol/federation and registry discovery standards.
 - [ ] M3-09 Document API reference, quickstarts and compatibility matrix.
 
+## Cross-project architecture adoption tasks (documentation review)
+
+The following backlog is informed by [langgraph-flows reuse assessment](docs/reuse-from-langgraph-flows.md). These refine existing milestones; they do not commit us to Python, Temporal or a web UI.
+
+- [ ] X-01 (M0): Approve or revise ADRs 0010–0014 after reviewing Agentropy-specific semantics.
+- [ ] X-02 (M0): Specify and test a canonical task lifecycle transition matrix, typed operation errors and capability guards.
+- [ ] X-03 (M0): Define versioned agent command/query/event envelopes, actor trust boundary and idempotency fingerprint.
+- [ ] X-04 (M0): Specify exact definition/profile/capability/provider pinning and rolling-upgrade compatibility policies.
+- [ ] X-05 (M1): Design the async-first accepted task handle, bounded executeAndWait and unknown-acceptance recovery.
+- [ ] X-06 (M1/M2): Define HumanActionRequest with assignee, expiry, revision and atomic authorized decision.
+- [ ] X-07 (M2): Define inbox projection/reconciliation and separate read/presented/resolved/acknowledged status.
+- [ ] X-08 (M2): Specify shared priority resolver (business, user context, non-downgradable policy floor).
+- [ ] X-09 (M2): Test transport-neutral idempotency, reliable outbox lease, duplicate/out-of-order and crash replay.
+- [ ] X-10 (M3): Build reusable offline provider conformance tests, validate per-app context isolation and deployment failure matrix.
+
 ## Definition of done per task
 
 Implementation and docs agree; tests cover the affected behavior; errors and unsupported guarantees are explicit; security and data-boundary implications reviewed; CHANGELOG records meaningful changes. Keep examples small and avoid unrelated workflow-engine features.
@@ -55,4 +70,4 @@ Implementation and docs agree; tests cover the affected behavior; errors and uns
 
 - Architecture baseline: published.
 - Implemented milestones: **0 / 4**.
-- Implementation tasks complete: **0 / 35**.
+- Implementation tasks complete: **0 / 46**.
