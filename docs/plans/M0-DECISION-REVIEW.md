@@ -1,7 +1,7 @@
 # Milestone 0 — Decisions and architectural readiness
 
 - Date: 2026-11-04
-- Status: **Partially accepted** — M0-01 / M0-06 selected for M1; license, old ADR review and security/lifecycle decisions remain open. Not implementation authority.
+- Status: **Partially accepted** — ADR-0016, ADR-0017 and ADR-0023 accepted; ADR-0008…0018 individually reviewed; license publication, code style, security/lifecycle signoff and scaffold remain open. Not implementation authority.
 - Source: [ADR-0016](../adr/0016-implementation-language.md), [ADR-0017](../adr/0017-first-persistence-and-activation.md), [security closeout](../review/2026-11-04-security-governance-closeout.md), [project plan](PROJECT.md)
 
 ## What has been reconciled
@@ -26,13 +26,13 @@ The TaskAgent profile now requires `durable-execution` in the capability catalog
 
 **Decision recorded:** Accepted for M1. Remaining setup options: scheduler polling defaults and supported SQLite adapter.
 
-### M0-02 — OSS license / contributions
+### M0-02 — OSS license / contributions (POLICY ACCEPTED; REPOSITORY SETUP OPEN)
 
-**Recommendation for discussion:** MIT or Apache-2.0; Apache-2.0 offers explicit patent grant and is common in infrastructure frameworks, MIT is simpler. Do not choose on the maintainer's behalf. Contribution policy DCO vs CLA, code ownership and release process also require a decision.
+**Accepted:** Apache License 2.0 and DCO v1.1 ([ADR-0023](../adr/0023-license-and-contributions.md)). Still required: publish the canonical LICENSE and contributor sign-off instructions, determine code style, and run dependency notice checks. Do not mark M0-02 complete until these artifacts exist.
 
 ### X-01 — Earlier proposed ADRs
 
-Review statuses of ADR-0008…0014 and ADR-0016…0018 individually against ADR-0019…0022. Older proposals remain proposed where specific mechanisms are unresolved. Do not batch-accept without inspecting incompatibilities.
+Individual review recorded in [ADR status reconciliation](../review/2026-11-04-adr-status-reconciliation.md). Older proposals remain proposed where specific mechanisms are unresolved; no blanket acceptance was performed.
 
 ### M0-05 — Security-wait lifecycle and trust boundary
 
