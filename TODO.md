@@ -9,7 +9,7 @@ Task IDs are stable (former X-/C- items now sit inside the milestone where they 
 ## Milestone 0 — Decisions and contract baseline (gate to M1)
 
 - [x] M0-01 Approve implementation language/tooling — [ADR-0016](docs/adr/0016-implementation-language.md) accepted for M1; concrete packages at scaffold setup.
-- [ ] M0-02 Publish canonical Apache-2.0 LICENSE, DCO contribution guidance and choose code style; [ADR-0023](docs/adr/0023-license-and-contributions.md) accepted policy, repository setup outstanding.
+- [x] M0-02 Apache-2.0 LICENSE, DCO [CONTRIBUTING](CONTRIBUTING.md) guidance, and ESLint + Prettier code style selected ([ADR-0023](docs/adr/0023-license-and-contributions.md), [ADR-0016](docs/adr/0016-implementation-language.md)); automated checks remain M0-08.
 - [x] M0-03 Core contracts reconciled; example journeys (J1, J2) and full transition tables documented. *Executable tests move to M1-10.*
 - [x] M0-04 Capability contract, canonical capability catalog and profile resolution (design baseline).
 - [x] M0-05 Trust-boundary M1 design signed off in [blueprint](docs/review/2026-11-04-m0-trust-boundaries.md) with [ADR-0024](docs/adr/0024-pre-dispatch-authorization-gate.md) activation gate; conformance stays M1/M2.
@@ -113,5 +113,5 @@ Implementation and docs agree (contract revision-history row added when a contra
 
 ## Progress
 
-- Milestones complete: **0 / 4**. M0: **11 / 13** documented items complete; **2** remain (M0-02 code style and contributor checks, M0-08 scaffold).
-- Roadmap checkboxes: **12 / 78** complete (**11 M0 decisions/reviews + D-23 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
+- Milestones complete: **0 / 4**. M0: **12 / 13** documented items complete; **1** remains (M0-08 scaffold, tooling scripts and CI, including DCO check).
+- Roadmap checkboxes: **13 / 78** complete (**12 M0 decisions/reviews + D-23 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
