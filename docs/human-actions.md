@@ -18,7 +18,7 @@ interface HumanActionRequest {
   inputSchema: JsonSchema;           // approval = { decision: "approve" | "reject", comment? }
   assignees: { principalIds?: string[]; roles?: string[] };
   dueAt?: string;
-  onExpiry: "resume-with-timeout" | "fail-task";
+  onExpiry: "resume" | "fail-task";  // the ONLY expiry setting for an awaited action (see below)
   status: "pending" | "claimed" | "resolved" | "expired" | "revoked";
   claimedBy?: string;
   revision: number;
@@ -29,6 +29,33 @@ interface HumanDecision {
   expectedRevision: number;          // the revision the user saw; mismatch -> StaleRevision
   input: unknown;                    // validated against inputSchema
   idempotencyKey: string;
+}
+```
+
+### Expiry (single mechanism)
+
+A handler awaits a request with the wake-up condition `{ kind: "human-action", requestId }` and **no** `timeoutAt` of its own; the request's `dueAt` is the timeout. On expiry the request moves to `expired` and, if a task is waiting on it: `onExpiry: "fail-task"` → task T9 `failed`; `onExpiry: "resume"` → task resumes with `wakeReason { kind: "human-action", outcome: "expired" }`. A `timeoutAt` on the same `WakeupRequest` is rejected (`SchemaViolation`) to keep one source of truth.
+
+### Claims
+
+`claimHumanAction` sets `claimedBy` (claim timeout: runtime setting, default 15 min); `releaseHumanAction` or claim timeout returns it to `pending`. Only the claimant may decide a claimed request; anyone eligible may decide a `pending` one.
+
+### Inbox entry shape
+
+```ts
+interface InboxEntry {
+  entryId: string;
+  userId: string;
+  tenantId: string;
+  source: { eventId: string; taskId: string; type: "notificationCreated" | "humanActionRequested" | "taskCompleted" | "taskFailed" };
+  agentInstanceId: string;
+  severity: "critical" | "high" | "normal" | "low";
+  title: string;
+  body?: string;
+  actionRequestId?: string;
+  revision: number;              // bumps when the underlying item changes (e.g. request revision)
+  markers: { deliveredAt?: string; presentedAt?: string; presentedRevision?: number;
+             readAt?: string; acknowledgedAt?: string; resolvedAt?: string };
 }
 ```
 

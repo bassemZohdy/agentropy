@@ -45,20 +45,24 @@ stateDiagram-v2
 | T3 | `assigned` | `running` | Execution leased | Pool granted a lease; execution moves to `running` |
 | T4 | `running` | `waiting` | Handler returned `waiting` | Checkpoint **and** wake-up registration committed in the same transaction **before** the lease is released |
 | T5 | `waiting` | `assigned` | Wake-up fired | Wake-up registration consumed atomically (dedup); new execution queued with `trigger: "resume"` |
-| T6 | `running` | `assigned` | Attempt failed `retryable: true`, or lease lost | Attempt budget not exhausted; backoff applied; new execution queued |
+| T6 | `running` | `assigned` | Attempt failed `retryable: true`, handler threw, or lease lost | `attempt < retryPolicy.maxAttempts`; backoff per `retryPolicy`; new execution queued with same `activation`, `attempt + 1` |
 | T7 | `running` | `completed` | Handler returned `completed` | Output validated against `outputSchema` |
-| T8 | `running` | `failed` | Handler returned `failed` non-retryable, attempt budget exhausted, or output invalid | Typed failure recorded |
-| T9 | `created`, `assigned`, `waiting` | `failed` | Deadline passed, instance retired, wake-up expired with `onTimeout: "fail"` | — |
-| T10 | `created`, `assigned`, `waiting` | `cancelled` | `cancel` | Pending executions dropped; wake-up registrations revoked |
-| T11 | `running` | `cancelled` | `cancel` | `cancelRequestedAt` set and `AbortSignal` fired first; transition applies when the execution ends **or** the abort grace period expires (execution then fenced as `lost`) |
+| T8 | `running` | `failed` | Handler returned `failed` non-retryable, attempts exhausted, output invalid, or `IncompatibleVersion` | Typed failure recorded |
+| T9 | `created`, `assigned`, `waiting` | `failed` | Task deadline passed; wake-up `timeoutAt` passed with `onTimeout: "fail"`; awaited human action expired with `onExpiry: "fail-task"` | Queued execution aborted (E7); registrations revoked |
+| T10 | `created`, `assigned`, `waiting` | `cancelled` | `cancel`, or instance retired with `force` | Queued execution aborted (E7); registrations and event subscriptions revoked |
+| T11 | `running` | `cancelled` | `cancel` | `cancelRequestedAt` set and `AbortSignal` fired first; transition applies when the execution ends **or** `cancelGracePeriod` (runtime setting, default 30 s) expires; the execution is then fenced as `lost` (E8) |
+
+**Counters:** `activation` is 1 for the first execution and increments on each wake-up (T5); `attempt` starts at 1 per activation and increments on each T6. A retry is not a new activation.
+
+**Retry policy:** `AgentDefinition.retryPolicy` (`maxAttempts`, default 3; `backoff` exponential from 1 s, max 5 min), overridable downward per delegation. A thrown exception is treated as `retryable: true`; a returned `failed` disposition decides for itself.
 
 `completed`, `failed`, `cancelled` are terminal. **Retrying a terminal task creates a new task** with `retryOf: <taskId>`; terminal tasks are never reopened. Execution-level recovery (T6) happens inside the same non-terminal task.
 
 `cancel` on a `running` task is a request, not an instant state: the task stays `running` with `cancelRequestedAt` until T11. Cancellation never claims rollback of committed external effects.
 
-### 2. Execution (one per activation)
+### 2. Execution (one per run)
 
-An Execution is a single activation of a handler for a task: initial start, each wake-up and each retry each create a **new** Execution with `attempt` and `activation` counters. Executions are short-lived and always end in a terminal state; long waits live on the task, not on an execution. See [ADR-0018](adr/0018-execution-per-activation.md).
+An Execution is a single run of a handler for a task: initial start, each wake-up and each retry each create a **new** Execution, identified by its `activation` and `attempt` counters. Executions are short-lived and always end in a terminal state; long waits live on the task, not on an execution. See [ADR-0018](adr/0018-execution-per-activation.md).
 
 | # | From | To | Trigger | Guard / effect |
 |---|---|---|---|---|
@@ -68,8 +72,9 @@ An Execution is a single activation of a handler for a task: initial start, each
 | E4 | `running` | `succeeded` | Disposition `completed` | Applied together with T7 |
 | E5 | `running` | `yielded` | Disposition `waiting` | Applied together with T4 |
 | E6 | `running` | `failed` | Disposition `failed` or handler threw | Applied together with T6 or T8 |
-| E7 | `queued`, `leased`, `running` | `aborted` | Task cancelled and handler observed abort | Applied together with T10/T11 |
-| E8 | `leased`, `running` | `lost` | Lease expired / worker crashed | Any later write carrying the old epoch is rejected (`StaleRevision`) |
+| E7 | `queued`, `leased` | `aborted` | Task left a runnable state (T9, T10) before the handler started | No handler involvement |
+| E7b | `running` | `aborted` | Cancel requested and handler returned after observing `AbortSignal` | Applied together with T11; any returned disposition is discarded |
+| E8 | `leased`, `running` | `lost` | Lease expired, worker crashed, or `cancelGracePeriod` expired | Any later write carrying the old epoch is rejected (`StaleRevision`) |
 
 Terminal: `succeeded`, `yielded`, `failed`, `aborted`, `lost`.
 
@@ -80,7 +85,7 @@ Terminal: `succeeded`, `yielded`, `failed`, `aborted`, `lost`.
 | — | `available` | Instance created | Effective capability snapshot persisted |
 | `available` | `suspended` | Operator/owner suspend | New delegations fail `InstanceUnavailable`; due wake-ups are **deferred**, not dropped |
 | `suspended` | `available` | Resume | Deferred wake-ups fire |
-| `available`, `suspended` | `retired` | Retire | Allowed only when no non-terminal tasks remain, or with `force` which cancels them (T10/T11). History retained |
+| `available`, `suspended` | `retired` | Retire | Without `force`: fails `InvalidState` while non-terminal tasks exist. With `force`: cancels them (T10/T11). History retained |
 
 The earlier `registered` state is removed: registration applies to **definitions**, not instances.
 
@@ -90,17 +95,25 @@ The earlier `registered` state is removed: registration applies to **definitions
 
 ## Operation guards
 
-Guards are evaluated **before** any adapter is invoked, in this order: authenticate → authorize → state → capability → idempotency. A missing capability never degrades to a no-op.
+Guards are evaluated **before** any adapter is invoked, in this order:
+
+1. **Authenticate** (`Unauthenticated`) → 2. **authorize** incl. tenant and grant (`PermissionDenied`, `TenantMismatch`, `AuthorityExpired`; invisible targets → `NotFound`) → 3. **schema** (`SchemaViolation`) → 4. **idempotency replay**: a known key with the same fingerprint returns the stored result immediately; a different fingerprint fails `IdempotencyConflict` → 5. **entity state** (`InvalidState`, `InstanceUnavailable`, human-action state) → 6. **capability/guarantee/route** → 7. **limits** (depth, fan-out, quota).
+
+Replay before state means a retry of an already-accepted request always gets its original answer, even if state or configuration changed since. A missing capability never degrades to a no-op.
 
 | Operation | Allowed task states | Required capability / guarantee | Typed refusals |
 |---|---|---|---|
-| `delegate` | n/a (creates) | Target resolves; required guarantees available | `PermissionDenied`, `SchemaViolation`, `CapabilityUnavailable`, `GuaranteeUnavailable`, `IdempotencyConflict`, `DelegationDepthExceeded`, `FanOutExceeded` |
+| `delegate` | n/a (creates) | Target resolves; required guarantees available | `Unauthenticated`, `PermissionDenied`, `TenantMismatch`, `AuthorityExpired`, `NotFound`, `SchemaViolation`, `IdempotencyConflict`, `InstanceUnavailable`, `CapabilityUnavailable`, `GuaranteeUnavailable`, `NoCompatibleRoute`, `DelegationDepthExceeded`, `FanOutExceeded`, `QuotaExceeded` |
 | `getTask` | any | Read authorization | `PermissionDenied`, `NotFound` |
 | `getResult` | `completed` | Read authorization | `NotReady` (non-terminal), `TaskFailed`/`TaskCancelled` (terminal, with outcome) |
 | `cancel` | `created`, `assigned`, `running`, `waiting` | Cancellable (all v1 tasks are; downstream stop is best-effort) | `InvalidState` on terminal |
-| `provideHumanInput` | `waiting` on that exact request | `human-input` capability | `ActionExpired`, `ActionRevoked`, `ActionConflict`, `NotAssignee`, `StaleRevision` |
+| `provideHumanInput` | Checked on the **request**, not the task: request `pending`/`claimed` accepts; request `resolved` with the same decision fingerprint returns the original outcome (no-op); different decision → `ActionConflict`. Task must still be `waiting` on it to resume | `human-input` capability | `NotAssignee`, `StaleRevision`, `ActionConflict`, `ActionExpired`, `ActionRevoked` |
 | `pause` / `resume` | **Not in v1.** Instance-level `suspend` covers the POC need | — | `UnsupportedOperation` |
 | `retry` | `failed`, `cancelled` | Retry policy permits | `InvalidState`; creates a new task |
+
+## Event subscriptions (no lost events between activations)
+
+An `event-handling.subscribe` call creates a **durable per-task subscription** (persisted, survives restart) that outlives individual wake-ups. Matching events are appended to the task's **event mailbox** in the same transaction that records the inbound event, whether or not the task is currently waiting. A `{ kind: "event" }` wake-up condition fires as soon as the mailbox holds an unconsumed matching event — immediately at T4 if one arrived while the task was running. Each resume consumes exactly the **oldest** pending event (delivered inline in `wakeReason.payload`). Duplicate deliveries of the same inbound event ID are dropped at append time. Subscriptions are revoked on any terminal transition or `unsubscribe`.
 
 ## Async-first result
 
@@ -128,7 +141,7 @@ On acceptance (T1), snapshot **definition version, profile version, exact capabi
 - Guard ordering: unauthorized + invalid state reports `PermissionDenied`, not `InvalidState` (no state leakage).
 - Acceptance, unknown-acceptance by idempotency key, `getResult` before completion.
 - Crash while `waiting`; crash while `running` (T6 via E8); stale-epoch write rejected after lease loss.
-- Duplicate wake-up delivery consumes the registration once (T5).
+- Duplicate wake-up delivery consumes the registration once (T5); events published while the task is `running` are delivered on the next activation, in order.
 - Cancel during `running` with a handler that ignores abort → grace expiry → `lost` + `cancelled`.
 - V1 task waiting across a V2 definition rollout; removed V1 handler → `IncompatibleVersion`.
 - `durability: none` task discloses loss after restart.

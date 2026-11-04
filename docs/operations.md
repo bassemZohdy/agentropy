@@ -14,7 +14,7 @@ Provide per-application context objects so registries, stores, provider clients 
 
 Maintain durable records for tasks, execution state, wake-up conditions, outbox messages and leases when durability is required. A scheduler or event source can be replaceable, but a task must survive worker restarts and duplicate triggers. Use version-based fencing for active executions, bounded retries/backoff and dead-letter or operator-visible failure handling. Side effects require idempotency keys or reconciliation; exactly-once delivery is not guaranteed simply by adopting a workflow engine.
 
-Pause/resume/cancel must have consistent documented semantics across providers; unsupported operations produce explicit errors. Deployment change or definition version migration is controlled; never resume a checkpoint on an incompatible runtime silently.
+Cancel and instance suspend/resume must have consistent documented semantics across providers; task pause/resume is unsupported in v1 and returns `UnsupportedOperation`. Deployment change or definition version migration is controlled; never resume a checkpoint on an incompatible runtime silently.
 
 ## Version-aware deployments
 
@@ -32,7 +32,7 @@ Trace from user request through delegation, agent instance, task, attempts, prov
 - Fail model, workflow provider, inbox publish and schedule trigger independently.
 - Check tenant and delegated authority boundaries for registry, tools and inbox.
 - Verify explicit unsupported-feature errors and compatibility when switching providers.
-- Test pause/resume/cancel semantics, compensating failures and bounded recursive delegation.
+- Test cancel (including non-cooperative handlers), instance suspend/resume, compensating failures and bounded recursive delegation.
 
 ## Deployment stance
 

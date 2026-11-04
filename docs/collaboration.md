@@ -2,7 +2,7 @@
 
 ## Experience contract
 
-The main ConversationalAgent is the user's primary relationship and communication surface. When long-running work is delegated, it can explicitly say a specialized agent is following up, show useful progress and let the user inspect, pause or cancel authorized tasks. Agents can remain distinct logical identities without opening competing conversations or implying that every workflow is an independent personality.
+The main ConversationalAgent is the user's primary relationship and communication surface. When long-running work is delegated, it can explicitly say a specialized agent is following up, show useful progress and let the user inspect or cancel authorized tasks and suspend agents they own. Agents can remain distinct logical identities without opening competing conversations or implying that every workflow is an independent personality.
 
 **Example:** "I'll assign a monitoring agent to watch for the requested change and update you when the condition is met." This statement should reflect a real registered agent/task rather than theatrical narration.
 

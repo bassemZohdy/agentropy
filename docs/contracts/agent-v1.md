@@ -9,6 +9,7 @@
 | Rev | Date | Change |
 |---|---|---|
 | 1 | 2026-11-04 | Initial baseline |
+| 3 | 2026-11-04 | Re-review: conversation turn model; handler registry; retry policy; `DelegateInput`; child-task/human-action/event wake semantics with inline payload; `TaskHandle.status` uses task states; instance and human-action operations on `AgentService`; record types; effect-journal commit timing |
 | 2 | 2026-11-04 | Design review: instance states aligned with lifecycle; one execution per activation; `WakeupRequest` extended (timer, child tasks, any-of, timeout); idempotent step keys for side effects; `AgentService` gains `getResult`, `provideHumanInput`, idempotency lookup; explicit call layering ([review](../review/2026-11-04-design-review.md)) |
 
 ## Decisions
@@ -63,6 +64,7 @@ export interface AgentDefinition {
   outputSchema?: JsonSchema;
   runtimeRequirements: RuntimeRequirements;
   policyRef: VersionedRef;
+  retryPolicy?: { maxAttempts: number; backoff: { initialMs: number; maxMs: number; multiplier: number } };
 }
 
 export interface AgentInstance {
@@ -77,8 +79,8 @@ export interface AgentInstance {
 export interface AgentInvocation<I = unknown> {
   taskId: TaskId;
   executionId: ExecutionId;
-  activation: number;               // 1 for first run, +1 per wake-up
-  attempt: number;                  // retry counter within this activation
+  activation: number;               // 1 for first run, +1 per wake-up (not per retry)
+  attempt: number;                  // 1.., +1 per retry within this activation
   input: I;                         // original task input
   trigger: "delegation" | "resume" | "retry";
   checkpoint?: unknown;             // last committed checkpoint, absent on first activation
@@ -117,7 +119,7 @@ export type WakeupCondition =
   | { kind: "schedule"; cron: string; timezone: string }  // next occurrence only; re-register each activation
   | { kind: "event"; subscription: string; filter?: unknown }
   | { kind: "human-action"; requestId: string }
-  | { kind: "child-tasks"; taskIds: TaskId[]; mode: "all" | "any" };
+  | { kind: "child-tasks"; taskIds: TaskId[]; mode: "all" | "any" };  // over TERMINAL states (completed, failed, cancelled)
 
 export interface WakeupRequest {
   anyOf: WakeupCondition[];          // first condition to fire wins; others are revoked
@@ -126,7 +128,11 @@ export interface WakeupRequest {
 }
 
 export type WakeReason =
-  | { kind: WakeupCondition["kind"]; reference: string; payloadRef?: string }
+  | { kind: "timer" | "schedule"; firedAt: string }
+  | { kind: "event"; subscription: string; eventId: string; payload: unknown }   // oldest pending mailbox event
+  | { kind: "human-action"; requestId: string; outcome: "resolved" | "expired" | "revoked"; input?: unknown }
+  | { kind: "child-tasks"; children: { taskId: TaskId; status: "completed" | "failed" | "cancelled";
+        output?: unknown; outcome?: { code: string; message: string } }[] }
   | { kind: "timeout" };
 
 // --- Public service --------------------------------------------------------
@@ -134,20 +140,52 @@ export type WakeReason =
 export interface TaskHandle {
   taskId: TaskId;
   agentInstanceId: AgentInstanceId;
-  status: "accepted" | "queued";
+  status: "created" | "assigned";   // task state at acceptance (rev 2 used non-state values)
   definition: VersionedRef;
   durability: "none" | "durable-acceptance" | "durable-execution";
 }
 
 export interface AgentService {
+  // Tasks
   delegate<I>(request: DelegationRequest<I>, caller: TrustedPrincipal): Promise<TaskHandle>;
   getTask(taskId: TaskId, caller: TrustedPrincipal): Promise<TaskSnapshot>;
   getTaskByIdempotencyKey(key: string, caller: TrustedPrincipal): Promise<TaskSnapshot>;
   getResult<O>(taskId: TaskId, caller: TrustedPrincipal): Promise<O>;   // NotReady / TaskFailed / TaskCancelled
   cancel(taskId: TaskId, caller: TrustedPrincipal, reason?: string): Promise<TaskSnapshot>;
+  subscribe(taskId: TaskId, caller: TrustedPrincipal, from?: { revision: number; sequence: number }): AsyncIterable<TaskEvent>;
+  // Conversation (see "Conversation turn model")
+  submitTurn(turn: ConversationTurn, caller: TrustedPrincipal): Promise<TaskHandle>;
+  // Instances
+  createInstance(req: { definition: VersionedRef; ownerId: string; idempotencyKey: string }, caller: TrustedPrincipal): Promise<AgentInstance>;
+  suspendInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal): Promise<AgentInstance>;
+  resumeInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal): Promise<AgentInstance>;
+  retireInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal, opts?: { force?: boolean }): Promise<AgentInstance>;
+  // Human actions (types in human-actions.md)
+  claimHumanAction(requestId: string, caller: TrustedPrincipal): Promise<HumanActionRequest>;
+  releaseHumanAction(requestId: string, caller: TrustedPrincipal): Promise<HumanActionRequest>;
   provideHumanInput(decision: HumanDecision, caller: TrustedPrincipal): Promise<void>;
-  subscribe(taskId: TaskId, caller: TrustedPrincipal, fromRevision?: number): AsyncIterable<TaskEvent>;
+  // Inbox (projection; types in human-actions.md)
+  listInbox(query: { cursor?: string; limit?: number }, caller: TrustedPrincipal): Promise<{ entries: InboxEntry[]; cursor: string }>;
+  markInbox(entryId: string, marker: "presented" | "read" | "acknowledged", caller: TrustedPrincipal, presentedRevision?: number): Promise<void>;
 }
+
+export interface ConversationTurn {
+  instanceId: AgentInstanceId;      // the user's conversational agent instance
+  sessionId: string;
+  text: string;
+  idempotencyKey: string;
+  correlationId?: string;           // generated if absent
+}
+
+/** What a handler passes to delegation.delegate; the runtime fills the rest. */
+export interface DelegateInput<I = unknown> {
+  target: DelegationRequest<I>["target"];
+  input: I;
+  deadline?: string;
+  budget?: DelegationRequest<I>["budget"];
+}
+// Runtime fills: idempotencyKey = derived from stepKey; correlationId = context.correlationId;
+// parentTaskId = context.taskId; caller = the acting instance under its delegated authority.
 
 export interface TrustedPrincipal {
   id: string;
@@ -184,9 +222,40 @@ export interface ProgressReporter {
   report(progress: { message: string; percent?: number; stepKey?: string }): Promise<void>;
 }
 
+// --- Records (persisted by the platform; read via getTask / internal APIs) ---
+
+export interface ExecutionRecord {
+  executionId: ExecutionId;
+  taskId: TaskId;
+  activation: number;
+  attempt: number;
+  trigger: AgentInvocation["trigger"];
+  state: "queued" | "leased" | "running" | "succeeded" | "yielded" | "failed" | "aborted" | "lost";
+  leaseEpoch?: number;
+  startedAt?: string;
+  endedAt?: string;
+}
+
+export interface WakeupRegistration {
+  id: string;
+  taskId: TaskId;
+  conditions: WakeupCondition[];
+  timeoutAt?: string;
+  onTimeout: "resume" | "fail";
+  status: "armed" | "fired" | "revoked";
+  revision: number;
+}
+
+/** Binds handler code to definition versions. Definitions live in the registry; code lives here. */
+export interface HandlerRegistry {
+  register(definition: VersionedRef, handler: Agent): void;
+  unregister(definition: VersionedRef): void;      // in-flight tasks pinned to it then fail IncompatibleVersion
+  get(definition: VersionedRef): Agent | undefined;
+}
+
 // Defined elsewhere:
 //   CapabilitySelection, RuntimeRequirements, CapabilityAccess -> capability-v1.md
-//   HumanDecision -> human-actions.md, TaskEvent -> messaging-contract.md
+//   HumanDecision, HumanActionRequest, InboxEntry -> human-actions.md; TaskEvent -> messaging-contract.md
 //   JsonSchema = JSON Schema 2020-12 document
 ```
 
@@ -197,9 +266,10 @@ Import paths are documentation references, not compiled modules.
 A crashed or lost execution is re-run (T6), so handlers must be **replay-safe**:
 
 - Every capability operation is classified `read`, `internal` or `external` ([Capability v1](capability-v1.md#contract-types-normative-conceptual-shape)). `external` and `delegate` operations **require** a `stepKey` in `capabilities.invoke(..., { stepKey })`.
-- The runtime derives the effective idempotency key as `hash(tenantId, taskId, capabilityId, operation, stepKey)`. The same step in a later activation or attempt therefore reuses the same key; the provider (or a platform effect journal for providers without native idempotency) returns the recorded result instead of repeating the effect.
+- The runtime derives the effective idempotency key as `hash(tenantId, taskId, capabilityId, operation, stepKey)`. The same step in a later activation or attempt therefore reuses the same key.
+- **Effect journal timing:** the journal entry is committed **at invocation time, independent of the disposition transaction** (which may never commit if the worker crashes). For platform-internal effects (inbox notification, child-task creation, human-action creation) the effect and its journal entry are written in **one** transaction, so they are exactly-once. For external effects the runtime checks the journal first, passes the key to the provider, and records the result when the call returns; a crash between provider success and journal write is covered only by the provider honoring the key — a provider that cannot must declare so and is treated as at-least-once.
 - `stepKey` must be deterministic from task input + checkpoint (e.g. `"notify:threshold-crossed:2026-11-04"`), never a random value or timestamp of the current run.
-- Child delegations use the same mechanism, so a re-run coordinator does not spawn duplicate children.
+- Child delegations use the same mechanism, so a re-run coordinator does not spawn duplicate children. For agent callers the deduplication key below is the derived key.
 
 ## Lifecycle authority and invariants
 
@@ -211,10 +281,21 @@ A crashed or lost execution is re-run (T6), so handlers must be **replay-safe**:
 - Version snapshot taken at acceptance; instances adopt newer definitions for future tasks only.
 - Authorization is checked at acceptance and again at sensitive side effects, human decisions and protected reads.
 
+## Conversation turn model
+
+Each user message is one **turn task** delegated to the user's conversational instance by `AgentService.submitTurn` (durability `durable-acceptance`). The turn handler:
+
+1. calls `conversation.briefing` first — returns a bounded, authorized inbox snapshot of entries not yet presented at their current revision, and marks them `presented`;
+2. decides, optionally via `reasoning`, whether to answer directly or call `delegation.delegate` (it does **not** wait for the child; the child reports through the inbox);
+3. completes with `{ reply: string }`, which the client reads via `getResult`/`subscribe`.
+
+Session continuity lives in `session-context` keyed by `sessionId`, not in a long-running task. A conversational agent can therefore be fully rule-based (no `reasoning` binding) or model-backed with the same contract.
+
 ## Agent vs capability boundary
 
 A handler expresses business logic and acts only through the injected `CapabilityAccess`. It must not construct providers, read global registries, acquire leases, generate its own idempotency keys for effects, or assume a specific LLM/workflow engine. Workflow-backed and model-backed agents satisfy the same contract.
 
 ## Validation gate
 
-Distinct identity tests; profile resolution; acceptance + idempotency + unknown acceptance; unauthorized delegation; disposition mapping; wait → restart → resume with checkpoint; child-task wait (`all`/`any`); timeout wake-up; stale lease fencing; cancellation with non-cooperative handler; step-key replay without duplicate effect; version pinning; multi-instance isolation; deterministic workflow-only agent; conversational agent with delegated task. Each maps to an acceptance check in [POC scope](../poc-scope.md) or a later milestone.
+
+Distinct identity tests; profile resolution; acceptance + idempotency + unknown acceptance; unauthorized delegation; disposition mapping; wait → restart → resume with checkpoint; child-task wait (`all`/`any`); timeout wake-up; stale lease fencing; cancellation with non-cooperative handler; step-key replay without duplicate effect; version pinning; multi-instance isolation; deterministic workflow-only agent; conversational turn that delegates and a later turn whose briefing reports the result. Each maps to an acceptance check in [POC scope](../poc-scope.md) or a later milestone.

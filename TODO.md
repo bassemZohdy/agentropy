@@ -22,30 +22,30 @@ Task IDs are stable (former X-/C- items now sit inside the milestone where they 
 
 ## Milestone 1 — Walking skeleton (single process, SQLite, offline CI)
 
-Exit: all AC-01…AC-14 green ([POC scope](docs/poc-scope.md#exit-criteria)).
+Exit: all AC-01…AC-20 green ([POC scope](docs/poc-scope.md#exit-criteria)).
 
 - [ ] M1-01 `core`: contract types, JSON Schemas, error catalog, transition tables as data (R-01, R-21, R-22).
 - [ ] M1-02 Capability catalog, resolver and `EffectiveCapabilitySnapshot` (R-02, R-03).
 - [ ] M1-03 Definition registry, instance directory and capability discovery (R-06).
-- [ ] M1-04 TaskService/AgentService: delegate with idempotency + unknown acceptance, parent/child, depth/fan-out bounds (R-05, R-20). *Includes X-05.*
-- [ ] M1-05 Runtime + bounded in-process pool, leases with epochs, execution-per-activation (R-07, R-37).
+- [ ] M1-04 TaskService/AgentService: delegate with idempotency + unknown acceptance, parent/child, depth/fan-out bounds (R-05, R-20). *Includes X-05 (async accepted handle, bounded `executeAndWait`, unknown-acceptance recovery).*
+- [ ] M1-05 Runtime + bounded in-process pool, leases with epochs, one execution per run, retry policy, cancel grace period, history compaction (R-07, R-37).
 - [ ] M1-06 SQLite store: tasks, executions, checkpoints, wake-ups, effect journal, outbox, inbox, human actions in one transaction boundary (R-08, R-34).
-- [ ] M1-07 Outbox relay, `TaskEvent` publication, inbox projection with markers, turn-start briefing (R-12, R-29, R-36).
-- [ ] M1-08 Wake-ups: polling scheduler (timer/schedule), in-process event bus, child-task and human-action wake-ups.
-- [ ] M1-09 Human actions: request, claim, decide, expire (R-24). *Includes X-06 (basic).*
-- [ ] M1-10 Testkit: fake clock, fake model, failure injection; lifecycle edge generator; AC-01…AC-14.
+- [ ] M1-07 Outbox relay, `TaskEvent` publication with `(revision, sequence)`, inbox projection, `submitTurn` + turn-start briefing (R-12, R-29, R-36).
+- [ ] M1-08 Wake-ups: polling scheduler (timer/schedule), in-process event bus with durable subscriptions and mailboxes, child-task and human-action wake-ups.
+- [ ] M1-09 Human actions: request, claim/release, decide, expire (R-24). *Includes X-06 (HumanActionRequest with assignee, expiry, revision, atomic authorized decision), basic.*
+- [ ] M1-10 Testkit: fake clock, fake model, failure injection; lifecycle edge generator; AC-01…AC-20.
 - [ ] M1-11 Direct communication provider + router conformance suite (R-31). *Was C-02.*
 - [ ] M1-12 Examples: `price-watch` (J1), `expense-approval` (J2) (R-17).
 - [ ] M1-13 Retrospective: contract revisions forced by implementation, recorded in `docs/review/`.
 
 ## Milestone 2 — Always-on, interoperability and control
 
-- [ ] M2-01 Persistent monitoring responsibilities at scale: history compaction, checkpoint limits (R-37).
+- [ ] M2-01 Monitoring at scale: many concurrent standing tasks, mailbox back-pressure, compaction tuning (builds on R-37 delivered in M1).
 - [ ] M2-02 Scheduled and event-driven activation adapters with deduplication beyond in-process (R-11).
-- [ ] M2-03 Inbox reconciliation/rebuild and independent markers (R-25). *Was X-07.*
-- [ ] M2-04 Session briefing policy with urgent vs deferred delivery; shared priority resolver with policy floors (R-26). *Includes X-08.*
+- [ ] M2-03 Inbox reconciliation/rebuild and independent markers (R-25). *Was X-07 (inbox projection/reconciliation; separate read/presented/resolved/acknowledged markers).*
+- [ ] M2-04 Session briefing policy with urgent vs deferred delivery; shared priority resolver with policy floors (R-26). *Includes X-08 (shared priority resolver: business, user context, non-downgradable policy floor).*
 - [ ] M2-05 Owner visibility and control: list/cancel tasks, suspend/resume instances, access controls (R-13).
-- [ ] M2-06 Recovery tests across provider outage and delayed callbacks; transport-neutral outbox lease and replay (R-29). *Includes X-09.*
+- [ ] M2-06 Recovery tests across provider outage and delayed callbacks; transport-neutral outbox lease and replay (R-29). *Includes X-09 (transport-neutral idempotency, reliable outbox lease, duplicate/out-of-order and crash replay).*
 - [ ] M2-07 Deterministic workflow-backed agent through a `workflow` provider (R-11, R-17).
 - [ ] M2-08 AI task/monitoring agent with real `reasoning` provider, bounded tools and budget (R-35).
 - [ ] M2-09 Full threat model: identity flows, token lifetimes, cross-boundary trust (ADR-0009).

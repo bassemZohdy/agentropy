@@ -21,6 +21,19 @@ This project follows a human-readable changelog. Release versions will be introd
 
 - Adopted ADR-0015: transport-neutral agent communication with internal, A2A and custom provider implementations, and documented a Communication Contract v1 architecture baseline.
 
+### Changed — re-review (2026-11-04)
+
+Independent re-review after merging the design review found 25 issues, all fixed ([review record](docs/review/2026-11-04-design-review.md#re-review-after-merge)):
+
+- Effect journal committed at invocation time, not with the disposition (AC-07 was impossible).
+- Durable event subscriptions with per-task mailboxes, so events arriving between activations are not lost.
+- Conversation turn model (`submitTurn`, briefing at turn start); rule-based conversational agent possible.
+- Human-action decisions checked against the request before task state; one expiry mechanism (`onExpiry`).
+- Guard order puts idempotency replay before state checks; full refusal lists; retry policy and cancel grace period defined; execution edges for queued aborts.
+- `TaskEvent` ordering by `(revision, sequence)`; `notificationCreated` event feeds the inbox; `InboxEntry` type.
+- Agent v1 rev 3: `DelegateInput`, `HandlerRegistry`, instance and human-action operations, record types, richer `WakeReason`.
+- POC scope: journeys reworked; AC-15…AC-20 added; requirement mappings corrected.
+
 ### Changed — design review (2026-11-04)
 
 See [design review](docs/review/2026-11-04-design-review.md) for the 20 findings and rationale.
