@@ -6,11 +6,19 @@ Use explicit user, service and agent identities. Delegation requires an authoriz
 
 Policies bind allowed agent targets, tools, subscriptions, maximum child fan-out/depth, time/budget limits and required approvals. Fail closed if policy checks are unavailable. Persist a tamper-evident audit sequence (subject to retention policy) for identity, intent, delegation, decisions and side effects. Sanitize untrusted tool/event content and guard against prompt injection.
 
+## Application isolation and configuration
+
+Provide per-application context objects so registries, stores, provider clients and settings do not leak across separate app instances in one process. Use explicit configuration precedence, externalized non-secret settings and secret references resolved only by trusted infrastructure; avoid mutable module-global application state. A deterministic fake model/runtime and a reusable provider contract-test suite must be usable offline.
+
 ## Durability and recovery
 
 Maintain durable records for tasks, execution state, wake-up conditions, outbox messages and leases when durability is required. A scheduler or event source can be replaceable, but a task must survive worker restarts and duplicate triggers. Use version-based fencing for active executions, bounded retries/backoff and dead-letter or operator-visible failure handling. Side effects require idempotency keys or reconciliation; exactly-once delivery is not guaranteed simply by adopting a workflow engine.
 
 Pause/resume/cancel must have consistent documented semantics across providers; unsupported operations produce explicit errors. Deployment change or definition version migration is controlled; never resume a checkpoint on an incompatible runtime silently.
+
+## Version-aware deployments
+
+Each accepted task pins its AgentDefinition/Profile and effective capability/provider versions. Runtime adapters must validate history compatibility on replay and support a documented rollout/rollback/drain or migration strategy; immutable version metadata alone cannot guarantee provider replay safety. A local single-process + SQLite development mode, if selected, does not imply safe multi-host HA. Document exactly which state survives API, worker, scheduler, storage or network failure.
 
 ## Observability
 
