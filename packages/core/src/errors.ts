@@ -56,23 +56,43 @@ export function agentropyError(
   options: { correlationId?: string; details?: Record<string, unknown> } = {},
 ): AgentropyErrorValue {
   const metadata = ERROR_DEFINITIONS[code];
-  return {
+  const result: AgentropyErrorValue = {
     code,
     category: metadata.category,
     retryable: metadata.retryable,
     message,
-    ...(options.correlationId === undefined ? {} : { correlationId: options.correlationId }),
-    ...(options.details === undefined ? {} : { details: options.details }),
   };
+  if (options.correlationId !== undefined) {
+    result.correlationId = options.correlationId;
+  }
+  if (options.details !== undefined) {
+    result.details = options.details;
+  }
+  return result;
 }
 
-export function isAgentropyErrorValue(value: unknown): value is AgentropyErrorValue {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+export function isAgentropyErrorValue(
+  value: unknown,
+): value is AgentropyErrorValue {
+  if (typeof value !== 'object' || value === null) return false;
+  if (Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
-  if (typeof record.code !== 'string' || !Object.prototype.hasOwnProperty.call(ERROR_DEFINITIONS, record.code)) return false;
+  if (typeof record.code !== 'string') return false;
+  if (!Object.prototype.hasOwnProperty.call(ERROR_DEFINITIONS, record.code)) {
+    return false;
+  }
   const metadata = ERROR_DEFINITIONS[record.code as ErrorCode];
-  return record.category === metadata.category && record.retryable === metadata.retryable &&
-    typeof record.message === 'string' &&
-    (record.correlationId === undefined || typeof record.correlationId === 'string') &&
-    (record.details === undefined || (typeof record.details === 'object' && record.details !== null && !Array.isArray(record.details)));
+  if (record.category !== metadata.category) return false;
+  if (record.retryable !== metadata.retryable) return false;
+  if (typeof record.message !== 'string') return false;
+  if (record.correlationId !== undefined) {
+    if (typeof record.correlationId !== 'string') return false;
+  }
+  if (record.details !== undefined) {
+    if (record.details === null || typeof record.details !== 'object') {
+      return false;
+    }
+    if (Array.isArray(record.details)) return false;
+  }
+  return true;
 }
