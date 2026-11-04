@@ -41,7 +41,7 @@ Already accepted: ADR-0019…0022 design directions and earlier unambiguous arch
 
 | Gate | Required evidence | Status |
 |---|---|---|
-| G0-01 Architecture consistency | Resolve Task profile durability contradiction (ADR-0019 vs README/profile catalog), policy wait pre-dispatch behavior and documented routing/security invariants | OPEN |
+| G0-01 Architecture consistency | Task profile durability contradiction reconciled in ADR-0019/profile catalog/README; **policy wait pre-dispatch behavior** and routing/security invariants remain | PARTIAL |
 | G0-02 Requirements completeness | Stable traceable requirements and acceptance criteria covering communication families, failures, audit, tenant isolation, credentials and configuration precedence; no fake v1 claims | OPEN |
 | G0-03 ADR review | Review accepted/proposed status of ADR-0008…0018, adopt or explicitly defer M0 decisions; no silent defaults | OPEN |
 | G0-04 Technology/tooling | Approval of ADR-0016 and ADR-0017 and license/contribution model | OPEN |
