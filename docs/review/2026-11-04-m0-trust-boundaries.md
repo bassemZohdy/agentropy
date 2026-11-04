@@ -1,7 +1,7 @@
 # M0 Security trust-boundary blueprint
 
 - Date: 2026-11-04
-- Status: Design baseline / **M0-05 signoff pending unresolved pre-dispatch policy wait rule**
+- Status: Design baseline accepted for M0; implementation proof and negative-case tests pending
 - Related: [ADR-0021](../adr/0021-delegated-authorization.md), [ADR-0022](../adr/0022-security-audit-governance.md), [runtime contract](../runtime-contract.md), [AC-09](../poc-scope.md)
 
 ## Trust domains and authoritative inputs
@@ -35,10 +35,10 @@
 
 ## Explicit unresolved lifecycle item
 
-The current authoritative state machine supports `running → waiting` (T4) with atomic checkpoint/wake-up; it does **not** define `created/assigned → waiting`. For a PDP outage or expired grant before a queued task's handler begins, preserve the durable accepted record and *do not* attempt a protected execution, but **do not invent a transition**. Decide whether a durable activation gate can hold/lease-defer queued work (without state mutation) or a versioned lifecycle extension is required, and define fairness, retry limits and wake-up semantics.
+The current authoritative state machine supports `running → waiting` (T4) with atomic checkpoint/wake-up; it does **not** define `created/assigned → waiting`. For a PDP outage or expired grant before a queued task's handler begins, preserve the durable accepted record and *do not* attempt a protected execution, but **do not invent a transition**. **Decision:** [ADR-0024](../adr/0024-pre-dispatch-authorization-gate.md) accepts a durable activation eligibility gate, retaining `created` / `assigned` without creating an execution lease. Exact fairness, retry and wake-up settings remain for implementation/conformance.
 
 This is a real design gap and blocks final M0-05 signoff. Finalize before declaring a complete lifecycle contract, not by editing ADR prose alone.
 
 ## Verification gate
 
-Architecture security direction is accepted, but M0-05 stays open until the pre-dispatch rule and test mapping are approved. No application code is authorized by this note.
+Architecture security direction and pre-dispatch gate are accepted for M0-05. AC-09 and candidate SEC tests document verification intent; actual passing conformance is still outstanding. No application code is authorized by this note.
