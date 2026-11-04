@@ -41,6 +41,10 @@ This is a **format example**, not a task eligible for copying into the active tr
 
 The placeholder is deliberately **not executable**. The real migrated tree must use commands proven by the project scaffold and must pass todo-skills lint; no invented `pnpm test` until its package/test runner exists.
 
+## Active queue candidate
+
+Review the [first-wave todo-skills proposal](TODO-SKILLS-ACTIVE-PROPOSAL.md) before replacing the legacy TODO. It is not a validated skill session; exact Done-when test commands and legacy provenance require confirmation.
+
 ## Migration checklist
 
 1. Resolve architectural conflicts and proposed ADRs.
