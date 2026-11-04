@@ -35,7 +35,9 @@ Produce an embeddable, provider-neutral Agentropy framework delivering the appro
 
 ## Decisions
 
-Already accepted: ADR-0019…0022 design directions and earlier unambiguous architectural invariants. **Not approved yet:** ADR-0016 language/tooling; ADR-0017 storage/scheduler/transport; license; several earlier proposed ADRs; exact security-wait lifecycle behavior; M1 security test scope.
+Accepted architecture direction: ADR-0019…0024, with ADR-0024's pre-dispatch eligibility gate retaining existing task states; TypeScript/Node.js/pnpm and SQLite/polling/in-process M1 in ADR-0016/0017; Apache-2.0/DCO and ESLint/Prettier as recorded in ADR-0023 and repository policy. None of these decisions proves a working implementation.
+
+Still open: concrete PDP/audit error taxonomy and gate field/race tests, final full contract/documentation consistency, executable offline M0 scaffold, and approved lossless TODO-to-todo-skills migration. Temporal + LangGraph TypeScript remains explicitly deferred. Earlier Proposed ADRs stay Proposed where provider-specific guarantees are untested.
 
 ### Mandatory readiness gates (complete BEFORE /todo-init migration)
 
@@ -87,19 +89,15 @@ Before activation, check the readiness matrix, schema/ADR crosslinks, all previo
 
 ## M0 decision review
 
-See [M0-DECISION-REVIEW](M0-DECISION-REVIEW.md) for explicit accept/revise/defer recommendations and unresolved implementation gates. No technology or license has been approved by creating that document.
-
-## M0 decision review
-
-See [remaining M0 choices](M0-DECISION-REVIEW.md). These recommendations are not approved decisions.
+See [M0-DECISION-REVIEW](M0-DECISION-REVIEW.md) for the accepted M1 decisions and remaining technical verification gates.
 
 ## Open questions
 
 - TypeScript + Node.js tooling accepted in ADR-0016; concrete versions to validate at setup.
 - SQLite/polling/in-process M1 infrastructure accepted in ADR-0017; concrete packages and settings at setup.
-- Apache-2.0 and DCO accepted in ADR-0023; publish canonical LICENSE and contribution guidance before M0 closure.
-- Clarify the TaskAgent durability contract and pre-dispatch policy waiting.
-- Which SEC checks are required at M1 exit?
+- Apache-2.0 LICENSE and DCO CONTRIBUTING files are already present; automated checks remain under M0-08.
+- TaskAgent durable-execution and ADR-0024 eligibility gate are accepted; define concrete gate persistence, fencing, failure taxonomy and runnable tests.
+- SEC-01/02/03/04/07 are mandatory M1 checks; still need actual test files and CI evidence.
 - Approve the lossless todo-skills backlog migration after the above closure?
 
 ## Revisions
