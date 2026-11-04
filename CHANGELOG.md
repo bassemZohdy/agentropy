@@ -4,6 +4,14 @@ This project follows a human-readable changelog. Release versions will be introd
 
 ## Unreleased — 2026-11-04
 
+### Added — M0 workspace scaffold (2026-11-04)
+
+- Created a strict TypeScript/ESM pnpm workspace with `core`, `runtime`, `store-sqlite`, and `testkit` placeholder packages; no agent runtime functionality implemented.
+- Added a Vitest smoke test, TypeScript composite build, ESLint, Prettier, and GitHub Actions scaffold CI; [CI run 41861578838](https://github.com/bassemZohdy/agentropy/actions/runs/41861578838) passed all checks.
+- Added a pull-request DCO sign-off workflow and validation script; the workflow remains untested against example PRs.
+- Published [scaffold verification](docs/review/2026-11-04-m0-scaffold-verification.md), [first-wave todo-skills plan](docs/plans/FIRST-WAVE.md), and follow-ups for lockfile reproducibility/DCO live validation.
+- Pinned pnpm 10.34.9 as package manager. The dependency lockfile is still pending; smoke testing does not demonstrate Agentropy's domain AC/SEC suites.
+
 ### Added
 
 - Initial README and documented product vision, scope, requirements and logical architecture.
