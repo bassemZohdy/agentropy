@@ -34,6 +34,8 @@ The discussion's accepted operational choices are recorded in [ADR-0019](docs/ad
 - [ ] D-08 Document agent owner/share vs task ownership, user-level task isolation, strict tenant boundaries and explicit cross-tenant A2A grants.
 - [ ] D-09 Retain Temporal–LangGraph TypeScript integration as an explicitly deferred decision; treat Codex collaboration and model-verification as optional non-core extensions.
 - [ ] D-10 Add contract/conformance acceptance checks for the above before implementation, and review statuses of related older ADRs.
+- [ ] D-11 Specify best-effort vs durable delivery requirements, provider guarantee negotiation, outbox/idempotency and no exactly-once claims (ADR-0019).
+- [ ] D-12 Specify POC observability baseline: delegation success/latency, task outcomes, delivery failures, retry/deduplication, recovery duration, correlation and sensitive-data redaction (ADR-0019).
 
 ## Milestone 1 — Walking skeleton (single process, SQLite, offline CI)
 
