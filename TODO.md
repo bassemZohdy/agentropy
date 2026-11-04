@@ -1,10 +1,10 @@
 # Agentropy implementation roadmap
 
-**Project state:** Documentation baseline revised after the [2026-11-04 design review](docs/review/2026-11-04-design-review.md). Implementation not started. M1 is a **walking skeleton** defined in [POC scope](docs/poc-scope.md); reassess M2+ after its retrospective.
+**Project state:** Documentation baseline revised after the [2026-11-04 design review](docs/review/2026-11-04-design-review.md). M0 workspace scaffold exists; M1 runtime implementation not started. M1 is a **walking skeleton** defined in [POC scope](docs/poc-scope.md); reassess M2+ after its retrospective.
 
 **Architecture readiness:** [Final gate review](docs/review/2026-11-04-architecture-readiness.md) identifies remaining error/gate/verification choices. An accepted design principle does not imply test completion.
 
-**Execution planning:** [Staged todo-skills plan](docs/plans/PROJECT.md) and [lossless migration mapping](docs/plans/TODO-SKILLS-MIGRATION.md) are prepared. **Do not migrate this legacy TODO or start implementation** until architecture/requirements readiness gates, concrete test commands, and migration review are approved.
+**Execution planning:** [Staged todo-skills plan](docs/plans/PROJECT.md), [first-wave implementation plan](docs/plans/FIRST-WAVE.md) and [lossless migration mapping](docs/plans/TODO-SKILLS-MIGRATION.md) are prepared. **Do not migrate this legacy TODO or start implementation** until architecture/requirements readiness gates, concrete test commands, and migration review are approved.
 
 Task IDs are stable (former X-/C- items now sit inside the milestone where they are delivered). Requirement IDs refer to [requirements](docs/requirements.md); AC-xx to [POC scope](docs/poc-scope.md).
 
