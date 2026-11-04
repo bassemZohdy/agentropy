@@ -10,6 +10,7 @@
 | 3 | 2026-11-04 | Re-review: `reasoning`/`tool-use` usable in POC with fake providers; operation I/O for `delegate`, `notify`, `requestAction`, `subscribe`, `briefing`; durable event subscriptions |
 | 2 | 2026-11-04 | Design review: canonical capability ID catalog; guarantees modelled once (as `kind: "guarantee"` selections with levels); operation `effect` classification and step keys; `task-execution` and `messaging` removed as capabilities; profile table reconciled with [capabilities](../capabilities.md) |
 | 4 | 2026-11-04 | Align TaskAgent required `durable-execution` guarantee with accepted ADR-0019; no downgrade to `durable-acceptance` |
+| 5 | 2026-11-04 | Document effective config hierarchy, non-weakening security floors and acceptance-time snapshots |
 
 ## Classification
 
@@ -169,6 +170,16 @@ Durability is expressed exactly once: as a `kind: "guarantee"` selection with a 
 | specialist | — | `tool-use` | `reasoning`, `memory`, `conversation`, `durability` |
 
 Rationale: TaskAgent must preserve resumable execution state even without scheduling (accepted in ADR-0019). Coordinators and monitoring profiles also require `durable-execution` because they wait across activations; scheduling remains optional for task agents. A lightweight ephemeral helper uses a specialist/custom profile, not a downgraded task profile. `inbound-message`/`progress-reporting` are platform obligations.
+
+## Effective configuration precedence and security floors (ADR-0019)
+
+Effective ordinary configuration is resolved **framework → agent profile → agent definition → agent instance**; a nearer authorized setting can override a farther default. This applies to provider binding preferences and documented non-security timeout/retry/resource policies, but **does not weaken mandatory guarantees, required capabilities, tenant limits or higher-trust security floors**.
+
+- A definition/instance cannot remove a profile `required` capability, reduce a `durability` minimum, increase an inherited authorization scope, bypass an approval or expand tenant access. Reject invalid configuration; do not silently downgrade.
+- At **task acceptance**, pin immutable definition/profile/capability/provider/build versions and an effective, redacted configuration snapshot. Never copy credentials or bearer tokens into the snapshot.
+- On **every protected operation**, re-evaluate current authorization, grant expiry/revocation and applicable non-weakening policy floors; snapshot pinning preserves deterministic execution settings, **not** perpetual permission.
+- Runtime policy changes and version migration need explicit authorized handling and audit. Incompatible checkpoint/provider migration must fail explicitly rather than switching the accepted route or handler version.
+- Exact config property schema, policy exception approval and dynamic update mechanisms remain implementation/conformance design, not implied by the simple precedence rule.
 
 ## Resolution algorithm (authoritative ordering)
 
