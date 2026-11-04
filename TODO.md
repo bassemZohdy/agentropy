@@ -22,7 +22,7 @@ Task IDs are stable (former X-/C- items now sit inside the milestone where they 
 - [x] X-03 Versioned envelopes, actor trust boundary and idempotency fingerprint specified ([messaging contract](docs/messaging-contract.md)).
 - [x] X-04 Exact pinning and upgrade policy specified ([runtime contract](docs/runtime-contract.md#version-pinning-and-upgrade)).
 - [x] C-01 Communication v1 reconciled with Agent v1 (outbound SPI, call context, route binding).
-- [ ] M0-08 Repository scaffold per ADR-0016: workspace, CI (lint, typecheck, test, offline), package skeletons, contribution docs.
+- [x] M0-08 Minimal TypeScript/pnpm workspace scaffold, four package shells, Vitest smoke test, ESLint/Prettier and GitHub CI verified ([evidence](docs/review/2026-11-04-m0-scaffold-verification.md)); runtime contract tests not implemented.
 
 ## Accepted architecture decisions — 2026-11-04 (documentation follow-up only)
 
@@ -55,6 +55,8 @@ The discussion's accepted operational choices are recorded in [ADR-0019](docs/ad
 - [ ] D-25 Finish gate schema/error taxonomy and approve proposed [M1 security test scope](docs/plans/M1-SECURITY-ACCEPTANCE-DECISION.md) for accepted [ADR-0024](docs/adr/0024-pre-dispatch-authorization-gate.md); executable conformance pending.
 - [ ] D-26 Close G0-01…G0-07 design gates in [PROJECT plan](docs/plans/PROJECT.md), reconcile approved security/profile requirements, and review the [todo-skills migration](docs/plans/TODO-SKILLS-MIGRATION.md) before any replacement of this TODO.
 - [ ] D-27 After readiness signoff, migrate backlog through todo-skills /todo-init and /todo-plan with exact runnable Done-when checks, <=120 active lines, verified ID crosswalk and unchanged unimplemented task statuses; keep future waves in plans.
+- [ ] D-28 Generate and commit `pnpm-lock.yaml` in a trusted pnpm 10.34.9 environment; switch CI to frozen-lockfile and re-enable dependency caching, verifying green CI.
+- [ ] D-29 Prove DCO workflow on sample signed/unsigned PRs; only then claim contributor-signoff enforcement verified.
 
 ## Security/Governance review closure
 
@@ -115,5 +117,5 @@ Implementation and docs agree (contract revision-history row added when a contra
 
 ## Progress
 
-- Milestones complete: **0 / 4**. M0: **12 / 13** documented items complete; **1** remains (M0-08 scaffold, tooling scripts and CI, including DCO check).
-- Roadmap checkboxes: **16 / 78** complete (**12 M0 decisions/reviews + D-02, D-06, D-23, D-25 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
+- Milestones complete: **0 / 4** by final-readiness signoff. M0 checklist: **13 / 13** tasks completed (minimal scaffold verified); final design signoff, lockfile and DCO PR validation remain tracked separately.
+- Roadmap checkboxes: **17 / 80** complete (**13 M0 decisions/scaffold tasks + D-02, D-06, D-23, D-25 documentation alignment**). M0-08 has a verified smoke-tested scaffold only; **no M1 agent runtime implementation** has started.
