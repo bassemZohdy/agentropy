@@ -1,20 +1,20 @@
 # ADR-0025: Explicit security infrastructure failure outcomes
 
-- Status: **Proposed** (2026-11-04); requires acceptance before making new ErrorCode values normative
+- Status: **Accepted** (2026-11-04) — v1 security failure semantics adopted; implementation and conformance pending
 - Applies to: Agentropy AgentService/PEP, durable activation gate, AuditService and offline M1 SEC acceptance checks
 
 ## Problem
 
 The current Error Contract v1 has `PermissionDenied`, `AuthorityExpired`, `ProviderUnavailable`, and `UnknownAcceptance`. A PDP outage is not a policy denial; failure to commit a mandatory audit intent is not an authorization denial. Using an ambiguous generic error would make retry/backoff and audit observability unsafe.
 
-## Proposed additions
+## Accepted v1 additions
 
-| Proposed code | Category | Public retryable flag | Meaning / effect |
+| Code | Category | Public retryable flag | Meaning / effect |
 |---|---|---|---|
 | `PolicyDecisionUnavailable` | authorization (infrastructure) | no for the protected operation; runtime may schedule independent bounded re-evaluation | No reliable current PDP decision (error, timeout, unavailable, invalid response), hence **no protected effect dispatched** |
 | `AuditCommitUnavailable` | internal (durability) | no for the just-submitted mutation; caller should reconcile request ID | Mandatory audit-intent durability could not be proved, hence **no new protected state change reported committed** |
 
-The current `ErrorCategory` union does not include `security-infrastructure`; avoid a category breaking change in v1. Reconsider versioned categories later. The `retryable` flag means safe to blindly resubmit the **same public request**, not permission to reexecute an external side effect. Therefore keep both proposed codes `retryable: false`; scheduler retry is a separate internal policy.
+The existing `ErrorCategory` union is preserved: `PolicyDecisionUnavailable` uses `authorization`, `AuditCommitUnavailable` uses `internal`. Neither is a policy denial. Versioned categories may be reconsidered later. The `retryable` flag means safe to blindly resubmit the **same public request**, not permission to reexecute an external side effect. Therefore keep both proposed codes `retryable: false`; scheduler retry is a separate internal policy.
 
 ## Enforcement boundaries and ordering
 
@@ -32,9 +32,9 @@ The current `ErrorCategory` union does not include `security-infrastructure`; av
 - Security response does not disclose whether an invisible task/resource exists.
 - A duplicate retry with the original idempotency key never generates duplicate side effects; unknown remote outcome remains `UnknownAcceptance`.
 
-## Open before acceptance
+## Implementation details still open
 
-Check compatibility with existing clients and decide whether `PolicyDecisionUnavailable` fits `authorization` or should use a future versioned category; define exact 4xx/5xx transport mapping, generic error redaction, and operational recovery/backoff parameters. Until approved, these two symbols are **candidate names**, not valid v1 catalog codes.
+Check compatibility with existing clients and decide whether `PolicyDecisionUnavailable` fits `authorization` or should use a future versioned category; define exact 4xx/5xx transport mapping, generic error redaction, and operational recovery/backoff parameters. These two symbols are **accepted v1 error codes**, but no running implementation exists. Document provider-to-transport status mapping before exposed HTTP/A2A endpoints are built.
 
 ## Related
 
