@@ -20,6 +20,14 @@ The main agent fetches unread/relevant entries when a conversation begins and ca
 
 An "always-on" agent persists its responsibility, subscriptions or schedules and wakes when required. On trigger it acquires execution capacity, performs bounded work, checkpoints, reports, and returns to idle. This holds for both AI-enabled and purely workflow-backed agents. Continuous resource occupancy is not required.
 
+## Proactive priority and human actions
+
+Agent/task business priority, deadline, conversational personal relevance and organizational minimums jointly determine **effective priority** through a deterministic policy resolver. An LLM may suggest a justified personal adjustment, but cannot lower mandatory priority floors, authorize approvals or bypass user preferences and safety obligations.
+
+At the beginning of each conversational turn, use a bounded authorized inbox snapshot: raise critical/blocking work immediately, mention normal work selectively and leave low-priority items on demand. Track a presentation revision so unchanged items are not repeatedly announced, while changes in urgency or request revision can trigger another update. Optional push updates are complementary to durable replay.
+
+Human actions require an exact pending request ID, typed answer, assignee/role authorization, expiry and atomic runtime validation. A resolved inbox tile does not constitute approval. See [human actions](human-actions.md).
+
 ## Reliability and security
 
 Use a durable outbox/inbox delivery boundary or equivalent to avoid losing progress between state commit and publish. Handle duplicates and out-of-order updates; do not promise exactly-once external side effects. Verify recipients, authority and consent before revealing agent results. Allow delegated task cancellation with explicit state and acknowledgment even when downstream processes cannot immediately stop.
