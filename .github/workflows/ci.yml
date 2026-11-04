@@ -33,5 +33,7 @@ jobs:
         run: node --test scripts/check-dco.test.mjs
       - name: Verify documentation link targets
         run: node scripts/check-doc-links.mjs
+      - name: Fake clock formatting preview
+        run: pnpm exec prettier packages/testkit/src/fake-clock.ts
       - name: Formatting
         run: pnpm format:check
