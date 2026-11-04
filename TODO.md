@@ -113,5 +113,5 @@ Implementation and docs agree (contract revision-history row added when a contra
 
 ## Progress
 
-- Milestones complete: **0 / 4**. M0: **10 / 13** documented items complete; **3** remain (M0-02 canonical license/DCO files plus style, M0-05 pre-dispatch trust/lifecycle signoff, M0-08 scaffold).
+- Milestones complete: **0 / 4**. M0: **10 / 13** documented items complete; **3** remain (M0-02 code style and contribution checks (LICENSE/CONTRIBUTING added), M0-05 pre-dispatch trust/lifecycle signoff, M0-08 scaffold).
 - Roadmap checkboxes: **11 / 78** complete (**10 M0 decisions/reviews + D-23 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
