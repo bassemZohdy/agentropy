@@ -55,7 +55,7 @@ No gate is marked closed merely because a proposal was written.
 
 ## Execution order — proposed
 
-**Wave 0 / readiness:** M0 scaffold exists and passed build/lint/smoke tests; close remaining G0-02/G0-07 review, reproducible lockfile, DCO PR validation and lossless todo-skills migration. Preserve `TODO.md` as the canonical legacy roadmap until migration is confirmed. See [first-wave tasks](FIRST-WAVE.md).
+**Wave 0 / readiness:** M0 scaffold exists and passed build/lint/smoke tests; close remaining G0-02/G0-07 review, reproducible lockfile, DCO PR validation and lossless todo-skills migration. Preserve `TODO.md` as the canonical legacy roadmap until migration is confirmed. See [first-wave tasks](FIRST-WAVE.md) and [the staged todo-skills active tree](TODO-SKILLS-ACTIVE-PROPOSAL.md).
 
 **Wave 1 / M1 walking skeleton:**
 
