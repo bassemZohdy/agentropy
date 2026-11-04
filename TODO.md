@@ -55,8 +55,8 @@ The discussion's accepted operational choices are recorded in [ADR-0019](docs/ad
 - [x] D-25 Document accepted [ADR-0024 gate shape](docs/adr/0024-pre-dispatch-authorization-gate.md), [ADR-0025 security error codes](docs/adr/0025-security-infrastructure-errors.md) and approved [M1 security test scope](docs/plans/M1-SECURITY-ACCEPTANCE-DECISION.md); executable SEC conformance remains M1-10.
 - [ ] D-26 Close G0-01…G0-07 design gates in [PROJECT plan](docs/plans/PROJECT.md), reconcile approved security/profile requirements, and review the [todo-skills migration](docs/plans/TODO-SKILLS-MIGRATION.md) before any replacement of this TODO.
 - [ ] D-27 After readiness signoff, migrate backlog through todo-skills /todo-init and /todo-plan with exact runnable Done-when checks, <=120 active lines, verified ID crosswalk and unchanged unimplemented task statuses; keep future waves in plans.
-- [ ] D-28 Generate and commit `pnpm-lock.yaml` in a trusted pnpm 10.34.9 environment; switch CI to frozen-lockfile and re-enable dependency caching, verifying green CI.
-- [ ] D-29 Prove DCO workflow on sample signed/unsigned PRs; only then claim contributor-signoff enforcement verified.
+- [ ] D-28 Lockfile [committed](https://github.com/bassemZohdy/agentropy/commit/7608c3c0353c0880ef62e87cba8f8ae2d2fce41f) by pnpm 10.34.9 and frozen install passed in generator; CI now uses frozen-lockfile/cache. **Await final main CI success** before closing.
+- [ ] D-29 Signed/unsigned temporary-git DCO unit tests pass in [CI](https://github.com/bassemZohdy/agentropy/actions/runs/41866666152); verify DCO workflow on a real PR before claiming PR enforcement complete.
 
 ## Security/Governance review closure
 
