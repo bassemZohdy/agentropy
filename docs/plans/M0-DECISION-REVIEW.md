@@ -1,7 +1,7 @@
 # Milestone 0 — Decisions and architectural readiness
 
 - Date: 2026-11-04
-- Status: **Recommendations pending maintainer approval**, not accepted design decisions and not implementation authority
+- Status: **Partially accepted** — M0-01 / M0-06 selected for M1; license, old ADR review and security/lifecycle decisions remain open. Not implementation authority.
 - Source: [ADR-0016](../adr/0016-implementation-language.md), [ADR-0017](../adr/0017-first-persistence-and-activation.md), [security closeout](../review/2026-11-04-security-governance-closeout.md), [project plan](PROJECT.md)
 
 ## What has been reconciled
@@ -10,21 +10,21 @@ The TaskAgent profile now requires `durable-execution` in the capability catalog
 
 ## Maintainer decisions required
 
-### M0-01 — Implementation language and tooling: ADR-0016
+### M0-01 — Implementation language and tooling: ADR-0016 (ACCEPTED)
 
 **Recommendation:** Approve strict TypeScript + ESM + Node.js currently supported Active LTS, pnpm workspaces, Vitest, JSON Schema 2020-12 and one consistent lint/format tool. Confirm actual Node version at implementation start and choose schema authoring/validation libraries after a tiny offline feasibility test. Reason: public contracts are already TypeScript-shaped, and this is an embeddable library, not a workflow service.
 
 **Caveat:** This does not establish a first-class Temporal/LangGraph TypeScript integration. Keep that provider decision deferred and separately validated.
 
-**Decision needed:** accept / revise / defer. Open: npm package scope and supported Node version floor.
+**Decision recorded:** Accepted for M1. Remaining setup options: npm package scope and tested Node version floor.
 
-### M0-06 — First persistence / scheduling: ADR-0017
+### M0-06 — First persistence / scheduling: ADR-0017 (ACCEPTED)
 
 **Recommendation:** Approve SQLite WAL in a *single process* behind a transaction-capable Store port; in-process event bus, polling wake-up scheduler and persisted outbox for M1. Do not assert multi-writer HA or exactly-once external effects. Schema and conformance must preserve the later PostgreSQL option.
 
 **Security rider:** before the protected change is reported committed, critical audit intent must be atomically recorded with the authoritative state transition or transactional outbox; test failures. Idempotent effect journal entries must be committed at invocation/effect time, not only at handler completion.
 
-**Decision needed:** accept / revise / defer. Open: scheduler polling defaults and supported SQLite adapter.
+**Decision recorded:** Accepted for M1. Remaining setup options: scheduler polling defaults and supported SQLite adapter.
 
 ### M0-02 — OSS license / contributions
 
