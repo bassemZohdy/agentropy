@@ -76,6 +76,8 @@ Profiles are templates, not a rigid inheritance hierarchy. Required capabilities
 - [Agent messaging contracts](docs/messaging-contract.md)
 - [Human actions and proactive priority](docs/human-actions.md)
 - [Architecture](docs/architecture.md)
+- [Core Agent Contract v1](docs/contracts/agent-v1.md)
+- [Core Capability Contract v1](docs/contracts/capability-v1.md)
 - [Domain model](docs/domain-model.md)
 - [Capabilities and profiles](docs/capabilities.md)
 - [Registry, pool and runtime](docs/registry-runtime.md)
