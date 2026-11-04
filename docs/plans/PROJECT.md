@@ -45,7 +45,7 @@ Already accepted: ADR-0019…0022 design directions and earlier unambiguous arch
 | G0-02 Requirements completeness | Communication families and configuration precedence reconciled; failure/security contract tests and final cross-document review remain | PARTIAL |
 | G0-03 ADR review | Individual ADR-0008…0018 dispositions recorded; proposals with unresolved implementation mechanisms remain proposed | PARTIAL |
 | G0-04 Technology/tooling | ADR-0016/0017/0023 accepted; canonical LICENSE + CONTRIBUTING and ESLint/Prettier style set; scaffold/CI and dependency version testing pending | PARTIAL |
-| G0-05 Test scope | [Proposed M1 security acceptance split](M1-SECURITY-ACCEPTANCE-DECISION.md) drafted; requires explicit exit-gate approval | OPEN |
+| G0-05 Test scope | [M1 security scope accepted](M1-SECURITY-ACCEPTANCE-DECISION.md): SEC-01/02/03/04/07 required; SEC-05/06 full coverage deferred | CLOSED (design only) |
 | G0-06 Todo skills migration readiness | Lossless ID/priority mapping, runnable test command from a real scaffold, `Done when` per leaf, `TODO.md` <=120 lines and lint pass | OPEN |
 | G0-07 Final design signoff | Requirements, architecture, ADRs, contract schemas, documentation indexes and implementation backlog reviewed together | OPEN |
 
