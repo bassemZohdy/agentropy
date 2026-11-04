@@ -1,5 +1,7 @@
 # Agent domain model and lifecycle
 
+**Contract baseline:** [Agent Contract v1](contracts/agent-v1.md) and [Capability Contract v1](contracts/capability-v1.md). The TypeScript examples below are historical illustrative sketches; the versioned contract documents govern implementation. In particular, Agent v1 uses `handle(invocation, context)` and returns a disposition rather than `execute(input, context)`.
+
 ## Entities
 
 | Entity | Key fields | Purpose |
@@ -74,7 +76,7 @@ A task startup is **async-first**, reporting an accepted reference rather than a
 
 Agent instance: `registered -> available -> suspended -> available -> retired` (subject to policy). Retiring an instance does not delete task history.
 
-Task: `created -> assigned -> running -> waiting -> running -> completed|failed|cancelled`. A task may transition directly from running to completed/failed/cancelled. Retries create new execution attempts and follow policy. Terminal states are not reopened; a new task handles subsequent objectives.
+Task: `created -> assigned -> running -> waiting -> running -> completed|failed|cancelled`. A task may transition directly from running to completed/failed/cancelled. Recovery of an active task may create new execution attempts; retrying a terminal task creates a linked new task. Terminal states are not reopened.
 
 Execution: `queued -> leased -> running -> checkpointed/waiting -> resumed -> completed|failed|aborted`. Crash recovery can replace a lost attempt. Each transition must carry compare-and-swap/version fencing to avoid concurrent competing ownership.
 
