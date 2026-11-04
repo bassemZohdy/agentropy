@@ -72,8 +72,8 @@ Rules:
 The existing catalog distinguishes `PermissionDenied`, `AuthorityExpired`, `ProviderUnavailable`, `UnknownAcceptance`, and `Internal`. Do **not** introduce unreviewed persisted lifecycle states or silently map security failures to business `failed`:
 
 - Explicit denial or revoked/expired grant is **non-retryable without new authority**; fail closed. A renewed grant starts a newly authorized attempt at the next protected boundary, not a replay under the old grant.
-- PDP timeout/unavailability can be *operationally* retryable after backoff, but the protected effect is **not allowed** while the decision is indeterminate. The exact public error name and retryability metadata need a separate catalog revision.
-- Mandatory audit persistence failure blocks a new protected commit; whether it is a storage-specific or explicit audit error needs a catalog decision. Do not return `PermissionDenied` for an infrastructure outage.
+- PDP timeout/unavailability can be *operationally* retryable after backoff, but the protected effect is **not allowed** while the decision is indeterminate. Candidate `PolicyDecisionUnavailable` is described in [ADR-0025](../adr/0025-security-infrastructure-errors.md) (Proposed, not yet a valid ErrorCode); internal bounded policy reevaluation must not authorize execution.
+- Mandatory audit persistence failure blocks a new protected commit; Candidate `AuditCommitUnavailable` is described in [ADR-0025](../adr/0025-security-infrastructure-errors.md) (Proposed); mandatory audit-intent failure blocks new protected state commit. Do not return `PermissionDenied` for an infrastructure outage.
 - An unknown already-dispatched external side effect remains `UnknownAcceptance`/reconciliation semantics; do not retry with a fresh idempotency key.
 - Unauthenticated/wrong-tenant/wrong-owner audit reads must not reveal object existence. Trace IDs are not authorization tokens.
 
