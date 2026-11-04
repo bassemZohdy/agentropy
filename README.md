@@ -53,7 +53,7 @@ Definitions, instances, tasks, and executions are separate persisted concepts. D
 | Profile | Required / default (see [Capability v1](docs/contracts/capability-v1.md)) | Optional additions |
 |---|---|---|
 | Conversational | Conversation, session context; delegation by default | Memory, tools, reasoning |
-| Task | Durable acceptance; notification by default | Scheduling, events, workflow, reasoning, human input |
+| Task | Durable execution; notification by default | Scheduling, events, workflow, reasoning, human input |
 | Monitoring | Event handling, durable execution; scheduling and notification by default | Delegation, reasoning |
 | Coordinator | Delegation, durable execution | Conversation, workflow, reasoning |
 | Specialist | Tool use by default | Reasoning, memory, conversation |
