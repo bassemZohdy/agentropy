@@ -50,6 +50,16 @@ Agents may invoke other agents, tools, workflow providers and external systems o
 - **Extensibility:** multiple PDP implementations and deployment strategies are allowed; provider capability and consistency limitations must be declared. Identity-provider protocols, OPA adoption, decision caching strategy and exact PDP/PEP interface signatures remain implementation choices.
 - **Policy precedence:** framework and tenant security floors cannot be weakened by agent profile, definition, instance, transport or capability overrides. Explicit policy grants govern exceptions, including any impersonation.
 
+## Accepted policy decision availability and caching (2026-11-04)
+
+- **Fail closed on PDP unavailability:** protected actions require a current trustworthy Allow decision. A PDP error, timeout, outage or indeterminate decision never becomes an implicit Allow. Sensitive operations are blocked; non-sensitive work may continue only where independently authorized.
+- **Preserve durable task state:** a policy infrastructure outage does not automatically cancel or fail an accepted durable task. Persist an explicit authorization/policy-waiting disposition where safe, expose operational visibility, and use bounded configurable retry/backoff and recovery. Do not retry external side effects blindly if prior execution status is unknown.
+- **Recovery:** before resuming a protected operation, re-evaluate effective policy and delegated authority, including expiry and revocation. Recovered execution cannot rely solely on the authorization snapshot pinned at task acceptance.
+- **Decision caching is optional and tightly scoped:** cache keys must bind principal/agent, tenant, delegated scope, action, resource and relevant policy version. Cache lifetime is bounded by the shortest applicable decision/grant expiry and by the deployed revocation-consistency guarantee.
+- **Revocation safety:** stale Allow entries must never be used to bypass revocation. Where timely revocation cannot be verified, deny or hold protected actions until current policy can be established. No availability-based bypass for privileged actions.
+- **Audit and diagnostics:** record policy-evaluation failures, waits, retries, recovery decisions and cache usage without logging credentials or confidential policy inputs. Timeouts, queue thresholds, wait durations and cache settings are configurable subject to non-weakening security floors.
+- **Deferred details:** precise PDP health checks, cache invalidation protocol, revocation freshness bounds and fail-closed error taxonomy are contract/implementation follow-ups rather than assumed guarantees.
+
 ## Boundaries and deferred implementation decisions
 
 - Select identity/token exchange standards and specific Keycloak or other IdP flows separately after threat modeling. This ADR does **not** claim that RFC 8693 token exchange or any specific Keycloak feature is available in the target environment.
