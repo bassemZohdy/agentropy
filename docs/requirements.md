@@ -79,3 +79,10 @@ The decisions in [ADR-0019](adr/0019-operational-and-communication-decisions.md)
 | R-15, R-38 | Trace context never authorizes access; independent unsampled security audit, redaction, retention floor, legal hold, tamper verification and controlled disposal |
 
 These are **accepted design constraints**, not claims that the v1 contract or runnable tests already implement them. Numeric retention durations, legal jurisdiction rules and specific IAM/audit/PDP providers are deferred. Failure, revocation and data-isolation tests must be added to the appropriate milestones before their security acceptance criteria can be considered complete.
+
+
+## Communication and configuration contract alignment (2026-11-04)
+
+- [Communication v1](contracts/communication-v1.md#logical-communication-families-and-v1-spi-coverage-adr-0019) maps the five A2A-inspired logical families to existing `delegate`, `send`, `getTask`, `cancel` and `subscribe` operations; generic inquiry/bidirectional streaming and discovery are optional future extensions, not v1 guarantees. Missing requested operations/guarantees must fail explicitly.
+- [Capability v1](contracts/capability-v1.md#effective-configuration-precedence-and-security-floors-adr-0019) defines framework → profile → definition → instance configuration order, immutable acceptance-time snapshot, dynamic revocation checks and mandatory floors. Task profile requires `durable-execution` irrespective of optional scheduling.
+- Protocol-specific A2A and remote interoperability conformance belongs to M2, while M1 proves declared direct-provider operations, typed unsupported responses and truthful durability. These clarifications are **documentation-only**, not implementation completion.
