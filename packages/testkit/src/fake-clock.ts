@@ -45,7 +45,8 @@ export class FakeClock {
       this.scheduled.sort((a, b) => a.dueAt - b.dueAt || a.id - b.id);
       const next = this.scheduled[0];
       if (!next || next.dueAt > epochMs) break;
-      if (++count > 10000) throw new RangeError('Too many callbacks in one advance');
+      if (++count > 10000)
+        throw new RangeError('Too many callbacks in one advance');
       this.scheduled.shift();
       this.timestamp = next.dueAt;
       next.callback();
