@@ -17,4 +17,4 @@ Profiles enable consistency and specialization while permitting mixed agent beha
 
 ## Open
 
-Review baseline required/default sets once real adapters are validated.
+Initial required/default/optional sets and the resolution order are defined in [Capability Contract v1](../contracts/capability-v1.md). Revisit the defaults based on adapter conformance results.
