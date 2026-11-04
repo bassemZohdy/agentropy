@@ -1,0 +1,37 @@
+name: generate-lockfile-once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/generate-lockfile.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.34.9'
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Generate real lockfile
+        run: pnpm install --lockfile-only --no-frozen-lockfile
+      - name: Verify frozen install
+        run: pnpm install --frozen-lockfile
+      - name: Commit generated lockfile
+        run: |
+          git add pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo 'Lockfile is unchanged'
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'build: lock pnpm dependencies'
+          git push origin HEAD:main
