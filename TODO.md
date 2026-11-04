@@ -45,6 +45,13 @@ The discussion's accepted operational choices are recorded in [ADR-0019](docs/ad
 - [ ] D-19 Specify PDP outage fail-closed behavior, durable policy-waiting recovery, bounded retries, cache scope and expiry, revocation freshness guarantees, audit signals and conformance tests (ADR-0021).
 - [ ] D-20 Define runtime revocation checkpoints, cooperative cancellation and outcome-state reporting for in-flight operations, authorized compensation for committed effects, audit and cross-provider conformance tests (ADR-0021).
 - [ ] D-21 Define independent AuditService/storage SPI, canonical mandatory security events, durable atomic/outbox recording and fail-closed policy, tamper-evidence verification, retention/tenant access and conformance tests (ADR-0021); defer concrete storage.
+- [ ] D-22 Reconcile accepted ADR-0022: audit permissions, tenant-isolated query/export, legal hold, retention floors, tamper-evidence anchors, verified disposal and audit-of-audit; define conformance tests and leave durations/backends deferred.
+- [ ] D-23 Complete the [security/governance closeout](docs/review/2026-11-04-security-governance-closeout.md): align ADR-0021 policy-waiting dispositions to the canonical lifecycle contract without inventing states; add authorization, audit atomicity, revocation, tenant isolation and A2A trust acceptance checks.
+- [ ] D-24 Resolve or explicitly defer proposed defaults (break-glass, operational quarantine, dual control, audit schema, privacy/data residency) without treating them as accepted security policy.
+
+## Security/Governance review closure
+
+Architecture direction reviewed in [security/governance closeout](docs/review/2026-11-04-security-governance-closeout.md); accepted audit access/retention policy in [ADR-0022](docs/adr/0022-security-audit-governance.md). This closes the **design discussion**, not the contract-alignment tasks or implementation readiness gate.
 
 ## Milestone 1 — Walking skeleton (single process, SQLite, offline CI)
 
