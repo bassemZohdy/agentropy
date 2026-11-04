@@ -28,5 +28,7 @@ jobs:
         run: pnpm lint
       - name: Smoke tests (no network calls)
         run: pnpm test
+      - name: DCO script unit tests
+        run: node --test scripts/check-dco.test.mjs
       - name: Formatting
         run: pnpm format:check
