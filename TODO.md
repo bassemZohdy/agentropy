@@ -12,7 +12,7 @@ Task IDs are stable (former X-/C- items now sit inside the milestone where they 
 - [ ] M0-02 Publish canonical Apache-2.0 LICENSE, DCO contribution guidance and choose code style; [ADR-0023](docs/adr/0023-license-and-contributions.md) accepted policy, repository setup outstanding.
 - [x] M0-03 Core contracts reconciled; example journeys (J1, J2) and full transition tables documented. *Executable tests move to M1-10.*
 - [x] M0-04 Capability contract, canonical capability catalog and profile resolution (design baseline).
-- [ ] M0-05 Trust-boundary note for M1 (principal derivation, tenant scoping, delegated grant narrowing) covering AC-09; full threat model → M2-09. Security closeout identifies tests and unresolved contract details; not yet signed off.
+- [x] M0-05 Trust-boundary M1 design signed off in [blueprint](docs/review/2026-11-04-m0-trust-boundaries.md) with [ADR-0024](docs/adr/0024-pre-dispatch-authorization-gate.md) activation gate; conformance stays M1/M2.
 - [x] M0-06 Approve first persistence, wake-up scheduler and event transport — [ADR-0017](docs/adr/0017-first-persistence-and-activation.md) accepted (SQLite/polling/in-process M1).
 - [x] M0-07 Minimum success scenario and measurable acceptance checks — [POC scope](docs/poc-scope.md).
 - [x] X-01 Review ADR-0008…0018 individually: [status reconciliation](docs/review/2026-11-04-adr-status-reconciliation.md) recorded; proposed mechanisms remain proposed pending separate validation.
@@ -50,7 +50,7 @@ The discussion's accepted operational choices are recorded in [ADR-0019](docs/ad
 - [ ] D-22 Reconcile accepted ADR-0022: audit permissions, tenant-isolated query/export, legal hold, retention floors, tamper-evidence anchors, verified disposal and audit-of-audit; define conformance tests and leave durations/backends deferred.
 - [x] D-23 Document the [security/governance closeout](docs/review/2026-11-04-security-governance-closeout.md) and add non-normative contract clarification for policy waiting, audit atomicity and candidate security checks; **implementation resolution and scope approval remain open**.
 - [ ] D-24 Resolve or explicitly defer proposed defaults (break-glass, operational quarantine, dual control, audit schema, privacy/data residency) without treating them as accepted security policy.
-- [ ] D-25 Review [ADR-0024 proposed pre-dispatch policy gate](docs/adr/0024-pre-dispatch-authorization-gate.md) against runtime contract, PDP/audit errors and SEC-01…SEC-07; accept/revise before M1 security signoff. No ad-hoc lifecycle state.
+- [ ] D-25 Finish concrete gate schema/error taxonomy and SEC-01…SEC-07 test scope for accepted [ADR-0024](docs/adr/0024-pre-dispatch-authorization-gate.md); design approved, executable conformance pending.
 - [ ] D-26 Close G0-01…G0-07 design gates in [PROJECT plan](docs/plans/PROJECT.md), reconcile approved security/profile requirements, and review the [todo-skills migration](docs/plans/TODO-SKILLS-MIGRATION.md) before any replacement of this TODO.
 - [ ] D-27 After readiness signoff, migrate backlog through todo-skills /todo-init and /todo-plan with exact runnable Done-when checks, <=120 active lines, verified ID crosswalk and unchanged unimplemented task statuses; keep future waves in plans.
 
@@ -113,5 +113,5 @@ Implementation and docs agree (contract revision-history row added when a contra
 
 ## Progress
 
-- Milestones complete: **0 / 4**. M0: **10 / 13** documented items complete; **3** remain (M0-02 code style and contribution checks (LICENSE/CONTRIBUTING added), M0-05 pre-dispatch trust/lifecycle signoff, M0-08 scaffold).
-- Roadmap checkboxes: **11 / 78** complete (**10 M0 decisions/reviews + D-23 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
+- Milestones complete: **0 / 4**. M0: **11 / 13** documented items complete; **2** remain (M0-02 code style and contributor checks, M0-08 scaffold).
+- Roadmap checkboxes: **12 / 78** complete (**11 M0 decisions/reviews + D-23 documentation alignment**). These are documentation/review completions only; **0 implementation milestones complete**.
