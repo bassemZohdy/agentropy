@@ -37,7 +37,7 @@ Produce an embeddable, provider-neutral Agentropy framework delivering the appro
 
 Accepted architecture direction: ADR-0019…0024, with ADR-0024's pre-dispatch eligibility gate retaining existing task states; TypeScript/Node.js/pnpm and SQLite/polling/in-process M1 in ADR-0016/0017; Apache-2.0/DCO and ESLint/Prettier as recorded in ADR-0023 and repository policy. None of these decisions proves a working implementation.
 
-Still open: concrete PDP/audit error taxonomy and gate field/race tests, final full contract/documentation consistency, executable offline M0 scaffold, and approved lossless TODO-to-todo-skills migration. Temporal + LangGraph TypeScript remains explicitly deferred. Earlier Proposed ADRs stay Proposed where provider-specific guarantees are untested.
+Still open: review [ADR-0025](../adr/0025-security-infrastructure-errors.md) candidate PDP/audit errors, gate field/race tests, final full contract/documentation consistency, executable offline M0 scaffold, and approved lossless TODO-to-todo-skills migration. Temporal + LangGraph TypeScript remains explicitly deferred. Earlier Proposed ADRs stay Proposed where provider-specific guarantees are untested.
 
 ### Mandatory readiness gates (complete BEFORE /todo-init migration)
 
