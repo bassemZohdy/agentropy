@@ -10,7 +10,7 @@ Task IDs are stable (former X-/C- items now sit inside the milestone where they 
 - [ ] M0-02 Select license, contribution policy (e.g. DCO) and code style. **Blocking.**
 - [x] M0-03 Core contracts reconciled; example journeys (J1, J2) and full transition tables documented. *Executable tests move to M1-10.*
 - [x] M0-04 Capability contract, canonical capability catalog and profile resolution (design baseline).
-- [ ] M0-05 Trust-boundary note for M1 (principal derivation, tenant scoping, delegated grant narrowing) covering AC-09; full threat model → M2-09.
+- [ ] M0-05 Trust-boundary note for M1 (principal derivation, tenant scoping, delegated grant narrowing) covering AC-09; full threat model → M2-09. Security closeout identifies tests and unresolved contract details; not yet signed off.
 - [ ] M0-06 Approve first persistence, wake-up scheduler and event transport — [ADR-0017](docs/adr/0017-first-persistence-and-activation.md) proposed.
 - [x] M0-07 Minimum success scenario and measurable acceptance checks — [POC scope](docs/poc-scope.md).
 - [ ] X-01 Accept or revise ADR-0008…0014 and ADR-0016…0018 as a set.
@@ -46,8 +46,9 @@ The discussion's accepted operational choices are recorded in [ADR-0019](docs/ad
 - [ ] D-20 Define runtime revocation checkpoints, cooperative cancellation and outcome-state reporting for in-flight operations, authorized compensation for committed effects, audit and cross-provider conformance tests (ADR-0021).
 - [ ] D-21 Define independent AuditService/storage SPI, canonical mandatory security events, durable atomic/outbox recording and fail-closed policy, tamper-evidence verification, retention/tenant access and conformance tests (ADR-0021); defer concrete storage.
 - [ ] D-22 Reconcile accepted ADR-0022: audit permissions, tenant-isolated query/export, legal hold, retention floors, tamper-evidence anchors, verified disposal and audit-of-audit; define conformance tests and leave durations/backends deferred.
-- [ ] D-23 Complete the [security/governance closeout](docs/review/2026-11-04-security-governance-closeout.md): align ADR-0021 policy-waiting dispositions to the canonical lifecycle contract without inventing states; add authorization, audit atomicity, revocation, tenant isolation and A2A trust acceptance checks.
+- [x] D-23 Document the [security/governance closeout](docs/review/2026-11-04-security-governance-closeout.md) and add non-normative contract clarification for policy waiting, audit atomicity and candidate security checks; **implementation resolution and scope approval remain open**.
 - [ ] D-24 Resolve or explicitly defer proposed defaults (break-glass, operational quarantine, dual control, audit schema, privacy/data residency) without treating them as accepted security policy.
+- [ ] D-25 Resolve pre-execution policy-wait scheduling for created/assigned tasks as a versioned lifecycle decision (no ad-hoc new state), plus PDP/audit error taxonomy and SEC-01…SEC-07 scope assignment before M1 acceptance.
 
 ## Security/Governance review closure
 
