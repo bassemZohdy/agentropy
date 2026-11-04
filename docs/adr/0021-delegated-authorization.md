@@ -70,6 +70,19 @@ Agents may invoke other agents, tools, workflow providers and external systems o
 - **Distributed limits:** internal, A2A and custom providers must declare cancellation support and limitations. Preserve unknown-outcome reconciliation and idempotency safeguards before retrying to avoid duplicate effects.
 - **Deferred implementation details:** exact cancellation signal APIs, compensation orchestration and revocation-event transport/consistency guarantees require contract-level validation.
 
+## Accepted security audit trail architecture (2026-11-04)
+
+- **Logical separation:** define an Audit Service/SPI distinct from OpenTelemetry tracing, metrics and diagnostic logs. Audit records are authoritative evidence of security-relevant decisions and actions, not sampled traces.
+- **Provider-neutral persistence:** expose a pluggable audit storage/sink contract. No specific database, immutable store, cloud service or vendor is mandated now.
+- **Canonical event envelope:** include event ID, schema/version, occurred-at time, initiating and acting principals, tenant, agent and task/execution identifiers where applicable, operation/resource/capability, delegated-authority provenance, policy decision/outcome, correlation/causation IDs and safe reason/status metadata. Classify and redact sensitive fields.
+- **Mandatory security events:** log authorization and delegation decisions, privileged capability/tool invocations, revocation and credential governance events (never credential values), task cancellation/security lifecycle changes, cross-tenant trust decisions, and confirmed/unknown outcomes of sensitive external operations. Additional low-criticality operational events may be asynchronous.
+- **Reliable critical audit:** a protected state-changing operation must not report committed success unless the corresponding mandatory audit intent is durably committed. Prefer atomic persistence in the state transaction when practical; otherwise use a transactionally committed outbox and reliable downstream delivery, idempotency and reconciliation. Never misrepresent remote sink acknowledgement as synchronous if only a local outbox commit is guaranteed.
+- **Fail-closed safety:** if the mandatory audit intent cannot be durably recorded, reject/hold the protected operation rather than proceeding unaudited. Reconcile uncertain side-effect outcomes; no system can retroactively undo an already committed external action.
+- **Tamper evidence:** auditing must support integrity verification, such as hash chaining or verifiable append-only/WORM-backed records. Define the trust anchor, access control and verification process during implementation; hashing alone does not prevent deletion or establish independent authenticity.
+- **Configuration and governance:** retention, encryption, export, tenant access and sink selection are configurable subject to minimum mandatory security requirements. Tenant isolation and least privilege apply to reading, writing, exporting and retention management. Mandatory event categories cannot be disabled by less-trusted scopes.
+- **Correlation without coupling:** use stable taskId/correlationId and other domain identifiers to correlate audit with OTel; traces and sampled telemetry are not a substitute for independently retained audit evidence.
+- **Deferred implementation:** choose audit backend, exact integrity construction, retention minima, schema versioning and verification cadence separately. No code or milestone execution is authorized by this decision.
+
 ## Boundaries and deferred implementation decisions
 
 - Select identity/token exchange standards and specific Keycloak or other IdP flows separately after threat modeling. This ADR does **not** claim that RFC 8693 token exchange or any specific Keycloak feature is available in the target environment.
