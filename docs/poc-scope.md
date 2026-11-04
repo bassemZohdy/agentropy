@@ -48,21 +48,21 @@ All checks run offline in CI with a fake clock, fake model and failure injection
 | AC-19 | Crash between transition commit and outbox publish: after restart the relay publishes the event once; consumers see it once | R-29 |
 | AC-20 | A monitoring task processes 150 events: checkpoint stays under the configured limit and only the last N execution records are kept | R-37 |
 
-## Security conformance extensions — proposed, not part of approved AC-01…AC-20
+## Mandatory M1 security acceptance extensions — approved scope (2026-11-04)
 
-The security design review found missing failure tests. These checks are **candidates for M1 basic security acceptance and M2 production-hardening**, and need explicit scope approval before making them mandatory exit gates:
+The design review identified security gaps. **SEC-01, SEC-02, SEC-03, SEC-04 and SEC-07 are now mandatory M1 exit checks**, in addition to AC-01…AC-20. SEC-05 and SEC-06 are deferred as full feature suites to M2/M3; minimal secret redaction and tenant isolation still apply in M1. Specific test file paths will be created with the real testkit (no invented runnable commands).
 
 | Candidate | Expected behavior | Likely milestone |
 |---|---|---|
-| SEC-01 | PDP unavailable/timeout: protected effect not dispatched, task remains recoverable via the canonical transition rules; after recovery authority rechecked | M1 basic / M2 robust |
-| SEC-02 | Grant revoked after acceptance: next protected operation denied; in-flight cancellation is best-effort and uncertain effects reconciled | M1 basic / M2 cross-provider |
-| SEC-03 | Mandatory audit intent write fails: no new protected state-changing operation reports committed success; relay crash/replay deduplicates audit delivery | M1 basic / M2 audit sink |
-| SEC-04 | Spoofed actor/tenant/trace headers cannot influence authorization; direct/remote adapters enforce equivalent PEP boundaries | M1 direct / M2 A2A |
+| SEC-01 | PDP unavailable/timeout: a created/assigned task retains durable gate state, no execution lease or protected side effect; after restart/recovery, authorized resume is guarded and auditable | **M1 mandatory**; resilience depth M2 |
+| SEC-02 | Grant revoked/expired after acceptance: next protected operation denied, durable task retained and resumed only with verified new authority; no reuse of stale Allow; in-flight effects are not falsely rolled back | **M1 mandatory**; cross-provider cancellation M2 |
+| SEC-03 | Mandatory audit intent write fails: protected state change does not commit/report success; crash after committed intent before publish is replayed safely with deduplication | **M1 mandatory**; independent sink M2 |
+| SEC-04 | Spoofed actor/tenant/trace claims have no authorization effect; trusted direct ingress and capability invocation enforce PEPs, tenant scope and default deny | **M1 mandatory direct**; remote A2A M2 |
 | SEC-05 | Audit read/export across tenants or without independent audit permission is denied without disclosure; legal hold blocks disposal; integrity verification detects tamper | M2 / M3 archive integrity |
 | SEC-06 | Missing/rotated credential blocks protected operation without persisting secrets or deleting the durable task; authorized refresh resumes safely | M2 |
-| SEC-07 | Human approver decision after grant expiry or task revision change fails without privilege extension | M1 basic / M2 |
+| SEC-07 | Human approval from expired/revoked authority or stale action/task revision is refused, with no duplicate protected side effects | **M1 mandatory**; remote approvals M2 |
 
-These tests must use fake policy/identity/audit/credential adapters, run offline, and not rely on a live OPA, Vault, Keycloak or A2A endpoint in M1. In particular, SEC-01 must **not** imply that `authorization-blocked` is a v1 lifecycle state; see the [runtime contract](runtime-contract.md#security-wait-and-policy-recovery--contract-alignment-note-2026-11-04). The original M1 scope and AC-01…AC-20 remain unchanged until a separate M0 decision approves additions.
+All five required tests run offline using fake policy/identity/audit providers and injected clock, without live OPA, Vault, Keycloak or A2A endpoints. SEC-01 uses the **accepted non-lifecycle eligibility gate** of [ADR-0024](adr/0024-pre-dispatch-authorization-gate.md), not an `authorization-blocked` task status. These tests must assert state, audit intent and safety outcomes; no conformance claim is made before executable tests pass. SEC-05 audit access/retention/integrity and SEC-06 credential rotation get full implementation in later milestones, while M1 still redacts secrets and prevents tenant leakage.
 
 ## Included components (thin)
 
@@ -89,4 +89,4 @@ Layout and tooling follow [ADR-0016](adr/0016-implementation-language.md) and [A
 
 ## Exit criteria
 
-All AC-01…AC-20 green in CI; examples runnable with one command; every contract document updated where the implementation forced a change (with a revision-history row); a short retrospective recorded in the [review folder](review/) listing contract changes for M2.
+All AC-01…AC-20 plus SEC-01, SEC-02, SEC-03, SEC-04, and SEC-07 green in offline CI; examples runnable with one command; every contract document updated where the implementation forced a change (with a revision-history row); a short retrospective recorded in the [review folder](review/) listing contract changes for M2.
