@@ -24,7 +24,7 @@ DCO text and explanation: https://developercertificate.org/
 
 ## Test and formatting policy
 
-The implementation/tooling choice is [ADR-0016](docs/adr/0016-implementation-language.md). Concrete test commands and the formatter are **not available yet** because M0-08 scaffold is outstanding. Do not claim that tests passed or invent a `pnpm test` target until it is present in package scripts and CI. Once established, every PR must pass targeted verification, the full regression suite and the todo-skills backlog lint as applicable.
+The M0-08 workspace now has `pnpm build`, `pnpm lint`, `pnpm test`, and `pnpm format:check` scripts under [ADR-0016](docs/adr/0016-implementation-language.md). Run them on the supported Node.js LTS with pnpm installed; [CI](.github/workflows/ci.yml) validates the scaffold. Existing tests are **smoke checks only**—they do not prove Agentropy's domain contracts or resilience. Pull requests must also satisfy the [DCO workflow](.github/workflows/dco.yml). The future todo-skills backlog lint becomes mandatory only after the legacy roadmap has been migrated and the skill is installed.
 
 ## Backlog workflow
 
