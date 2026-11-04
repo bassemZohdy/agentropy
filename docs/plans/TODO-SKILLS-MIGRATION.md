@@ -5,6 +5,10 @@
 - Source: legacy [TODO.md](../../TODO.md)
 - Target standard: [todo-skills](https://github.com/bassemZohdy/todo-skills), `skills/todo/SKILL.md` and `skills/todo-plan/SKILL.md`.
 
+## Verified legacy crosswalk
+
+The [80-task ID crosswalk](TODO-ID-CROSSWALK.md) preserves all currently visible legacy IDs, their open/completed state and source group (17 completed, 63 open at source SHA). **It is a snapshot, not a migrated todo-skills tree**; refresh differences before activation.
+
 ## Preservation policy
 
 Retain source IDs forever as provenance. At migration, generate a machine-readable ID crosswalk or Markdown table and verify that each M0/M1/M2/M3/D-/C-/X- item appears exactly once in either an active small leaf, a parent, a deferred milestone plan, or the archive, with its original status preserved. Do not assign completed status to work represented only by an accepted ADR.
