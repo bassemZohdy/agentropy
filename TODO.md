@@ -20,6 +20,21 @@ Task IDs are stable (former X-/C- items now sit inside the milestone where they 
 - [x] C-01 Communication v1 reconciled with Agent v1 (outbound SPI, call context, route binding).
 - [ ] M0-08 Repository scaffold per ADR-0016: workspace, CI (lint, typecheck, test, offline), package skeletons, contribution docs.
 
+## Accepted architecture decisions — 2026-11-04 (documentation follow-up only)
+
+The discussion's accepted operational choices are recorded in [ADR-0019](docs/adr/0019-operational-and-communication-decisions.md). This **does not start M0 or M1**; outstanding implementation/tooling and persistence decisions remain open.
+
+- [ ] D-01 Reconcile TaskAgent durability-required / scheduling-optional and MonitoringAgent scheduling-default in profiles, requirements and capability conformance.
+- [ ] D-02 Reconcile protocol-independent communication contract against five A2A-inspired logical families (message, stream, task, inquiry, subscription/event); document extension negotiation, provider-support errors and optional discovery/context continuation.
+- [ ] D-03 Integrate central governance policy contracts and operational lifecycle (suspend, drain, retire, cancelTask), including interruption/checkpoint limitations.
+- [ ] D-04 Document provider outage recovery, bounded retries, state retention and compatibility-gated migration/failover.
+- [ ] D-05 Document configurable concurrency/queue/timeouts/retries/quotas, measurable metrics and post-POC SLO selection.
+- [ ] D-06 Document configuration precedence (framework → profile → definition → instance), security floors, acceptance-time snapshot and live revocation checks.
+- [ ] D-07 Reconcile immutable version pinning, explicit audited migration, rollback and retirement constraints with ADR-0013.
+- [ ] D-08 Document agent owner/share vs task ownership, user-level task isolation, strict tenant boundaries and explicit cross-tenant A2A grants.
+- [ ] D-09 Retain Temporal–LangGraph TypeScript integration as an explicitly deferred decision; treat Codex collaboration and model-verification as optional non-core extensions.
+- [ ] D-10 Add contract/conformance acceptance checks for the above before implementation, and review statuses of related older ADRs.
+
 ## Milestone 1 — Walking skeleton (single process, SQLite, offline CI)
 
 Exit: all AC-01…AC-20 green ([POC scope](docs/poc-scope.md#exit-criteria)).
