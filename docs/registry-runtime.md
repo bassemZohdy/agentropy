@@ -24,19 +24,20 @@ interface AgentInstanceDirectory {
 }
 
 interface AgentPool {
-  acquire(request: ExecutionRequest): Promise<ExecutionLease>;
-  release(leaseId: string): Promise<void>;
+  acquire(request: ExecutionRequest): Promise<ExecutionLease>;   // lease carries a fencing epoch
+  renew(leaseId: string, epoch: number): Promise<ExecutionLease>;
+  release(leaseId: string, epoch: number): Promise<void>;
 }
 
+/** Internal to the platform; the public API is AgentService (agent-v1.md). */
 interface AgentRuntime {
-  start(task: DelegatedTask): Promise<ExecutionHandle>;
-  suspend(executionId: string): Promise<void>;
-  resume(executionId: string): Promise<void>;
-  cancel(executionId: string): Promise<void>;
+  activate(taskId: string, trigger: "delegation" | "resume" | "retry"): Promise<ExecutionId>;
+  requestCancel(taskId: string, reason?: string): Promise<void>;
+  fireWakeup(registrationId: string): Promise<void>;   // idempotent; consumes the registration once
 }
 ```
 
-Names are illustrative and referenced interfaces have not yet been implemented.
+Names are illustrative and not implemented. Revision 2: executions are no longer suspended/resumed — each activation is a new execution ([ADR-0018](adr/0018-execution-per-activation.md)); instance suspension is an AgentService operation.
 
 ## Pool and lease safety
 

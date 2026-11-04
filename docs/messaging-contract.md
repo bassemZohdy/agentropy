@@ -1,13 +1,13 @@
 # Agent collaboration and messaging contracts
 
-**Status: proposed design**, informed by langgraph-flows' transport-neutral command/query/event model. Agentropy-specific fields and semantics below require contract-test validation.
+**Status: proposed design, revision 2 (2026-11-04)**, informed by langgraph-flows' transport-neutral command/query/event model. Revision 2 fixes the retry rule to match [Agent v1](contracts/agent-v1.md), makes agent fields optional for non-agent messages, and adds the `TaskEvent` shape. Errors: [Errors v1](contracts/errors-v1.md).
 
 ## Invariants
 
 - Communication is **async-first**: acceptance creates or references a durable DelegatedTask when durability is requested; completion occurs separately.
 - Typed **commands** mutate state, **queries** read state, and **events** report authoritative changes. All transports implement the same envelope/authorization rules.
 - Conversation agents invoke the delegation/task service; they do not own worker queues, state transitions or provider histories.
-- Task and execution are distinct. A retry creates a new Execution attempt (or a new Task if retrying a terminal task is prohibited by the chosen lifecycle); never silently reopens a terminal task.
+- Task and execution are distinct. Recovery of a non-terminal task creates a new Execution; an explicit `retry` of a terminal task creates a **new task** linked by `retryOf`. Terminal tasks are never reopened ([runtime contract](runtime-contract.md)).
 - Duplicate messages are expected: compare idempotency keys with immutable command fingerprints. The same key with a different payload is a conflict, not an accepted retry.
 - Consumers handle out-of-order events using entity revision, event ID and reconciliation. No exactly-once external side effects are promised.
 - Support direct/in-process, persistent outbox, or broker transports as **adapters**, not foundational business semantics.
@@ -25,8 +25,8 @@ interface AgentMessage<T = unknown> {
   causationId?: string;
   idempotencyKey?: string; // mandatory for mutating commands
   tenantId: string;
-  agentDefinitionId: string;
-  agentDefinitionVersion: string;
+  agentDefinitionId?: string;        // required when the message targets or originates from an agent
+  agentDefinitionVersion?: string;
   agentInstanceId?: string;
   taskId?: string;
   parentTaskId?: string;
@@ -37,15 +37,33 @@ interface AgentMessage<T = unknown> {
 }
 ```
 
+Lifecycle events share one payload shape:
+
+```ts
+interface TaskEvent {
+  eventId: string;
+  taskId: string;
+  revision: number;            // task revision AFTER the transition; consumers drop revision <= last seen
+  type: "taskAccepted" | "taskAssigned" | "taskStarted" | "taskWaiting" | "taskCompleted"
+      | "taskFailed" | "taskCancelled" | "taskCancelRequested" | "humanActionRequested"
+      | "humanActionResolved" | "agentProgressUpdated";
+  status: TaskSnapshot["status"];
+  occurredAt: string;
+  data?: unknown;              // e.g. progress message, waitingOn, outcome
+}
+```
+
+`agentProgressUpdated` does not change `status` and reuses the current revision with a per-revision sequence number.
+
 The sending-side actor field is evidence of **claimed** identity, not proof. Trusted gateways/services must derive or verify principals and delegation grants, and reject tenant/actor spoofing.
 
 ## Minimum command/query/event catalog
 
 | Class | Examples | Contract notes |
 |---|---|---|
-| Command | delegateTask, cancelTask, provideHumanInput, claimHumanAction, pauseTask, resumeTask | Authorized, idempotent, versioned, applied by trusted service/runtime |
+| Command | delegateTask, cancelTask, provideHumanInput, claimHumanAction, suspendInstance, resumeInstance (task pause/resume is not in v1) | Authorized, idempotent, versioned, applied by trusted service/runtime |
 | Query | discoverAgents, getTask, listAgentTasks, getResult, listInbox | Read authorization; stale/active result is explicit |
-| Event | taskAccepted, taskStarted, taskWaiting, humanActionRequested, taskCompleted, taskFailed, taskCancelled, agentProgressUpdated | Immutable event ID, task revision, causation, authenticated producer and replay support |
+| Event | See `TaskEvent.type` above | Immutable event ID, task revision, causation, authenticated producer and replay support |
 
 Future direct agent-to-agent RPC or federation must not bypass this contract and its authorization checks.
 

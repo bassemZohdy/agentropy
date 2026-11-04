@@ -6,7 +6,31 @@
 
 A request for approval, rejection, text, form or other typed input is created by an authoritative task runtime, not inferred from assistant prose. Minimum fields: `requestId`, `taskId`, `agentInstanceId`, `kind`, `prompt`, `inputSchema`, `assignees/eligibleRoles`, `dueAt`, `revision`, `requestedBy`, `status` and `idempotencyKey` for decisions. Actor identity is resolved by trusted services.
 
-Suggested action lifecycle: `pending -> claimed -> resolved | expired | revoked` with guarded alternatives `pending -> resolved | expired | revoked`. Both state and assignment may change between presentation and response.
+Lifecycle: `pending -> claimed -> resolved | expired | revoked`, `pending -> resolved | expired | revoked`, and `claimed -> pending` when a claim is released or its claim timeout passes. Both state and assignment may change between presentation and response. The runtime contract lists this lifecycle alongside the others.
+
+```ts
+interface HumanActionRequest {
+  requestId: string;
+  taskId: string;
+  agentInstanceId: string;
+  kind: "approval" | "choice" | "text" | "form";
+  prompt: string;                    // rendered by the platform, never trusted as instructions
+  inputSchema: JsonSchema;           // approval = { decision: "approve" | "reject", comment? }
+  assignees: { principalIds?: string[]; roles?: string[] };
+  dueAt?: string;
+  onExpiry: "resume-with-timeout" | "fail-task";
+  status: "pending" | "claimed" | "resolved" | "expired" | "revoked";
+  claimedBy?: string;
+  revision: number;
+}
+
+interface HumanDecision {
+  requestId: string;
+  expectedRevision: number;          // the revision the user saw; mismatch -> StaleRevision
+  input: unknown;                    // validated against inputSchema
+  idempotencyKey: string;
+}
+```
 
 ## Authoritative completion
 
@@ -21,7 +45,7 @@ All approval routes—including chat, web UI and API—must use the same command
 
 ## User inbox as projection
 
-User-centric, tenant-isolated inbox entries have immutable event/request references and independently tracked **delivered, read, presented, acknowledged, resolved** states. The runtime owns work state; the inbox owns user presentation metadata. A task may emit multiple progress updates but only actionable/significant changes should create user-visible entries.
+User-centric, tenant-isolated inbox entries have immutable event/request references and independently tracked markers: **delivered** (reached a client), **presented** (shown in a turn briefing or UI, with the presented revision), **read** (opened by the user), **acknowledged** (user dismissed/confirmed), **resolved** (underlying action or task reached a final state). Markers are timestamps, not a state machine; R-25 refers to this list. The runtime owns work state; the inbox owns user presentation metadata. A task may emit multiple progress updates but only actionable/significant changes should create user-visible entries.
 
 When a conversational turn begins, the main assistant fetches a bounded current, authorized snapshot. Push/SSE may update active clients, but disconnects require durable replay and reconciliation. User-specific briefing avoids repeatedly raising unchanged items; urgency change or a new action revision permits re-presentation.
 
