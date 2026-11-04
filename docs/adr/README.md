@@ -30,7 +30,7 @@ ADRs capture architectural direction separately from implementation status. **Ac
 | [0021](0021-delegated-authorization.md) | Delegation, credentials, policy and security audit | Accepted (baseline) |
 | [0022](0022-security-audit-governance.md) | Audit access, retention, legal hold and integrity | Accepted (baseline) |
 | [0023](0023-license-and-contributions.md) | Apache-2.0 license and DCO policy | Accepted |
-| [0024](0024-pre-dispatch-authorization-gate.md) | Durable pre-dispatch eligibility gate without new task states | Proposed |
+| [0024](0024-pre-dispatch-authorization-gate.md) | Durable pre-dispatch eligibility gate without new task states | Accepted (design) |
 
 Use numbered Markdown files and record context, decision, consequences and open questions. Amend the ADR or supersede it with a new one when substantial direction changes.
 
