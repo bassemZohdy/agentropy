@@ -17,7 +17,12 @@ flowchart TB
   Profiles --> Providers[Providers: Workflow, LLM, Tools, Scheduler, Events, Memory]
   Runtime --> Inbox[Durable Inbox / Outcome Events]
   Inbox --> Conversation
-  Runtime --> Telemetry[Audit / Traces / Metrics]
+  Runtime --> PEP[Policy Enforcement Points]
+  PEP --> PDP[Pluggable Policy Decision Provider]
+  Runtime --> Audit[Mandatory Security Audit Intent / Outbox]
+  Runtime --> Telemetry[OpenTelemetry Traces / Metrics / Logs]
+  Runtime --> Gate[Durable Activation Eligibility Gate]
+  Gate --> State
 ```
 
 ## Responsibilities
@@ -32,6 +37,10 @@ flowchart TB
 | Capability resolver | Required/default/optional composition, dependency validation | Security exceptions or silent downgraded guarantees |
 | Providers | Specific workflow, events, scheduling, model, memory, tools | Definition identity and collaboration policy |
 | Inbox | Durable reports, approval requests, notifications and acknowledgement | All agent execution state |
+| Governance PEPs/PDP | Mandatory policy enforcement and pluggable decision evaluation across protected operations | Task lifecycle state ownership or identity inferred from messages |
+| Credential provider | Just-in-time scoped credential resolution and rotation (later adapters) | Secrets in snapshots/checkpoints/messages |
+| Audit service | Independent durable mandatory security evidence, verification and retention policies | Sampled tracing or task orchestration |
+| Observability provider | Correlated OpenTelemetry spans, metrics and redacted diagnostic logs | Security audit authority or permissions |
 
 ## Call layering
 
@@ -67,10 +76,18 @@ The baseline collaboration contract is **asynchronous-first**: a successful dele
 
 The shared inbox is a **projection** of relevant task events: a durable event/outbox boundary and reconciliation with task state repair missed or duplicated publication. Persistent agent identity and task obligations survive conversation disconnects. Runtime-specific workflow histories remain internal to providers; LangGraph/Temporal integration is optional. These patterns are adapted from [langgraph-flows](reuse-from-langgraph-flows.md), not copied as a Flow-first runtime.
 
+## Security, audit and observability overlays
+
+Authorization is evaluated through mandatory framework PEP boundaries, with a pluggable PDP and verified actor/tenant/delegated authority. An unavailable PDP denies protected effects without automatically deleting an accepted durable task. [ADR-0024](adr/0024-pre-dispatch-authorization-gate.md) keeps `created` / `assigned` task states and defers activation with a durable non-lifecycle eligibility gate until current policy can be checked; the gate is not a new task state. The [runtime contract](runtime-contract.md) remains authoritative for actual state transitions.
+
+Credentials are resolved through a pluggable CredentialProvider, with opaque tenant-scoped references instead of tokens in persistent agent/task state. Mandatory security audit intent is committed in the protected change transaction or via a transactional outbox; remote sink acknowledgement may be asynchronous. Audit access, retention and integrity follow [ADR-0022](adr/0022-security-audit-governance.md). OpenTelemetry remains a separate, optional exporter path with W3C context propagation where carrier-compatible and **never provides identity or authorization**; see [ADR-0020](adr/0020-opentelemetry-observability.md).
+
+The five [logical communication families](contracts/communication-v1.md#logical-communication-families-and-v1-spi-coverage-adr-0019) describe protocol-neutral behavior and are **not five guaranteed v1 SPI endpoints**. General bidirectional streaming, generic inquiry and discovery extensions must be negotiated and may remain unsupported in M1; remote A2A interoperability is M2.
+
 ## Critical boundaries
 
 User-facing agency must not depend on adding additional conversational personas. Provider failures must not silently break agent lifecycle guarantees. On resumption, idempotency keys must protect external side effects; recoverability is a property of the complete state/event/provider chain, not an in-memory boolean flag.
 
 ## Explicit open design questions
 
-Proposed answers for the first implementation are in [ADR-0016](adr/0016-implementation-language.md) (language/tooling), [ADR-0017](adr/0017-first-persistence-and-activation.md) (storage, scheduler, event transport) and [ADR-0018](adr/0018-execution-per-activation.md) (execution model); they await approval. The A2A SDK/version, production storage and deployment topology remain undecided. Candidate integrations include LangGraph, Temporal and Quarkus Flow as **optional providers**, not framework dependencies. Their supported guarantees require integration tests before any adapter is described as production ready.
+M1 implementation baseline decisions are accepted in [ADR-0016](adr/0016-implementation-language.md) (TypeScript/Node.js/ESM/pnpm), [ADR-0017](adr/0017-first-persistence-and-activation.md) (SQLite/polling/in-process event bus) and [ADR-0024](adr/0024-pre-dispatch-authorization-gate.md) (policy eligibility gate). [ADR-0018](adr/0018-execution-per-activation.md) remains Proposed at its own status, despite the runtime contract using its one-execution-per-activation model. The A2A SDK/version, production storage and deployment topology remain undecided. Candidate integrations include LangGraph, Temporal and Quarkus Flow as **optional providers**, not framework dependencies. Their supported guarantees require integration tests before any adapter is described as production ready.
