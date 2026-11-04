@@ -101,4 +101,4 @@ Keep the core contracts small; prefer composition over inheritance and provider 
 
 ## Status and contributions
 
-Design phase; the next step is the [walking skeleton](docs/poc-scope.md) once ADR-0016 (language) and the license are decided. No API stability or production readiness claims are made. See [TODO.md](TODO.md) for milestones and [ADRs](docs/adr/README.md) for accepted design directions and open decisions. Licensing and contribution policy are not yet selected.
+Design phase; ADR-0016 and ADR-0017 establish the M1 TypeScript/SQLite baseline, and Agentropy is [Apache-2.0 licensed](LICENSE) with [DCO contribution guidance](CONTRIBUTING.md). The [walking skeleton](docs/poc-scope.md) cannot start until M0 security/lifecycle signoff, code-style/tooling setup and scaffold readiness are complete. No API stability or production readiness claims are made. See [TODO.md](TODO.md) for the current gates and [ADRs](docs/adr/README.md) for accepted vs proposed decisions.
