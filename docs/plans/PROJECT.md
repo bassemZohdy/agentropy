@@ -41,7 +41,7 @@ Already accepted: ADR-0019…0022 design directions and earlier unambiguous arch
 
 | Gate | Required evidence | Status |
 |---|---|---|
-| G0-01 Architecture consistency | Task profile durability contradiction reconciled in ADR-0019/profile catalog/README; **policy wait pre-dispatch behavior** and routing/security invariants remain | PARTIAL |
+| G0-01 Architecture consistency | Task durability contract reconciled; pre-dispatch eligibility gate accepted in ADR-0024; detailed races/route conformance remain test work | PARTIAL |
 | G0-02 Requirements completeness | Stable traceable requirements and acceptance criteria covering communication families, failures, audit, tenant isolation, credentials and configuration precedence; no fake v1 claims | OPEN |
 | G0-03 ADR review | Individual ADR-0008…0018 dispositions recorded; proposals with unresolved implementation mechanisms remain proposed | PARTIAL |
 | G0-04 Technology/tooling | ADR-0016/0017 accepted for M1 and ADR-0023 Apache-2.0/DCO policy accepted; canonical license/contribution files and style/scaffold pending | PARTIAL |
