@@ -17,6 +17,8 @@ This project follows a human-readable changelog. Release versions will be introd
 - Added ADRs 0010–0014 as proposed decisions and expanded architecture/requirements/roadmap references.
 - No source code or external runtime dependency was copied.
 
+- Finalized initial Agent v1 and Capability v1 architecture contracts covering profile resolution, agent identity, lifecycle ownership, provider guarantees, authorization, version pinning and conformance criteria.
+
 ### Notes
 
 Architecture and conceptual APIs are **not an implementation or production-ready release**.
