@@ -12,6 +12,11 @@ This project follows a human-readable changelog. Release versions will be introd
 - Nine architecture decision records (seven accepted design directions, two proposed).
 - Milestone-based implementation roadmap.
 
+- Reviewed [langgraph-flows](https://github.com/bassemZohdy/langgraph-flows) architecture and selectively adapted lifecycle, messaging, inbox, priority, authorization, human actions, versioning and testing requirements.
+- Added the cross-project reuse assessment, task runtime contract, agent messaging contract, and human-action/proactive-policy documentation.
+- Added ADRs 0010–0014 as proposed decisions and expanded architecture/requirements/roadmap references.
+- No source code or external runtime dependency was copied.
+
 ### Notes
 
 Architecture and conceptual APIs are **not an implementation or production-ready release**.
