@@ -23,8 +23,10 @@
     - Done when: telemetry suite passes; `pnpm exec vitest run packages/testkit/test/telemetry.test.ts`
   - [x] **FEAT-027.7** · high · Tenant isolation and quotas, and the full threat model for identity flows (M2-09, M2-11)
     - Done when: tenancy and quota suite passes and the threat model is recorded; `pnpm exec vitest run packages/testkit/test/tenancy.test.ts`
-  - [ ] **FEAT-027.8** · high · A2A provider (outbound and inbound, remote task mapping, authorization) and a custom broker/RPC provider sample (C-03, C-04)
+  - [x] **FEAT-027.8** · high · A2A provider (outbound and inbound, remote task mapping, authorization) and a custom broker/RPC provider sample (C-03, C-04)
     - Done when: A2A and custom-provider conformance passes offline; `pnpm exec vitest run packages/testkit/test/a2a.test.ts`
+  - [ ] **FEAT-027.9** · mid · Remote targets in delegation.delegate: TaskService routes endpoint targets through the CommunicationRouter with local projection tasks kept in sync with the remote task
+    - Done when: remote delegation suite passes offline; `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
 - [ ] **FEAT-028** · P2 · high · M3: extensibility, PostgreSQL, multi-worker, upgrades and production hardening
   - Done when: M3 plan items verified by their suites; `pnpm check`
   - Links: Ref: docs/plans/M2-M3-PLAN.md#m3 · Depends: FEAT-027 · Lane: ops

@@ -49,8 +49,8 @@
 | TM-24 | F7 audit and telemetry | T | Malicious trace header pollutes telemetry | Strict `traceparent` validation; rejects counted; payloads never in spans | `packages/testkit/test/telemetry.test.ts` |
 | TM-25 | F7 audit and telemetry | R | Protected change committed without audit | Audit intent in the same transaction; failure aborts (`AuditCommitUnavailable`) | `packages/testkit/test/security.test.ts` |
 | TM-26 | B3 policy point | D | Policy outage lets work through | Fail closed; dispatch gate with bounded retries; failures never cached | `packages/testkit/test/security.test.ts` |
-| TM-27 | F8 remote A2A peers | S | Remote peer impersonates a tenant or agent | planned (FEAT-027.8): peer identity from transport authentication, mapped to a service principal; same PEP as local delegation | planned (FEAT-027.8) |
-| TM-28 | F8 remote A2A peers | E | Remote task result escalates local authority | planned (FEAT-027.8): remote results are data; no grant crosses the boundary unnarrowed | planned (FEAT-027.8) |
+| TM-27 | F8 remote A2A peers | S | Remote peer impersonates a tenant or agent | Peer identity comes only from transport authentication (unauthenticated → 401); inbound A2A calls go through the same AgentService PEPs and the local policy | `packages/testkit/test/a2a.test.ts` |
+| TM-28 | F8 remote A2A peers | E | Local authority leaks to, or is escalated by, a peer | Outbound calls carry only this runtime's credential; no grant reference or caller identity is sent; remote results and errors are data mapped to typed codes | `packages/testkit/test/a2a.test.ts` |
 
 ## Residual risks (accepted for M2)
 

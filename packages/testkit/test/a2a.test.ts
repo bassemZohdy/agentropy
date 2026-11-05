@@ -1,0 +1,380 @@
+// FEAT-027.8: A2A provider (C-03) pinned to A2A 1.0 JSON-RPC, and a custom broker/RPC provider sample (C-04).
+// Both run the shared Communication conformance suite offline; the A2A transport is a fake fetch into an in-process
+// A2A server. Threat-model rows TM-27/TM-28 are verified here.
+import {
+  BUILTIN_PROFILES,
+  type AgentDefinition,
+  type AgentRef,
+  type TrustedPrincipal,
+} from '@agentropy/core';
+import { describe, expect, it } from 'vitest';
+import {
+  BrokerCommunicationProvider,
+  InMemoryBroker,
+  serveOnBroker,
+} from '../../examples/src/broker-provider.js';
+import {
+  A2ACommunicationProvider,
+  A2A_PROTOCOL_VERSION,
+  DefaultCommunicationRouter,
+  a2aAgentCard,
+  createA2AServer,
+  createLocalApp,
+  localAppTarget,
+  type A2AServer,
+} from '../../runtime/src/index.js';
+import { code, sqliteTempStore } from '../../runtime/test/harness.js';
+import {
+  FakeClock,
+  FakeDirectTarget,
+  FakePolicy,
+  defineCommunicationConformance,
+} from '../src/index.js';
+
+const caller: TrustedPrincipal = {
+  id: 'svc-a',
+  type: 'service',
+  tenantId: 't-1',
+};
+
+/** Fake HTTP: bearer token → principal (the transport's authentication), then the A2A server. */
+function transport(
+  server: A2AServer,
+  tokens: Record<string, TrustedPrincipal>,
+) {
+  const seen: { headers: Record<string, string>; body: string }[] = [];
+  const fetch = async (
+    _url: string,
+    init: { headers: Record<string, string>; body: string },
+  ) => {
+    seen.push({ headers: init.headers, body: init.body });
+    const token = init.headers.authorization?.replace(/^Bearer /, '');
+    const principal = token ? tokens[token] : undefined;
+    const res = await server.handle(JSON.parse(init.body), principal, {
+      'a2a-version': init.headers['a2a-version'],
+    });
+    return { status: res.status, json: async () => res.body };
+  };
+  return { fetch, seen };
+}
+
+const credentials = (token: string) => ({
+  resolve: async () => ({ token }),
+});
+
+defineCommunicationConformance({ describe, it, expect }, 'a2a', () => {
+  const fake = new FakeDirectTarget();
+  const { fetch } = transport(createA2AServer(fake), { 'tok-a': caller });
+  const provider = new A2ACommunicationProvider({
+    fetch,
+    credentialRef: 'peer-b',
+    credentials: credentials('tok-a'),
+    maxPolls: 0,
+    now: () => '2026-11-05T00:00:00.000Z',
+  });
+  const router = new DefaultCommunicationRouter();
+  router.register(provider);
+  const target: AgentRef = {
+    definitionId: 'worker',
+    version: '1.0.0',
+    tenantId: 't-1',
+    endpoint: 'https://peer-b.example/a2a',
+  };
+  return { router, provider, target, caller, received: () => fake.received };
+});
+
+defineCommunicationConformance(
+  { describe, it, expect },
+  'custom broker sample',
+  () => {
+    const fake = new FakeDirectTarget();
+    const broker = new InMemoryBroker();
+    serveOnBroker(broker, 'agents.t-1.worker', fake);
+    const provider = new BrokerCommunicationProvider(
+      broker,
+      (t) => `agents.${t.tenantId}.${t.definitionId}`,
+      () => '2026-11-05T00:00:00.000Z',
+    );
+    const router = new DefaultCommunicationRouter();
+    router.register(provider);
+    return {
+      router,
+      provider,
+      target: {
+        definitionId: 'worker',
+        version: '1.0.0',
+        tenantId: 't-1',
+        endpoint: 'broker:agents',
+      },
+      caller,
+      received: () => fake.received,
+    };
+  },
+);
+
+const def = (id: string): AgentDefinition => ({
+  id,
+  version: '1.0.0',
+  displayName: id,
+  profile: { id: 'task', version: '1.0.0' },
+  implementation: {
+    providerId: 'native-ts',
+    providerVersion: '1.0.0',
+    artifact: { id, version: '1.0.0' },
+  },
+  inputSchema: true,
+  runtimeRequirements: { guarantees: [] },
+  policyRef: { id: 'default', version: '1.0.0' },
+});
+
+describe('A2A end to end between two Agentropy runtimes', () => {
+  async function peers() {
+    // Runtime B exposes bob's "summarizer" over A2A; runtime A calls it as service "svc-a".
+    const pdpB = new FakePolicy();
+    const b = createLocalApp({
+      store: sqliteTempStore(),
+      pdp: pdpB,
+      now: new FakeClock('2026-11-05T00:00:00.000Z').iso,
+      profiles: BUILTIN_PROFILES,
+    });
+    b.define(def('summarizer'), {
+      handle: async (inv) => ({
+        kind: 'completed',
+        output: { summary: `summary of ${(inv.input as { doc: string }).doc}` },
+      }),
+    });
+    const bob: TrustedPrincipal = { id: 'bob', type: 'user', tenantId: 't-1' };
+    const inst = await b.createInstance(
+      {
+        definition: { id: 'summarizer', version: '1.0.0' },
+        ownerId: 'bob',
+        idempotencyKey: 's',
+      },
+      bob,
+    );
+    const server = createA2AServer(localAppTarget(b), { instanceId: inst.id });
+    const { fetch, seen } = transport(server, { 'tok-a': caller });
+    const a2a = new A2ACommunicationProvider({
+      fetch,
+      credentialRef: 'peer-b',
+      credentials: credentials('tok-a'),
+      maxPolls: 0,
+    });
+    const router = new DefaultCommunicationRouter();
+    router.register(a2a);
+    const target: AgentRef = {
+      definitionId: 'summarizer',
+      tenantId: 't-1',
+      endpoint: 'https://b.example/a2a',
+    };
+    const ctx = {
+      caller: { ...caller, delegatedAuthorityRef: 'g-local-secret' },
+      correlationId: 'c-1',
+    };
+    const route = await router.selectRoute(target, 'delegate', ctx);
+    return { b, server, seen, a2a, route, ctx, pdpB };
+  }
+
+  it('SendMessage creates a remote task that B runs; GetTask maps its state; the remote result is authoritative', async () => {
+    const p = await peers();
+    const ref = await p.a2a.delegate(
+      p.route,
+      {
+        target: {},
+        input: { doc: 'q3-report' },
+        idempotencyKey: 'msg-1',
+        correlationId: 'c-1',
+      },
+      p.ctx,
+    );
+    expect(ref.localTaskId).toBe(`a2a:${ref.remoteTaskId}`);
+    expect((await p.a2a.getTask(ref, p.ctx)).remoteState).toBe(
+      'TASK_STATE_SUBMITTED',
+    );
+    await p.b.runUntilIdle();
+    const state = await p.a2a.getTask(ref, p.ctx);
+    expect(state).toMatchObject({
+      remoteState: 'TASK_STATE_COMPLETED',
+      normalized: 'completed',
+    });
+    const raw = await p.server.handle(
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'GetTask',
+        params: { id: ref.remoteTaskId },
+      },
+      caller,
+      { 'a2a-version': A2A_PROTOCOL_VERSION },
+    );
+    expect((raw.body.result as { artifacts: unknown }).artifacts).toEqual([
+      {
+        artifactId: `${ref.remoteTaskId}:output`,
+        parts: [
+          {
+            text: JSON.stringify({ summary: 'summary of q3-report' }),
+            mediaType: 'application/json',
+          },
+        ],
+      },
+    ]);
+    // Redelivery of the same message ID maps to the same remote task.
+    const again = await p.a2a.delegate(
+      p.route,
+      {
+        target: {},
+        input: { doc: 'q3-report' },
+        idempotencyKey: 'msg-1',
+        correlationId: 'c-1',
+      },
+      p.ctx,
+    );
+    expect(again.remoteTaskId).toBe(ref.remoteTaskId);
+  });
+
+  it('TM-27: the peer is identified by transport authentication; B’s own policy decides; unauthenticated calls get 401', async () => {
+    const p = await peers();
+    p.pdpB.denied.add('delegation:delegate');
+    expect(
+      await code(
+        p.a2a.delegate(
+          p.route,
+          {
+            target: {},
+            input: { doc: 'x' },
+            idempotencyKey: 'm2',
+            correlationId: 'c',
+          },
+          p.ctx,
+        ),
+      ),
+    ).toBe('PermissionDenied');
+    const anonymous = await p.server.handle(
+      { jsonrpc: '2.0', id: 1, method: 'GetTask', params: { id: 'x' } },
+      undefined,
+    );
+    expect(anonymous.status).toBe(401);
+    const noCred = new A2ACommunicationProvider({
+      fetch: transport(p.server, {}).fetch,
+    });
+    expect(
+      await code(
+        noCred.delegate(
+          p.route,
+          { target: {}, input: {}, idempotencyKey: 'm3', correlationId: 'c' },
+          p.ctx,
+        ),
+      ),
+    ).toBe('AuthorityExpired');
+  });
+
+  it('TM-28: no local grant or caller identity crosses the boundary; remote errors map to typed codes', async () => {
+    const p = await peers();
+    await p.a2a.delegate(
+      p.route,
+      {
+        target: {},
+        input: { doc: 'x' },
+        idempotencyKey: 'm4',
+        correlationId: 'c',
+      },
+      p.ctx,
+    );
+    const wire = JSON.stringify(p.seen);
+    expect(wire).not.toContain('g-local-secret');
+    expect(p.seen[0]!.headers['a2a-version']).toBe('1.0');
+    expect(JSON.parse(p.seen[0]!.body)).toMatchObject({
+      jsonrpc: '2.0',
+      method: 'SendMessage',
+      params: {
+        message: { role: 'ROLE_USER', messageId: 'm4', contextId: 'c' },
+      },
+    });
+    expect(
+      await code(
+        p.a2a.getTask(
+          { route: p.route, localTaskId: 'a2a:nope', remoteTaskId: 'nope' },
+          p.ctx,
+        ),
+      ),
+    ).toBe('NotFound');
+  });
+
+  it('protocol rules: version negotiation, unknown methods, task continuation and content types', async () => {
+    const p = await peers();
+    const call = (body: unknown, version?: string) =>
+      p.server.handle(body, caller, version ? { 'a2a-version': version } : {});
+    expect(
+      (
+        await call(
+          { jsonrpc: '2.0', id: 1, method: 'GetTask', params: { id: 'x' } },
+          '0.3',
+        )
+      ).body.error?.code,
+    ).toBe(-32009);
+    expect(
+      (await call({ jsonrpc: '2.0', id: 1, method: 'ListTasks', params: {} }))
+        .body.error?.code,
+    ).toBe(-32601);
+    expect(
+      (
+        await call({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'SendMessage',
+          params: {
+            message: {
+              role: 'ROLE_USER',
+              messageId: 'm',
+              taskId: 'existing',
+              parts: [{ text: 'more' }],
+            },
+          },
+        })
+      ).body.error?.code,
+    ).toBe(-32004);
+    expect(
+      (
+        await call({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'SendMessage',
+          params: {
+            message: {
+              role: 'ROLE_USER',
+              messageId: 'm',
+              parts: [{ text: 'x', mediaType: 'image/png' }],
+            },
+          },
+        })
+      ).body.error?.code,
+    ).toBe(-32005);
+    expect((await call({ id: 1, method: 'GetTask' })).body.error?.code).toBe(
+      -32600,
+    );
+  });
+
+  it('publishes an AgentCard describing the JSON-RPC interface and protocol version', () => {
+    expect(
+      a2aAgentCard({
+        name: 'Summarizer',
+        description: 'Summarizes documents',
+        version: '1.0.0',
+        url: 'https://b.example/a2a',
+        securitySchemes: {
+          bearer: { httpAuthSecurityScheme: { scheme: 'Bearer' } },
+        },
+        security: [{ bearer: [] }],
+      }),
+    ).toMatchObject({
+      supportedInterfaces: [
+        {
+          url: 'https://b.example/a2a',
+          protocolBinding: 'JSONRPC',
+          protocolVersion: '1.0',
+        },
+      ],
+      capabilities: { streaming: false, pushNotifications: false },
+    });
+  });
+});
