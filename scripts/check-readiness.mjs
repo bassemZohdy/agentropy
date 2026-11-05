@@ -69,6 +69,33 @@ for (const [id, status] of legacy) {
 for (const id of seen.keys()) if (!legacy.has(id)) fail(`crosswalk: ${id} is not a legacy ID`);
 if (legacy.size === 0) fail('archive: no legacy IDs parsed');
 
+// 3b: design follow-up resolution ledger (TASK-026.1)
+{
+  const doc = read('docs/plans/DESIGN-FOLLOWUPS.md');
+  const [items, ledger = ''] = doc.split('## Resolution ledger');
+  const itemIds = [...items.matchAll(/^\| `([A-Z]-\d+)` \| /gm)].map((m) => m[1]);
+  const rows = new Map();
+  for (const m of ledger.matchAll(/^\| `([A-Z]-\d+)` \| (closed|partial|open|deferred) \| ([^|]+) \| ([^|]+) \|$/gm)) {
+    if (rows.has(m[1])) fail(`follow-ups: ${m[1]} appears twice in the resolution ledger`);
+    rows.set(m[1], { status: m[2], evidence: m[3].trim(), owner: m[4].trim() });
+  }
+  if (!ledger) fail('DESIGN-FOLLOWUPS.md: missing "Resolution ledger" section');
+  for (const id of itemIds) {
+    const r = rows.get(id);
+    if (!r) { fail(`follow-ups: ${id} has no resolution row`); continue; }
+    if ((r.status === 'closed' || r.status === 'partial') && !existsSync(r.evidence))
+      fail(`follow-ups: ${id} is ${r.status} but evidence ${r.evidence} does not exist`);
+    if (r.status === 'closed' && r.owner !== '—') fail(`follow-ups: closed ${id} must not name a remaining owner`);
+    if (r.status !== 'closed') {
+      const owner = r.owner.split('.')[0];
+      if (r.owner !== 'Deferred' && !rootExists(owner) && !rootExists(r.owner))
+        fail(`follow-ups: ${id} names owner ${r.owner}, which is not in TODO.md or CHANGELOG.md`);
+    }
+  }
+  for (const id of rows.keys()) if (!itemIds.includes(id)) fail(`follow-ups: ledger row ${id} is not a follow-up item`);
+  if (itemIds.length === 0) fail('DESIGN-FOLLOWUPS.md: no follow-up items parsed');
+}
+
 // 4: contract revision headers
 for (const file of readdirSync('docs/contracts')) {
   const text = read(join('docs/contracts', file));
