@@ -79,7 +79,7 @@ async function run(provider: 'native-ts' | 'pure-fn', name: string) {
   const t = await h.delegate((await h.instance('agent')).id, { n: 21 }, 'k');
   for (let i = 0; i < 3; i++) {
     await h.runtime.runUntilIdle();
-    h.clock.advance(5_000);
+    h.clock.advanceBy(5_000);
   }
   const snap = await h.tasks.getTask(t.taskId, alice);
   const execs = (

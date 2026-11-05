@@ -92,7 +92,7 @@ let harnessRun = 0;
 
 export function harness(o: HarnessOptions = {}) {
   const run = ++harnessRun;
-  const clock = new FakeClock();
+  const clock = new FakeClock('2026-11-05T00:00:00.000Z');
   const store = o.store ?? sqliteTempStore();
   const pdp = new FakePolicy();
   const grants = new FakeGrants();
@@ -110,7 +110,7 @@ export function harness(o: HarnessOptions = {}) {
     instances,
     pdp,
     grants,
-    now: clock.now,
+    now: clock.iso,
     newId: (kind) => `${kind}-${run}-${++ids}`,
     ...(o.limits ? { limits: o.limits } : {}),
     acceptance: {
@@ -125,7 +125,7 @@ export function harness(o: HarnessOptions = {}) {
       toolProviderRegistered: () => false,
       skillVersions: () => [],
       pdp,
-      now: clock.now,
+      now: clock.iso,
     },
   });
   const wakeups = new WakeupService(tasks, instances);

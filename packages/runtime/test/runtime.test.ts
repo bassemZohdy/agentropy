@@ -39,7 +39,7 @@ describe('lease loss and fencing (AC-06, R-08)', () => {
       capabilityProviders: new Map([[h.cap.id, h.cap]]),
       leaseMs: 1_000,
     });
-    h.clock.advance(1_001);
+    h.clock.advanceBy(1_001);
     await restarted.runUntilIdle();
     expect(await h.tasks.getResult(t.taskId, alice)).toEqual({ attempt: 2 });
     expect(await executions(h, t.taskId)).toEqual([
@@ -135,9 +135,9 @@ describe('dispositions and retries (runtime contract T4/T6/T7/T8)', () => {
     const t = await h.delegate((await h.instance('retry')).id, {}, 'k');
     await h.runtime.runUntilIdle();
     expect(await status(h, t.taskId)).toBe('assigned'); // attempt 2 waits for its backoff
-    h.clock.advance(1_000);
+    h.clock.advanceBy(1_000);
     await h.runtime.runUntilIdle();
-    h.clock.advance(2_000);
+    h.clock.advanceBy(2_000);
     await h.runtime.runUntilIdle();
     expect(await h.tasks.getResult(t.taskId, alice)).toBe(3);
     expect(await executions(h, t.taskId)).toEqual([
@@ -255,7 +255,7 @@ describe('CapabilityAccess (AC-16 invocation part, step keys)', () => {
     );
     await h.delegate((await h.instance('caller')).id, {}, 'k');
     await h.runtime.runUntilIdle();
-    h.clock.advance(1_000);
+    h.clock.advanceBy(1_000);
     await h.runtime.runUntilIdle();
     expect(outcomes.slice(0, 3)).toEqual([
       'CapabilityNotDeclared',

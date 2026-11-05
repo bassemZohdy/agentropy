@@ -49,7 +49,7 @@ describe('timer, schedule and timeout wake-ups', () => {
     const t = await h.delegate((await h.instance('sleeper')).id, {}, 'k');
     await settle(h);
     expect(await status(h, t.taskId)).toBe('waiting');
-    h.clock.advance(60 * 60 * 1000);
+    h.clock.advanceBy(60 * 60 * 1000);
     await settle(h);
     expect(await h.tasks.getResult(t.taskId, alice)).toEqual({
       activation: 2,
@@ -82,7 +82,7 @@ describe('timer, schedule and timeout wake-ups', () => {
     const a = await h.delegate((await h.instance('strict')).id, {}, 'a');
     const b = await h.delegate((await h.instance('lenient')).id, {}, 'b');
     await settle(h);
-    h.clock.advance(10 * 60 * 1000);
+    h.clock.advanceBy(10 * 60 * 1000);
     await settle(h);
     expect((await h.tasks.getTask(a.taskId, alice)).outcome?.code).toBe(
       'Timeout',
@@ -122,10 +122,10 @@ describe('timer, schedule and timeout wake-ups', () => {
     const t = await h.delegate((await h.instance('cron')).id, {}, 'k');
     const u = await h.delegate((await h.instance('tz')).id, {}, 'u');
     await settle(h);
-    h.clock.advance(9 * 60 * 60 * 1000 + 29 * 60 * 1000);
+    h.clock.advanceBy(9 * 60 * 60 * 1000 + 29 * 60 * 1000);
     await settle(h);
     expect(await status(h, t.taskId)).toBe('waiting');
-    h.clock.advance(60 * 1000);
+    h.clock.advanceBy(60 * 1000);
     await settle(h);
     expect(await h.tasks.getResult(t.taskId, alice)).toEqual({
       kind: 'schedule',
@@ -376,7 +376,7 @@ describe('child-task waits (AC-12, R-05)', () => {
     );
     const t = await h.delegate((await h.instance('coord')).id, {}, 'k');
     await settle(h);
-    h.clock.advance(5_000);
+    h.clock.advanceBy(5_000);
     await settle(h);
     const children = await h.store.transaction((tx) =>
       tx.find('tasks', { where: { parentTaskId: t.taskId } }),
@@ -405,7 +405,7 @@ describe('deferral and restart', () => {
     const t = await h.delegate(inst.id, {}, 'k');
     await settle(h);
     await h.instances.suspend(inst.id, alice);
-    h.clock.advance(120_000);
+    h.clock.advanceBy(120_000);
     await settle(h);
     expect(await status(h, t.taskId)).toBe('waiting');
     await h.instances.resume(inst.id, alice);

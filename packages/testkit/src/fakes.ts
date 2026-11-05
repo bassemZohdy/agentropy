@@ -1,4 +1,4 @@
-/** Deterministic offline fakes (M1-10): clock, policy decision point, audit writer, grant verifier. */
+/** Deterministic offline fakes (M1-10): policy decision point, audit writer, grant verifier. The clock is in fake-clock.ts. */
 import type {
   AuditEvent,
   AuditIntentWriter,
@@ -6,18 +6,6 @@ import type {
   PolicyDecisionPoint,
   PolicyRequest,
 } from '@agentropy/core';
-
-export class FakeClock {
-  private ms: number;
-  constructor(start = '2026-11-05T00:00:00.000Z') {
-    this.ms = Date.parse(start);
-  }
-  now = (): string => new Date(this.ms).toISOString();
-  advance(ms: number): string {
-    this.ms += ms;
-    return this.now();
-  }
-}
 
 export class FakePolicy implements PolicyDecisionPoint {
   readonly denied = new Set<string>();
