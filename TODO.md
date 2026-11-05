@@ -119,3 +119,12 @@ Implementation and docs agree (contract revision-history row added when a contra
 
 - Milestones complete: **0 / 4** by final-readiness signoff. M0 checklist: **13 / 13** tasks completed (minimal scaffold verified); final design signoff, lockfile and DCO PR validation remain tracked separately.
 - Roadmap checkboxes: **18 / 80** complete (**13 M0 decisions/scaffold tasks + D-02, D-06, D-23, D-25 documentation alignment**). M0-08 has a verified smoke-tested scaffold only; **no M1 agent runtime implementation** has started.
+
+## 2026-11-05 — News-driven design follow-ups (not implementation completion)
+
+The following clarifications reuse ADR-0021 and existing R-IDs; they do not change the accepted TypeScript/A2A/provider-neutral baseline or override G0 readiness gates.
+
+- [ ] N-01 (P0 design / security lane) Align R-09/R-27 and ADR-0021 with explicit MCP/plugin discovery → verified registration → approved activation → invocation checkpoints; specify permissions for install/update/startup hooks and audit events. **Done when:** approved contract matrix covers internal/A2A/custom calls, revocation and PDP-failure denial; proposed SEC tests mapped to the existing M1 security gate.
+- [ ] N-02 (P1 execution isolation / runtime + testkit) Specify logical task/tenant isolation versus provider sandbox guarantees; add tests for simultaneous task execution, workspace/credential boundaries, lease expiry and retry contamination. **Done when:** isolation levels, explicit unsupported errors, and milestone-specific runnable conformance are approved; no false production sandbox claim.
+- [ ] N-03 (P2 exploratory / reasoning) Evaluate task-aware model routing under R-35 with cost, latency, quality, residency and policy constraints, keeping fallback vendor-neutral. **Done when:** offline benchmark matrix, security floors, fallback semantics and weighted tradeoffs are documented; no M1 implementation dependency.
+- [ ] N-04 (readiness / docs) Trace N-01…N-03 into requirements, architecture, ADR, acceptance and todo-skills migration crosswalk before scheduling. **Done when:** G0-02/G0-07 review explicitly accepts scope and no existing tasks are silently marked complete.
