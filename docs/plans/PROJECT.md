@@ -57,7 +57,7 @@ No gate is marked closed merely because a proposal was written.
 
 **Wave 0 / readiness:** M0 scaffold exists and passed build/lint/smoke tests; close remaining G0-02/G0-07 review, reproducible lockfile, DCO PR validation and lossless todo-skills migration. Preserve `TODO.md` as the canonical legacy roadmap until migration is confirmed. See [first-wave tasks](FIRST-WAVE.md) and [the staged todo-skills active tree](TODO-SKILLS-ACTIVE-PROPOSAL.md).
 
-**Wave 1 / M1 walking skeleton:**
+**Wave 1 / M1 walking skeleton** (progress in [Status 2026-11-05](#status-2026-11-05)):
 
 1. `ops`: approved pnpm/TS/Node project structure, offline CI, test command and source scaffolding.
 2. `contracts` + `testkit`: versioned JSON schemas, error codes, lifecycle tables, agent/capability contracts, fake clock/provider & contract fixtures.
@@ -70,6 +70,24 @@ No gate is marked closed merely because a proposal was written.
 **Wave 2 / M2:** A2A inbound/outbound, remote ownership, delegated cross-trust authentication, policy/tenant isolation, worker recovery, OTel, monitoring scale and real reasoning adapter. Prove declared provider guarantees.
 
 **Wave 3 / M3:** compatibility matrices and alternative providers, audited upgrades/migration, Postgres, Kubernetes/OpenShift and air-gapped deployment, benchmarks/SLOs and integrity verification.
+
+## Status 2026-11-05
+
+Live queue: [TODO.md](../../TODO.md). Verified work: `CHANGELOG.md` `[Unreleased]`. Acceptance evidence: [acceptance-matrix.json](acceptance-matrix.json) (15 of 31 criteria verified by drained roots).
+
+| Wave 1 step | Lane | Roots | Status |
+|---|---|---|---|
+| 1. Project structure, offline CI, test command | ops | M0-08, D-28 | Done |
+| 2. Schemas, errors, lifecycle tables, contracts, fakes | contracts, testkit | FEAT-011, FEAT-012, FEAT-013, FEAT-022.1 | Done |
+| 3. SQLite store, task service, CAS, leases, retries, checkpoints, wake-up registrations | runtime | FEAT-016, FEAT-017, FEAT-018 | Done |
+| 4. Effect journal, outbox/inbox, audit intent on sensitive effects | runtime, security | FEAT-019, FEAT-022.2 | Open — audit intent exists for tools/skills only |
+| 5. Router/direct provider, delegation, conversation/briefing, human approvals | collaboration | FEAT-021 (done), FEAT-019, FEAT-020 | Partly done — router and delegation done; briefing and approvals open |
+| 6. J1, J2, AC-01…AC-20, SEC-01/02/03/04/07 | testkit | FEAT-022.2–.4, TASK-023 | Open |
+| 7. M1 exit gate and retrospective | contracts | TASK-024 | Open |
+
+Also delivered outside the original wave list: tool registry/executor (FEAT-014), Agent Skills loader (FEAT-015). Blocked: TASK-025 (DCO run on real pull requests, owner action). Not started: TASK-026, FEAT-027 (M2), FEAT-028 (M3). Next in order: FEAT-019 → FEAT-020 → FEAT-022.2/.3/.4 → TASK-023 → TASK-024. M1 exit criteria are **not** met.
+
+Feature branches `feat/core-error-contract`, `feat/testkit-fake-clock`, `feat/testkit-fake-model` and `feat/testkit-fault-injector` were merged into `main` by TASK-029; they remain on the remote until the owner deletes them.
 
 ## Todo-skills activation / compatibility
 
@@ -107,4 +125,5 @@ See [M0-DECISION-REVIEW](M0-DECISION-REVIEW.md) for the accepted M1 decisions an
 ## Revisions
 
 - 2026-11-04: Initial staged execution plan based on existing architecture, TODO and todo-skills constraints. No implementation or TODO format migration.
-- 2026-11-05: Gates closed, legacy TODO archived and migrated (TASK-010). Lanes unchanged; roots FEAT-011…FEAT-028 in TODO.md. Historical sections above are kept as written.
+- 2026-11-05: Gates closed, legacy TODO archived and migrated (TASK-010).
+- 2026-11-05: Status table added after FEAT-011…FEAT-018/FEAT-021 and the TASK-029 branch merge. Lanes unchanged; roots FEAT-011…FEAT-028 in TODO.md. Historical sections above are kept as written.

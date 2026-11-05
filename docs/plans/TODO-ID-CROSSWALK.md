@@ -203,3 +203,22 @@ A destination root is the todo-skills root that delivers (or, for TASK-026, reso
 | `A-02` | open | FEAT-017 |
 | `A-03` | open | FEAT-012 |
 | `A-04` | open | FEAT-022 |
+
+## Delivery status (2026-11-05)
+
+Legacy items whose destination root is now drained to `CHANGELOG.md` with passing `Done when` commands. The legacy status column above stays as the migration snapshot; this list is the current delivery view.
+
+| Legacy ID | Delivered by | Note |
+|---|---|---|
+| `D-10`, `D-26`, `D-27`, `N-04` | TASK-010 | Readiness signoff, acceptance matrix, todo-skills migration |
+| `M1-01`, `A-01`, `S-01` | FEAT-011 | Contract types, schemas, error catalog, transition tables |
+| `M1-02`, `A-03`, `D-01` | FEAT-012 | Capability/implementation/tool/skill resolution |
+| `M1-03` | FEAT-013 | Registry, discovery, instance directory |
+| `T-01`, `T-02`, `T-03`, `N-01` | FEAT-014 | Direct and loopback adapters only; MCP/UTCP/REST not implemented |
+| `S-02`, `S-03`, `S-04` | FEAT-015 | Filesystem source; script execution unsupported |
+| `M1-06` | FEAT-016 | SQLite single-process store |
+| `M1-11` | FEAT-021 | Direct provider and router conformance |
+| `M1-04`, `M1-05`, `A-02` | FEAT-017 | AgentService facade (inbox, human actions, turns) still open |
+| `M1-08` | FEAT-018 | UTC-only schedules |
+
+Partly delivered, root still open: `M1-10` / `A-04` (FEAT-022 — fakes done in FEAT-022.1). All other open legacy IDs remain open.
