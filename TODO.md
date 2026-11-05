@@ -2,15 +2,6 @@
 
 ## 🌳 Task Tree
 
-- [ ] **FEAT-011** · P0 · mid · Core contract package: error catalog, transition tables, types and JSON Schemas (M1-01, A-01, S-01)
-  - Done when: catalog, tables and schemas tested; `pnpm exec vitest run packages/core/test`
-  - Links: Ref: docs/contracts/agent-v1.md · Depends: TASK-010 · Lane: contracts
-  - [ ] **FEAT-011.1** · low · Error catalog and AgentropyError with redacted serialization
-    - Done when: every catalog row is implemented; `pnpm exec vitest run packages/core/test/errors.test.ts`
-  - [ ] **FEAT-011.2** · mid · Task/execution/instance/human-action transition tables as data with edge guard
-    - Done when: listed edges allowed, all others InvalidState; `pnpm exec vitest run packages/core/test/lifecycle.test.ts`
-  - [ ] **FEAT-011.3** · mid · Contract types and JSON Schemas for AgentDefinition, selections, tool and skill metadata
-    - Done when: valid/invalid fixtures validated; `pnpm exec vitest run packages/core/test/schemas.test.ts`
 - [ ] **FEAT-012** · P0 · high · Pure acceptance resolver: capability catalog/profiles, implementation, tools, skills (M1-02, A-03, D-01)
   - Done when: AC-16 resolver cases and acceptance snapshot pass; `pnpm exec vitest run packages/core/test/resolver.test.ts packages/core/test/acceptance.test.ts`
   - Links: Ref: docs/contracts/capability-v1.md#resolution-algorithm-authoritative-ordering · Depends: FEAT-011 · Lane: contracts

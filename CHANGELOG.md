@@ -4,6 +4,10 @@ This project follows a human-readable changelog. Release versions will be introd
 
 ## [Unreleased]
 
+### Added
+
+- **FEAT-011** (feat): Core contract package: error catalog, transition tables, types and JSON Schemas (M1-01, A-01, S-01). Ref: docs/contracts/agent-v1.md. Validated: `pnpm exec vitest run packages/core/test`. Includes: FEAT-011.1, FEAT-011.2, FEAT-011.3.
+
 ### Changed
 
 - **TASK-010** (docs): Close architecture readiness: reconcile contracts, sign off gates, migrate the backlog (D-10, D-26, D-27, N-04). Ref: docs/review/2026-11-05-readiness-signoff.md. Validated: `node scripts/check-readiness.mjs`. Docs: updated README.md, docs/contracts/agent-v1.md, docs/contracts/capability-v1.md, docs/contracts/communication-v1.md, docs/contracts/errors-v1.md, docs/contracts/agent-implementation-v1.md, docs/contracts/tool-v1.md, docs/contracts/skill-v1.md, docs/contracts/security-v1.md, docs/adr/0027-m1-setup-choices.md, docs/adr/README.md, docs/runtime-contract.md, docs/poc-scope.md, docs/plans/PROJECT.md, docs/review/2026-11-05-readiness-signoff.md. Includes: TASK-010.1, TASK-010.2.
