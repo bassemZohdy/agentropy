@@ -132,6 +132,7 @@ export class AgentRuntime {
 
   /** Recover expired leases, then lease due executions up to the free pool capacity. Returns how many started. */
   async tick(): Promise<number> {
+    await this.renewLeases();
     await this.recoverExpiredLeases();
     await this.o.relay?.drain();
     const free = this.o.poolSize - this.running.size;
@@ -169,6 +170,28 @@ export class AgentRuntime {
       started++;
     }
     return started;
+  }
+
+  /**
+   * Lease heartbeat (M2-01): extend the lease of every execution this pool is still running, so another worker
+   * sharing the store does not recover it as lost while it makes progress. Fenced by state and epoch.
+   */
+  async renewLeases(): Promise<number> {
+    if (!this.running.size) return 0;
+    const ids = [...this.running.keys()];
+    return this.store.transaction(async (tx) => {
+      let renewed = 0;
+      for (const id of ids) {
+        const e = await tx.get<StoredExecution>('executions', id);
+        if (!e || e.value.state !== 'running') continue;
+        await tx.update<StoredExecution>('executions', id, e.revision, {
+          ...e.value,
+          leaseExpiresAt: addMs(this.now(), this.o.leaseMs),
+        });
+        renewed++;
+      }
+      return renewed;
+    });
   }
 
   /** Wait for every in-flight execution to settle. */

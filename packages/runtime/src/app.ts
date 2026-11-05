@@ -91,6 +91,8 @@ export interface LocalAppOptions {
   >;
   limits?: { maxDepth?: number; maxFanOut?: number };
   faults?: FaultHook;
+  /** Unconsumed events kept per subscription before back-pressure drops (default 1000). */
+  mailboxLimit?: number;
   /** Briefing policy, per-user preferences and urgent push (M2-04). */
   inbox?: {
     policy?: PriorityPolicy;
@@ -202,6 +204,11 @@ export interface LocalApp {
     presentedRevision?: number,
   ): Promise<void>;
   reauthorize(taskId: string, caller: TrustedPrincipal): Promise<void>;
+  /** Operator compaction of consumed and expired runtime records (trusted services only). */
+  compact(
+    retainMs: number,
+    caller: TrustedPrincipal,
+  ): Promise<Awaited<ReturnType<WakeupService['compact']>>>;
   /** Operator reconciliation: re-project the inbox from committed events (trusted services only). */
   rebuildInbox(caller: TrustedPrincipal): Promise<{ created: number }>;
 
@@ -259,7 +266,9 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
       now,
     },
   });
-  const wakeups = new WakeupService(tasks, instances);
+  const wakeups = new WakeupService(tasks, instances, {
+    ...(o.mailboxLimit ? { mailboxLimit: o.mailboxLimit } : {}),
+  });
   const inbox = new InboxService(tasks, {
     ...(o.inbox?.policy ? { policy: o.inbox.policy } : {}),
     ...(o.inbox?.preferences ? { preferences: o.inbox.preferences } : {}),
@@ -397,6 +406,14 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     listInbox: (q, c) => inbox.list(q, c),
     markInbox: (id, m, c, rev) => inbox.mark(id, m, c, rev),
     reauthorize: (id, c) => tasks.reauthorize(id, c),
+    async compact(retainMs, caller) {
+      if (caller?.type !== 'service')
+        throw new AgentropyError(
+          'PermissionDenied',
+          'Compaction is an operator action',
+        );
+      return wakeups.compact(retainMs);
+    },
     async rebuildInbox(caller) {
       if (caller?.type !== 'service')
         throw new AgentropyError(

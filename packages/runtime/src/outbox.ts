@@ -170,6 +170,13 @@ export class TaskEventStream implements EventConsumer {
             r.value.sequence === 0 && isTerminal(TASK_MACHINE, r.value.status),
         );
         if (terminal && !isAfter(terminal.value, last)) return;
+        // Events of a long-finished task may have been compacted away: stop instead of waiting forever.
+        if (!terminal) {
+          const t = await this.tasks.o.store.transaction((tx) =>
+            tx.get<{ status: string }>('tasks', taskId),
+          );
+          if (t && isTerminal(TASK_MACHINE, t.value.status as never)) return;
+        }
         await signal.promise;
         signal = this.signal(taskId);
       }

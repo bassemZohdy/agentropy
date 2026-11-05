@@ -35,6 +35,9 @@ export interface Subscription {
   source: string;
   filter?: Record<string, unknown>;
   status: 'active' | 'revoked';
+  /** Events not appended because the mailbox was full (back-pressure). */
+  dropped?: number;
+  lastDroppedEventId?: string;
 }
 
 export interface MailboxEntry {
@@ -54,12 +57,27 @@ const matches = (
     ([k, v]) => (payload as Record<string, unknown> | null)?.[k] === v,
   );
 
+export interface WakeupServiceOptions {
+  /** Unconsumed events kept per subscription; further events are dropped and counted (default 1000). */
+  mailboxLimit?: number;
+}
+
+export interface OfferResult {
+  /** False for a duplicate inbound event ID (already recorded). */
+  accepted: boolean;
+  /** Subscriptions the event was appended to. */
+  appended: number;
+  /** Subscriptions whose mailbox was full (back-pressure: the event was not appended there). */
+  dropped: number;
+}
+
 export class WakeupService {
   private readonly sweeps: (() => Promise<unknown>)[] = [];
 
   constructor(
     private readonly tasks: TaskService,
     private readonly instances: InstanceDirectory,
+    private readonly options: WakeupServiceOptions = {},
   ) {}
 
   /** Work run at the start of every poll, e.g. human-action expiry, so due state changes are seen by this poll. */
@@ -128,8 +146,24 @@ export class WakeupService {
     tenantId: string;
     payload: unknown;
   }): Promise<boolean> {
-    const fresh = await this.store.transaction(async (tx) => {
-      if (await tx.get('inboundEvents', event.eventId)) return false;
+    return (await this.offer(event)).accepted;
+  }
+
+  /**
+   * `publish` with back-pressure detail (M2-01): a subscription whose mailbox already holds `mailboxLimit`
+   * unconsumed events does not receive the event; the drop is counted on the subscription.
+   */
+  async offer(event: {
+    eventId: string;
+    source: string;
+    tenantId: string;
+    payload: unknown;
+  }): Promise<OfferResult> {
+    const limit = this.options.mailboxLimit ?? 1000;
+    const result = await this.store.transaction(async (tx) => {
+      const r: OfferResult = { accepted: false, appended: 0, dropped: 0 };
+      if (await tx.get('inboundEvents', event.eventId)) return r;
+      r.accepted = true;
       await tx.insert('inboundEvents', event.eventId, {
         source: event.source,
         tenantId: event.tenantId,
@@ -143,6 +177,18 @@ export class WakeupService {
           !matches(s.value.filter, event.payload)
         )
           continue;
+        const pending = await tx.find<MailboxEntry>('mailbox', {
+          where: { subscriptionId: s.id, consumed: 0 },
+        });
+        if (pending.length >= limit) {
+          await tx.update<Subscription>('subscriptions', s.id, s.revision, {
+            ...s.value,
+            dropped: (s.value.dropped ?? 0) + 1,
+            lastDroppedEventId: event.eventId,
+          });
+          r.dropped++;
+          continue;
+        }
         await tx.insert<MailboxEntry>('mailbox', `${s.id}:${event.eventId}`, {
           taskId: s.value.taskId,
           subscriptionId: s.id,
@@ -150,11 +196,63 @@ export class WakeupService {
           payload: event.payload,
           consumed: 0,
         });
+        r.appended++;
       }
-      return true;
+      return r;
     });
-    if (fresh) await this.poll();
-    return fresh;
+    if (result.accepted) await this.poll();
+    return result;
+  }
+
+  /**
+   * Compaction (M2-01, R-37): removes consumed mailbox rows, inbound-event dedupe records older than
+   * `retainMs`, and published outbox rows and spent wake-ups of tasks that ended more than `retainMs` ago.
+   * Duplicate inbound events are only detected inside the retention window.
+   */
+  async compact(retainMs: number): Promise<{
+    mailbox: number;
+    inboundEvents: number;
+    outbox: number;
+    wakeups: number;
+  }> {
+    const cutoff = new Date(Date.parse(this.now()) - retainMs).toISOString();
+    return this.store.transaction(async (tx) => {
+      const out = { mailbox: 0, inboundEvents: 0, outbox: 0, wakeups: 0 };
+      for (const m of await tx.find<MailboxEntry>('mailbox', {
+        where: { consumed: 1 },
+      })) {
+        await tx.remove('mailbox', m.id, m.revision);
+        out.mailbox++;
+      }
+      for (const e of await tx.find<{ at: string }>('inboundEvents', {})) {
+        if (e.value.at < cutoff) {
+          await tx.remove('inboundEvents', e.id, e.revision);
+          out.inboundEvents++;
+        }
+      }
+      const ended = new Set<string>();
+      for (const status of ['completed', 'failed', 'cancelled'])
+        for (const t of await tx.find<TaskRecord>('tasks', {
+          where: { status },
+        }))
+          if (t.value.updatedAt < cutoff) ended.add(t.id);
+      for (const r of await tx.find<{ aggregateId: string; published: number }>(
+        'outbox',
+        { where: { published: 1 } },
+      ))
+        if (ended.has(r.value.aggregateId)) {
+          await tx.remove('outbox', r.id, r.revision);
+          out.outbox++;
+        }
+      for (const id of ended)
+        for (const w of await tx.find<WakeupRecord>('wakeups', {
+          where: { taskId: id },
+        })) {
+          await tx.remove('wakeups', w.id, w.revision);
+          out.wakeups++;
+        }
+      return out;
+    });
   }
 
   private async tryFire(wakeupId: string): Promise<boolean> {

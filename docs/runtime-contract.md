@@ -53,6 +53,8 @@ stateDiagram-v2
 | T10 | `created`, `assigned`, `waiting` | `cancelled` | `cancel`, or instance retired with `force` | Queued execution aborted (E7); registrations and event subscriptions revoked |
 | T11 | `running` | `cancelled` | `cancel` | `cancelRequestedAt` set and `AbortSignal` fired first; transition applies when the execution ends **or** `cancelGracePeriod` (runtime setting, default 30 s) expires; the execution is then fenced as `lost` (E8) |
 
+**Leases, back-pressure and compaction (M2-01, FEAT-027.4):** a worker renews the lease of every execution it is still running on each scheduler tick (heartbeat), so other workers recover only executions whose worker stopped. A subscription mailbox holds at most `mailboxLimit` unconsumed events (default 1000); further events are not appended for that subscription and are counted on it (`dropped`). `compact(retainMs)` removes consumed mailbox rows, dedupe records older than the window, and published outbox rows and wake-ups of tasks that ended before it; a `subscribe` on such a task ends instead of waiting. See the [scale baseline](review/2026-11-05-m2-scale-baseline.md).
+
 **Bounded state (R-37):** a `waiting` disposition whose serialized checkpoint exceeds the runtime's `maxCheckpointBytes` (default 64 KiB) is refused as `SchemaViolation` (`reason: checkpointTooLarge`) and the task fails; execution history keeps the last `keepExecutions` (default 20) finished executions per task (AC-20).
 
 **Counters:** `activation` is 1 for the first execution and increments on each wake-up (T5); `attempt` starts at 1 per activation and increments on each T6. A retry is not a new activation.
