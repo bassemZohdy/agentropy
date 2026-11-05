@@ -1,4 +1,4 @@
-# Agentropy Agent Contract v1.0 — Design baseline (revision 2)
+# Agentropy Agent Contract v1.0 — Design baseline (revision 6)
 
 **Status:** Architecture contract for initial implementation; not yet implemented or API-stable.
 **Scope:** Core logical Agent, AgentDefinition, AgentInstance, DelegatedTask and Execution. Transport/runtime are independent.
@@ -8,7 +8,7 @@
 
 | Rev | Date | Change |
 |---|---|---|
-| 1 | 2026-11-04 | Initial baseline |
+| 6 | 2026-11-05 | Define mandatory/optional AgentDefinition properties, versioned implementation binding, distinct tool/skill selections and execution provider boundary; design only |\n| 1 | 2026-11-04 | Initial baseline |
 | 3 | 2026-11-04 | Re-review: conversation turn model; handler registry; retry policy; `DelegateInput`; child-task/human-action/event wake semantics with inline payload; `TaskHandle.status` uses task states; instance and human-action operations on `AgentService`; record types; effect-journal commit timing |
 | 2 | 2026-11-04 | Design review: instance states aligned with lifecycle; one execution per activation; `WakeupRequest` extended (timer, child tasks, any-of, timeout); idempotent step keys for side effects; `AgentService` gains `getResult`, `provideHumanInput`, idempotency lookup; explicit call layering ([review](../review/2026-11-04-design-review.md)) |
 
@@ -16,7 +16,7 @@
 
 1. **Composition over inheritance.** Conversational, Task, Monitoring, Coordinator and Specialist are **profile IDs**, not subclasses.
 2. **Four separate identities.** Definition = versioned blueprint; Instance = logical owner-scoped identity; Task = assigned objective; Execution = one activation of the handler for a task. No instance is a worker process.
-3. **Agent implementation is a bounded handler.** It receives a context and an invocation, and returns a typed disposition. It never writes lifecycle state or owns orchestration.
+3. **Agent execution is implementation-neutral.** A native handler receives a context and invocation and returns a typed disposition; other implementations use an explicit adapter with equivalent lifecycle semantics. No adapter writes authoritative task state or bypasses orchestration.
 4. **Delegation is async-first.** Acceptance returns a `TaskHandle`; completion arrives by status/events/inbox. Handler completion is not user notification.
 5. **Always-on = durable responsibility + reactivation.** A long-lived responsibility is a non-terminal task that cycles `waiting ⇄ running`; each wake-up is a new Execution ([ADR-0018](../adr/0018-execution-per-activation.md)).
 6. **Security is mandatory platform context.** Tenant, principal and delegated scope come from trusted services, never from model output.
@@ -50,20 +50,46 @@ export type Version = string;
 
 export type AgentProfileId =
   | "conversational" | "task" | "monitoring"
-  | "coordinator" | "specialist" | (string & {});
+  | "coordinator" | "specialist" | "generic" | (string & {});
 
 export interface VersionedRef { id: string; version: Version; }
+
+/** Identifies an implementation adapter and its immutable artifact/config revision. */
+export interface AgentImplementationRef {
+  providerId: string;              // e.g. native-ts, langgraph-js, workflow, remote-proxy
+  providerVersion: Version;
+  artifact: VersionedRef;          // trusted code/graph/workflow/remote binding; never inline executable content
+}
+
+export interface SkillSelection {
+  id: string;                      // trusted registry identity, not an arbitrary filesystem path
+  versionRange: string;            // resolve and pin exact version at task acceptance
+  required?: boolean;
+}
+
+export interface ToolSelection {
+  id: string;                      // canonical logical ToolRegistry identity (not a URL)
+  versionRange: string;            // resolve and pin exact version and permitted binding
+  required?: boolean;
+}
 
 export interface AgentDefinition {
   id: AgentId;
   version: Version;                 // immutable once registered
   displayName: string;
-  profile: VersionedRef;
-  capabilities: CapabilitySelection[];   // additions/removals relative to profile
-  inputSchema: JsonSchema;
+  profile: VersionedRef;           // use a generic/custom profile if no specialized behavior is required
+  implementation: AgentImplementationRef;
+  inputSchema: JsonSchema;         // a permissive JSON Schema is valid for unstructured inputs
+  runtimeRequirements: RuntimeRequirements; // may contain an empty guarantees array
+  policyRef: VersionedRef;         // trusted, non-bypassable policy
+  description?: string;
+  capabilities?: CapabilitySelection[]; // additions/removals relative to profile; absent = none added
+  skills?: SkillSelection[];       // Agent Skills standard, not an authorization grant
+  tools?: ToolSelection[];         // logical tool allow-list requests, not permissions
   outputSchema?: JsonSchema;
-  runtimeRequirements: RuntimeRequirements;
-  policyRef: VersionedRef;
+  modelRef?: VersionedRef;         // optional reasoning/model config; never required for deterministic agents
+  memoryRef?: VersionedRef;        // optional memory configuration
+  communicationRef?: VersionedRef; // optional preference; does NOT bypass TaskService/CommunicationRouter
   retryPolicy?: { maxAttempts: number; backoff: { initialMs: number; maxMs: number; multiplier: number } };
 }
 
@@ -261,6 +287,27 @@ export interface HandlerRegistry {
 
 Import paths are documentation references, not compiled modules.
 
+## Agent definition requirements and implementation boundary (revision 6)
+
+**Mandatory fields:** `id`, immutable `version`, `displayName`, `profile`, `implementation`, `inputSchema`, `runtimeRequirements` (empty guarantees permitted), and `policyRef`. Core identity, trusted principal, audit enforcement and policy evaluation are platform obligations even when no optional selections exist.
+
+**Optional fields:** `description`, `capabilities`, `skills`, `tools`, `outputSchema`, `modelRef`, `memoryRef`, `communicationRef`, `retryPolicy`. An omitted selection means no additional selection; mandatory profile requirements still apply. Do not require an LLM, tools, skills, memory or outbound agent communication for a deterministic implementation. A custom `generic` profile may have no behavior capabilities, but cannot bypass universal platform controls.
+
+| Concept | Role | Authority |
+|---|---|---|
+| Profile | Required/default capability/guarantee selections | Cannot downgrade required capabilities or guarantees |
+| Capability | Platform behavior or verified guarantee | `CapabilityAccess` is the only handler effect surface |
+| Skill | Agent Skills-standard instructions/resources (optional) | Never confers tool/script execution permission |
+| Tool | Canonical callable operation (optional) | `ToolSelection` requests visibility; PEP/PDP decides invocation |
+| Implementation | Native TS, LangGraph.js, workflow adapter, or remote proxy | Implementation provider supplies compatible lifecycle mapping |
+| Runtime | Owns Task/Execution state, leasing, persistence and enforcement | Verifies guarantees; cannot infer them from an adapter name |
+
+**Implementation SPI (conceptual, not a compiled contract):** An `AgentImplementationProvider` advertises an immutable ID/version, supported input/output and lifecycle features (resume/checkpoint, cancellation, streaming, isolation, remote authority), validates trusted implementation artifacts, and creates an execution adapter returning `AgentDisposition` or an explicit unsupported error. A native TypeScript handler is one adapter. LangGraph.js and workflow engines are adapters, not mandatory dependencies. A remote A2A agent is normally delegated to through `TaskService → CommunicationRouter`; a remote-proxy implementation is only valid where it preserves this local-task/remote-task authority boundary, idempotency and authorization. Provider selection and artifact revision are pinned at task acceptance; no silent provider swap mid-task.
+
+**Resolution order:** validate immutable definition/profile/policy and schema → resolve implementation and its declared features → merge profile-required/default and optional capability selections per [Capability v1](capability-v1.md) → resolve Skill and Tool references to trusted exact versions/bindings → validate declared Skill dependencies against available capabilities/tools *without granting them* → intersect tool visibility and all invocations with current tenant/user/delegated policy → validate runtime guarantees and pin redacted effective bindings at acceptance. Reject missing required dependencies, incompatible versions, unsupported features and insufficient guarantees explicitly. Skill content or remote tool manifests are untrusted and cannot modify policy.
+
+**Conformance gate:** Native deterministic and second implementation adapter must pass the same logical task lifecycle tests; custom/generic profile must run with no optional model/tool/skill; required profile guarantees cannot be removed; Skills must not auto-grant tool authority; tool route changes must preserve policy, effects and pinning; remote agent acceptance/status/cancel must remain mapped through TaskService. Implementation SDKs, provider feature taxonomy and artifact distribution are deferred design details, not claims of runtime support.
+
 ## Idempotent side effects
 
 A crashed or lost execution is re-run (T6), so handlers must be **replay-safe**:
@@ -300,17 +347,6 @@ A handler expresses business logic and acts only through the injected `Capabilit
 
 Distinct identity tests; profile resolution; acceptance + idempotency + unknown acceptance; unauthorized delegation; disposition mapping; wait → restart → resume with checkpoint; child-task wait (`all`/`any`); timeout wake-up; stale lease fencing; cancellation with non-cooperative handler; step-key replay without duplicate effect; version pinning; multi-instance isolation; deterministic workflow-only agent; conversational turn that delegates and a later turn whose briefing reports the result. Each maps to an acceptance check in [POC scope](../poc-scope.md) or a later milestone.
 
-## Agent Skills selection (2026-11-05 design addendum; pending contract revision)
+## Agent Skills selection (revision 6)
 
-AgentDefinition will select standard [Agent Skills](https://agentskills.io/specification) **independently** from `capabilities`, with an optional versioned `skills?: SkillSelection[]` field in the next explicit schema revision. Conceptual form:
-
-```ts
-interface SkillSelection {
-  id: string;            // stable registry ID; not a filesystem path supplied by an agent
-  versionRange: string;  // resolved to an immutable version for task acceptance
-  required?: boolean;    // required Skill missing => typed resolution failure
-}
-// AgentDefinition addition: skills?: SkillSelection[]
-```
-
-Each Skill preserves the open standard's `SKILL.md` and optional resources. SkillRegistry performs trusted discovery/version resolution; SkillLoader performs metadata-first and on-demand instruction/resource loading. These platform components do not add another agent execution lifecycle. Agent handler still obtains authorized behavior through `CapabilityAccess`; tool/script invocation passes policy gates, never gains authorization from Skill text. Resolved Skill versions must be pinned for execution consistency; exact selection constraints and schema updates require contract review. See [ADR-0026](../adr/0026-protocol-agnostic-tool-integration.md).
+`AgentDefinition.skills?: SkillSelection[]` is now part of the conceptual contract above. It references standard [Agent Skills](https://agentskills.io/specification) artifacts independently of Capabilities and Tools. `SkillRegistry` and `SkillLoader` remain planned, not implemented; metadata-first discovery, pinned versions and lazy resources are required for conformance. Skill scripts can execute only through an explicitly authorized execution interface with demonstrated isolation guarantees. See [ADR-0026](../adr/0026-protocol-agnostic-tool-integration.md).
