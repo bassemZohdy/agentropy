@@ -15,5 +15,8 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agentropy/core": "workspace:*"
   }
 }

@@ -58,13 +58,20 @@ importers:
         specifier: ^2.9.1
         version: 2.9.1
     devDependencies:
+      '@agentropy/testkit':
+        specifier: workspace:*
+        version: link:../testkit
       '@types/semver':
         specifier: ^7.8.0
         version: 7.8.0
 
   packages/store-sqlite: {}
 
-  packages/testkit: {}
+  packages/testkit:
+    dependencies:
+      '@agentropy/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 

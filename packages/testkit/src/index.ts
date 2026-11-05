@@ -1,2 +1,4 @@
-/** testkit package scaffold: no production implementation yet. */
+/** @agentropy/testkit — offline fakes and reusable conformance suites. */
 export const packageName = '@agentropy/testkit' as const;
+
+export * from './communication.js';

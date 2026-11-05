@@ -19,9 +19,6 @@
 - [ ] **FEAT-020** · P0 · high · Human actions: request, claim/release, decide, expire (M1-09)
   - Done when: AC-08/SEC-07 pass; `pnpm exec vitest run packages/runtime/test/human-actions.test.ts`
   - Links: Ref: docs/human-actions.md · Depends: FEAT-017 · Lane: collaboration
-- [ ] **FEAT-021** · P0 · mid · Direct communication provider, router and reusable router conformance suite (M1-11)
-  - Done when: AC-18 passes against the direct provider; `pnpm exec vitest run packages/runtime/test/router.test.ts`
-  - Links: Ref: docs/contracts/communication-v1.md · Depends: FEAT-011 · Lane: collaboration
 - [ ] **FEAT-022** · P0 · high · Testkit fakes and offline AC-01…AC-20 plus SEC-01/02/03/04/07 suite (M1-10, A-04)
   - Done when: every M1 matrix row passes; `pnpm exec vitest run packages/testkit/test`
   - Links: Ref: docs/plans/acceptance-matrix.json · Depends: FEAT-018, FEAT-019, FEAT-020, FEAT-021 · Lane: testkit
