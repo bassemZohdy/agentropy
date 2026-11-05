@@ -323,7 +323,7 @@ describe('AI agent on an OpenAI-compatible provider (M2-08)', () => {
     key: string,
     budget?: number,
   ) => {
-    app.definitions.get({ id: 'analyst', version: '1.0.0' }) ??
+    if (!app.definitions.get({ id: 'analyst', version: '1.0.0' }))
       app.define(
         def('analyst', {
           capabilities: [
