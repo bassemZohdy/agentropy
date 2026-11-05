@@ -22,6 +22,7 @@ export const STORE_COLLECTIONS = {
   gates: ['taskId', 'nextCheckAt'],
   instances: ['tenantId', 'ownerId'],
   sessions: ['tenantId'],
+  leases: ['kind'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type CollectionName = keyof typeof STORE_COLLECTIONS;

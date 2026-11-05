@@ -26,7 +26,7 @@
     - Done when: owner-control suite passes; `pnpm exec vitest run packages/testkit/test/owner-control.test.ts`
   - [x] **FEAT-027.2** · mid · Inbox reconciliation and rebuild; briefing policy with urgent vs deferred delivery and a priority resolver with policy floors (M2-03, M2-04)
     - Done when: inbox rebuild and briefing-policy suite passes; `pnpm exec vitest run packages/testkit/test/inbox-policy.test.ts`
-  - [ ] **FEAT-027.3** · high · Delivery and recovery: transport-neutral outbox lease and replay, provider outage and delayed callbacks, out-of-process activation adapters with deduplication (M2-02, M2-06)
+  - [x] **FEAT-027.3** · high · Delivery and recovery: transport-neutral outbox lease and replay, provider outage and delayed callbacks, out-of-process activation adapters with deduplication (M2-02, M2-06)
     - Done when: delivery and outage suite passes; `pnpm exec vitest run packages/testkit/test/delivery.test.ts`
   - [x] **FEAT-027.4** · mid · Monitoring at scale: many standing tasks, mailbox back-pressure, lease heartbeat and compaction (M2-01)
     - Done when: scale suite passes with recorded baseline numbers; `pnpm exec vitest run packages/testkit/test/scale.test.ts`

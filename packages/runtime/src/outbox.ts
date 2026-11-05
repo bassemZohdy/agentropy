@@ -56,6 +56,13 @@ export interface OutboxRelayOptions {
   /** Rows handled per drain call (bounded work per tick). */
   batchSize?: number;
   faults?: FaultHook;
+  /**
+   * Relay identity for the leader lease (M2-06): with several relays on one store only the lease holder
+   * delivers, so per-task order holds; a crashed holder's lease expires and another relay replays its rows.
+   */
+  relayId?: string;
+  /** Leader lease length (default 30 s). */
+  leaseMs?: number;
   /** Delivery lag and terminal-outcome metrics, recorded once per published row. */
   telemetry?: Telemetry;
   now?: () => string;
@@ -102,8 +109,41 @@ export class OutboxRelay {
     return this.draining;
   }
 
+  /** Acquire or renew the relay leader lease; false while another relay holds a live lease. */
+  private async lead(): Promise<boolean> {
+    if (!this.o.relayId) return true;
+    const now = this.o.now?.() ?? new Date().toISOString();
+    const until = new Date(
+      Date.parse(now) + (this.o.leaseMs ?? 30_000),
+    ).toISOString();
+    return this.o.store.transaction(async (tx) => {
+      const cur = await tx.get<{
+        kind: string;
+        holder: string;
+        expiresAt: string;
+      }>('leases', 'outbox-relay');
+      if (!cur) {
+        await tx.insert('leases', 'outbox-relay', {
+          kind: 'relay',
+          holder: this.o.relayId!,
+          expiresAt: until,
+        });
+        return true;
+      }
+      if (cur.value.holder !== this.o.relayId && cur.value.expiresAt > now)
+        return false;
+      await tx.update('leases', cur.id, cur.revision, {
+        kind: 'relay',
+        holder: this.o.relayId!,
+        expiresAt: until,
+      });
+      return true;
+    });
+  }
+
   private async drainOnce(): Promise<number> {
     let published = 0;
+    if (!(await this.lead())) return 0;
     for (;;) {
       const pending = await this.o.store.transaction((tx) =>
         tx.find<OutboxRecord>('outbox', {

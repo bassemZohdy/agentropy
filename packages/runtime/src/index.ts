@@ -16,3 +16,4 @@ export * from './audit.js';
 export * from './app.js';
 export * from './priority.js';
 export * from './otel.js';
+export * from './ingress.js';

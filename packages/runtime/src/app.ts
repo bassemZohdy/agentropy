@@ -94,6 +94,8 @@ export interface LocalAppOptions {
   faults?: FaultHook;
   /** Spans and metrics (e.g. `openTelemetry({ api, tracer, meter })`); no-op by default. */
   telemetry?: Telemetry;
+  /** Relay leader lease, for several processes sharing one store (M2-06). */
+  relay?: { relayId: string; leaseMs?: number };
   /** Unconsumed events kept per subscription before back-pressure drops (default 1000). */
   mailboxLimit?: number;
   /** Briefing policy, per-user preferences and urgent push (M2-04). */
@@ -290,6 +292,13 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
   const relay = new OutboxRelay({
     store,
     consumers: [projector, stream],
+    ...(o.relay
+      ? {
+          relayId: o.relay.relayId,
+          now,
+          ...(o.relay.leaseMs ? { leaseMs: o.relay.leaseMs } : {}),
+        }
+      : {}),
     ...(o.telemetry ? { telemetry: o.telemetry, now } : {}),
     ...(o.faults ? { faults: o.faults } : {}),
   });
