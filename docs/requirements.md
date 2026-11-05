@@ -93,3 +93,12 @@ These are **accepted design constraints**, not claims that the v1 contract or ru
 - **R-10 / R-16 / R-28:** distinguish capacity/lease limits, logical tenant/task isolation and executable worker/workspace sandbox guarantees. M1 must demonstrate independent task state/credentials and no stale-lease commit; production-grade OS/network isolation belongs to a later provider-specific milestone, with explicit unsupported-guarantee errors.
 - **R-35:** retain pluggable reasoning-model selection in M2. **Task-aware model routing** (task type, quality constraints, budget, latency, provider availability, policy and residency) is an optional M3+ enhancement; no automatic cross-provider fallback may weaken authorization, privacy, or guarantee contracts. Validate quality/cost against a fixed offline evaluation set before adoption.
 - **Security acceptance additions:** deny tool execution after discovery-only; deny unauthorized installation, upgrades and startup hooks; fail closed on a revoked grant or PDP outage; log independent activation and invocation decisions. **Isolation acceptance additions:** two tenants, two instances and concurrent tasks remain segregated under retries/crashes. These are *planned* tests and do not expand the approved M1 SEC set without readiness-gate review.
+
+## 2026-11-05 — Tool Integration abstraction (ADR-0026)
+
+- **R-03/R-06/R-27/R-35:** Agents consume protocol-neutral ToolRegistry/ToolExecutor contracts and canonical tool descriptors; provider bindings may use MCP, UTCP, REST/OpenAPI or custom implementations. Agent capabilities and callable tools are separate concepts.
+- **R-09/R-27:** Discovery never implies authorization. Registration, activation/upgrade and each protected invocation must enforce trusted identity, tenant, scoped delegation, revocation, credential safety and mandatory audit independently of the protocol (ADR-0021).
+- **R-28/R-30:** Providers declare negotiated features and limitations; schema validation, normalized errors, bounded timeouts, safe idempotency/retry, uncertain outcomes, cancellation and fallback must not weaken authorization or guarantee contracts.
+- **Acceptance (planned, not implemented):** same logical tool runs via two adapters without Agent code changes; negative security and failure-injection tests verify framework enforcement. Test milestones and approved SEC scope remain subject to readiness review.
+
+See [ADR-0026](adr/0026-protocol-agnostic-tool-integration.md) and the T-01…T-04 tasks in [TODO](../TODO.md).
