@@ -19,6 +19,7 @@ import {
   type TrustedPrincipal,
   type WakeReason,
 } from '@agentropy/core';
+import type { StoredHumanAction } from './human-actions.js';
 import type { InstanceDirectory } from './registry.js';
 import type { WakeupRecord } from './runtime.js';
 import {
@@ -44,13 +45,6 @@ export interface MailboxEntry {
   consumed: 0 | 1;
 }
 
-export interface HumanActionState {
-  requestId: string;
-  taskId: string;
-  status: 'pending' | 'claimed' | 'resolved' | 'expired' | 'revoked';
-  decisionInput?: unknown;
-}
-
 const matches = (
   filter: Record<string, unknown> | undefined,
   payload: unknown,
@@ -61,10 +55,17 @@ const matches = (
   );
 
 export class WakeupService {
+  private readonly sweeps: (() => Promise<unknown>)[] = [];
+
   constructor(
     private readonly tasks: TaskService,
     private readonly instances: InstanceDirectory,
   ) {}
+
+  /** Work run at the start of every poll, e.g. human-action expiry, so due state changes are seen by this poll. */
+  addSweep(sweep: () => Promise<unknown>): void {
+    this.sweeps.push(sweep);
+  }
 
   private get store() {
     return this.tasks.o.store;
@@ -75,6 +76,7 @@ export class WakeupService {
 
   /** Evaluate every armed registration once; returns how many fired. Safe to call repeatedly and concurrently. */
   async poll(): Promise<number> {
+    for (const sweep of this.sweeps) await sweep();
     const armed = await this.store.transaction((tx) =>
       tx.find<WakeupRecord>('wakeups', { where: { status: 'armed' } }),
     );
@@ -170,6 +172,24 @@ export class WakeupService {
       const now = this.now();
       const hit = await this.evaluate(tx, w.value, now);
       if (!hit) return false;
+      // An expired human action whose request says fail-task fails the task (T9) instead of resuming it.
+      if (
+        hit.reason.kind === 'human-action' &&
+        hit.reason.outcome === 'expired' &&
+        (await tx.get<StoredHumanAction>('humanActions', hit.reason.requestId))
+          ?.value.onExpiry === 'fail-task'
+      ) {
+        await tx.update<WakeupRecord>('wakeups', w.id, w.revision, {
+          ...w.value,
+          status: 'fired',
+          reason: hit.reason,
+        });
+        await this.tasks.terminate(tx, task, 'failed', 'T9', {
+          code: 'ActionExpired',
+          message: 'Human action expired',
+        });
+        return true;
+      }
       if (hit.reason.kind === 'timeout' && w.value.onTimeout === 'fail') {
         await tx.update<WakeupRecord>('wakeups', w.id, w.revision, {
           ...w.value,
@@ -245,7 +265,10 @@ export class WakeupService {
             consume: oldest,
           };
       } else if (c.kind === 'human-action') {
-        const req = await tx.get<HumanActionState>('humanActions', c.requestId);
+        const req = await tx.get<StoredHumanAction>(
+          'humanActions',
+          c.requestId,
+        );
         const s = req?.value.status;
         if (s === 'resolved' || s === 'expired' || s === 'revoked') {
           return {

@@ -1,6 +1,6 @@
 # Agent collaboration and messaging contracts
 
-**Status: proposed design, revision 2 (2026-11-04)**, informed by langgraph-flows' transport-neutral command/query/event model. Revision 2 fixes the retry rule to match [Agent v1](contracts/agent-v1.md), makes agent fields optional for non-agent messages, and adds the `TaskEvent` shape. Errors: [Errors v1](contracts/errors-v1.md).
+**Status: proposed design, revision 3 (2026-11-05)**, informed by langgraph-flows' transport-neutral command/query/event model. Revision 2 fixes the retry rule to match [Agent v1](contracts/agent-v1.md), makes agent fields optional for non-agent messages, and adds the `TaskEvent` shape. Revision 3 records what the M1 implementation (FEAT-019) fixed: the outbox row and relay semantics below, boundary envelope validation, and that recording a cancel request on a running task is a record change, so its `taskCancelRequested` event carries the new revision with sequence 1. Errors: [Errors v1](contracts/errors-v1.md).
 
 ## Invariants
 
@@ -90,7 +90,9 @@ This is an architectural clarification; the detailed audit event schema and stor
 
 ## Publication and inbox reconciliation
 
-Within a durable boundary, persist task transitions and an outbox event transactionally where supported. Delivery workers lease work, retry transient failure, dedupe consumers and maintain replay cursors. The inbox projects only user-relevant events and reconciles against the authoritative task/runtime state. Reconciliation repairs missing or stale projections; inbox cannot independently advance task state.
+Within a durable boundary, persist task transitions and an outbox event transactionally where supported.
+
+**M1 implementation (`packages/runtime/src/outbox.ts`):** each outbox row is one `TaskEvent` plus `tenantId`, `correlationId`, `published` and `attempts`. The relay reads unpublished rows in commit order, hands each to every registered consumer, then marks it published; on a consumer failure it records the attempt and stops, so later rows never overtake an earlier one. A crash before the mark re-delivers after restart: delivery is at-least-once and consumers must be idempotent per `eventId` (the inbox projector is). `AgentService.subscribe` replays committed rows after a `(revision, sequence)` cursor, then follows relay deliveries and ends after the terminal event. Envelopes are validated at the provider boundary (`validateAgentMessage`): malformed envelopes, a `schemaVersion` other than 1 and commands without an idempotency key fail `SchemaViolation`. Delivery workers lease work, retry transient failure, dedupe consumers and maintain replay cursors. The inbox projects only user-relevant events and reconciles against the authoritative task/runtime state. Reconciliation repairs missing or stale projections; inbox cannot independently advance task state.
 
 ## Explicit future choices
 

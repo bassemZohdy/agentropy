@@ -68,6 +68,8 @@ interface InboxEntry {
 5. Runtime emits a committed change event. Only then does the inbox project `resolved` (not optimistic on click).
 6. Expired or rejected actions are reconciled and explained without silently initiating another task.
 
+**M1 implementation (`packages/runtime/src/human-actions.ts`, FEAT-020):** before reading state, a claim, release or decision authenticates the caller, re-checks delegated authority (`AuthorityExpired`) and asks the policy point for `human-input:decide` (outage → `PolicyDecisionUnavailable`). A caller in another tenant gets `NotFound`; a caller in the tenant who is not a named assignee, and holds none of the request's roles (each role is checked with the policy action `human-input:act-as-role`), gets `NotAssignee`. A duplicate decision (same decider and same input, whatever its idempotency key) is a no-op; any other decision on a resolved request is `ActionConflict`. When a task reaches a terminal state, its open requests are revoked (`ActionRevoked`) and their inbox entries are marked resolved.
+
 All approval routes—including chat, web UI and API—must use the same command boundary. An LLM-generated approval statement does **not** replace user authorization.
 
 ## User inbox as projection

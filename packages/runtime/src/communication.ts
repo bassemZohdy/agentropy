@@ -1,5 +1,6 @@
 /** Communication v1 revision 4: router and the internal direct provider (M1-11, R-31). */
 import {
+  validateAgentMessage,
   AgentropyError,
   DURABILITY_LEVELS,
   enforcePolicy,
@@ -222,6 +223,7 @@ export class DirectCommunicationProvider implements AgentCommunicationProvider {
     ctx: CallContext,
   ): Promise<MessageReceipt> {
     void route;
+    validateAgentMessage(message);
     const trusted: AgentMessage = {
       ...message,
       tenantId: ctx.caller.tenantId,

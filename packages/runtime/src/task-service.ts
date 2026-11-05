@@ -8,6 +8,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   AgentropyError,
   EXECUTION_MACHINE,
+  HUMAN_ACTION_MACHINE,
   TASK_MACHINE,
   assertTransition,
   digestOf,
@@ -18,6 +19,7 @@ import {
   type AcceptanceEnvironment,
   type AcceptanceSnapshot,
   type AgentInvocation,
+  type ConversationTurn,
   type DelegationRequest,
   type ExecutionRecord,
   type PolicyDecisionPoint,
@@ -25,8 +27,11 @@ import {
   type Store,
   type StoreTx,
   type StoredDocument,
+  type TaskEventType,
   type TaskHandle,
   type TaskSnapshot,
+  TRANSITION_EVENT,
+  type TRANSITION_EVENT_TYPES,
   type TaskStatus,
   type TrustedPrincipal,
   type VersionedRef,
@@ -74,6 +79,33 @@ export interface IdempotencyRecord {
   taskId: string;
   fingerprint: string;
 }
+
+/** Outbox row: one TaskEvent plus delivery bookkeeping (messaging contract, R-29). */
+export interface OutboxRecord {
+  eventId: string;
+  type: TaskEventType;
+  aggregateId: string;
+  tenantId: string;
+  revision: number;
+  sequence: number;
+  status: TaskStatus;
+  occurredAt: string;
+  data?: unknown;
+  /** Status and outcome at commit time (kept for consumers that predate TaskEvent). */
+  payload: { status: TaskStatus; outcome?: { code: string; message: string } };
+  correlationId: string;
+  /** 0 until every relay consumer has accepted it. */
+  published: 0 | 1;
+  attempts: number;
+  lastError?: string;
+}
+
+/** Users whose inbox shows a human-action request: its named assignees, else the task owner. */
+export const actionUsers = (
+  a: { assignees: { principalIds?: string[] } },
+  task: { ownerId: string },
+): string[] =>
+  a.assignees.principalIds?.length ? a.assignees.principalIds : [task.ownerId];
 
 export interface GrantVerifier {
   /** Validates a delegated authority reference at a protected boundary (never cached across operations). */
@@ -275,6 +307,37 @@ export class TaskService {
     return this.handleFor(taskId);
   }
 
+  /**
+   * One user message → one turn task on the caller's own conversational instance (Agent v1 "Conversation
+   * turn model"). The turn handler reads `conversation.briefing` and replies; it does not wait for children.
+   */
+  async submitTurn(
+    turn: ConversationTurn,
+    caller: TrustedPrincipal,
+  ): Promise<TaskHandle> {
+    if (!caller?.id || !caller.tenantId)
+      throw new AgentropyError('Unauthenticated', 'No trusted principal');
+    const instance = await this.o.instances.get(turn.instanceId, caller);
+    if (instance.ownerId !== caller.id)
+      throw new AgentropyError('NotFound', 'Conversational instance not found');
+    const definition = this.o.definitions.require(instance.definition);
+    if (definition.profile.id !== 'conversational')
+      throw new AgentropyError(
+        'UnsupportedOperation',
+        'Turns are only accepted by conversational agents',
+        { details: { profile: definition.profile.id } },
+      );
+    return this.delegate(
+      {
+        target: { instanceId: instance.id },
+        input: { sessionId: turn.sessionId, text: turn.text },
+        idempotencyKey: `turn:${turn.idempotencyKey}`,
+        correlationId: turn.correlationId ?? randomUUID(),
+      },
+      caller,
+    );
+  }
+
   async getTask(
     taskId: string,
     caller: TrustedPrincipal,
@@ -330,11 +393,16 @@ export class TaskService {
         throw new AgentropyError('InvalidState', `Task is ${t.status}`);
       if (t.status === 'running') {
         if (t.cancelRequestedAt) return cur;
-        return tx.update('tasks', taskId, cur.revision, {
+        const next = {
           ...t,
           cancelRequestedAt: this.o.now(),
           updatedAt: this.o.now(),
+        };
+        const doc = await tx.update('tasks', taskId, cur.revision, next);
+        await this.emit(tx, next, doc.revision, 'taskCancelRequested', {
+          reason,
         });
+        return doc;
       }
       return this.terminate(tx, cur, 'cancelled', 'T10', {
         code: 'Cancelled',
@@ -375,7 +443,7 @@ export class TaskService {
     return doc;
   }
 
-  private async checkGrant(caller: TrustedPrincipal): Promise<void> {
+  async checkGrant(caller: TrustedPrincipal): Promise<void> {
     if (!caller.delegatedAuthorityRef || !this.o.grants) return;
     const status = await this.o.grants
       .check(caller.delegatedAuthorityRef, caller.tenantId)
@@ -439,27 +507,49 @@ export class TaskService {
     };
   }
 
+  /**
+   * Append one TaskEvent to the outbox in the caller's transaction. Without `type` it is the transition
+   * event for the status the task just entered (sequence 0); otherwise a non-transition event at the
+   * current revision with the next sequence number.
+   */
   async emit(
     tx: StoreTx,
     t: TaskRecord,
     revision: number,
-    type = 'taskStatusChanged',
-  ): Promise<void> {
+    type?: Exclude<TaskEventType, (typeof TRANSITION_EVENT_TYPES)[number]>,
+    data?: unknown,
+  ): Promise<OutboxRecord> {
+    let sequence = 0;
+    if (type) {
+      const atRevision = await tx.find<OutboxRecord>('outbox', {
+        where: { aggregateId: t.taskId },
+      });
+      sequence = Math.max(
+        1,
+        atRevision.filter((e) => e.value.revision === revision).length,
+      );
+    }
     const eventId = this.newId('event');
-    await tx.insert('outbox', eventId, {
+    const record: OutboxRecord = {
       eventId,
-      type,
+      type: type ?? TRANSITION_EVENT[t.status],
       aggregateId: t.taskId,
       tenantId: t.tenantId,
       revision,
+      sequence,
+      status: t.status,
+      occurredAt: this.o.now(),
+      ...(data !== undefined ? { data } : {}),
       payload: {
         status: t.status,
         ...(t.outcome ? { outcome: t.outcome } : {}),
       },
       correlationId: t.correlationId,
       published: 0,
-      at: this.o.now(),
-    });
+      attempts: 0,
+    };
+    await tx.insert<OutboxRecord>('outbox', eventId, record);
+    return record;
   }
 
   async transition(
@@ -528,6 +618,31 @@ export class TaskService {
       await tx.update('subscriptions', s.id, s.revision, {
         ...s.value,
         status: 'revoked',
+      });
+    }
+    // Open human-action requests of a finished task can no longer be decided (H-revoke).
+    for (const a of await tx.find<{
+      status: string;
+      requestId: string;
+      assignees: { principalIds?: string[] };
+    }>('humanActions', { where: { taskId: cur.id } })) {
+      if (a.value.status !== 'pending' && a.value.status !== 'claimed')
+        continue;
+      assertTransition(
+        HUMAN_ACTION_MACHINE,
+        a.value.status as 'pending' | 'claimed',
+        'revoked',
+        'H-revoke',
+      );
+      const revoked = await tx.update('humanActions', a.id, a.revision, {
+        ...a.value,
+        status: 'revoked',
+      });
+      await this.emit(tx, doc.value, doc.revision, 'humanActionResolved', {
+        requestId: a.value.requestId,
+        revision: revoked.revision,
+        outcome: 'revoked',
+        assignees: actionUsers(a.value, doc.value),
       });
     }
     return doc;

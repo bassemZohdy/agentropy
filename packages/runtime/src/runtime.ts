@@ -59,6 +59,8 @@ export interface RuntimeOptions {
   /** Bounded execution history kept per task (R-37); older terminal executions are pruned. */
   keepExecutions?: number;
   skills?: (task: TaskRecord) => SkillAccess;
+  /** Outbox relay drained on every tick and when the pool goes idle (R-29). */
+  relay?: { drain(): Promise<number> };
 }
 
 const EMPTY_SKILLS: SkillAccess = {
@@ -86,8 +88,8 @@ export class AgentRuntime {
       taskId: string;
     }
   >();
-  private readonly o: Required<Omit<RuntimeOptions, 'skills'>> &
-    Pick<RuntimeOptions, 'skills'>;
+  private readonly o: Required<Omit<RuntimeOptions, 'skills' | 'relay'>> &
+    Pick<RuntimeOptions, 'skills' | 'relay'>;
 
   constructor(options: RuntimeOptions) {
     this.o = {
@@ -113,6 +115,7 @@ export class AgentRuntime {
   /** Recover expired leases, then lease due executions up to the free pool capacity. Returns how many started. */
   async tick(): Promise<number> {
     await this.recoverExpiredLeases();
+    await this.o.relay?.drain();
     const free = this.o.poolSize - this.running.size;
     if (free <= 0) return 0;
     const due = await this.store.transaction((tx) =>
@@ -160,8 +163,9 @@ export class AgentRuntime {
     for (let i = 0; i < maxRounds; i++) {
       const started = await this.tick();
       await this.idle();
-      if (started === 0) return;
+      if (started === 0) break;
     }
+    await this.o.relay?.drain();
   }
 
   get activeCount(): number {
@@ -248,6 +252,16 @@ export class AgentRuntime {
         for (const c of disposition.wakeup.anyOf)
           if (c.kind === 'schedule')
             nextOccurrence(c.cron, c.timezone, this.now());
+        // A human action's dueAt is its only timeout (human-actions.md "Expiry (single mechanism)").
+        if (
+          disposition.wakeup.timeoutAt &&
+          disposition.wakeup.anyOf.some((c) => c.kind === 'human-action')
+        )
+          throw new AgentropyError(
+            'SchemaViolation',
+            'A human-action wait must not set timeoutAt; the request dueAt is its timeout',
+            { details: { reason: 'humanActionTimeout' } },
+          );
       }
     } catch (err) {
       disposition = {
@@ -561,11 +575,11 @@ export class AgentRuntime {
             const cur = (await tx.get<TaskRecord>('tasks', t.taskId))!;
             await this.o.tasks.emit(
               tx,
-              { ...cur.value, outcome: undefined },
+              cur.value,
               cur.revision,
-              'taskProgress',
+              'agentProgressUpdated',
+              p,
             );
-            void p;
           });
         },
       },
@@ -640,6 +654,7 @@ export class AgentRuntime {
             : {}),
           ...(options.stepKey
             ? {
+                stepKey: options.stepKey,
                 idempotencyKey: hashKey(
                   t.tenantId,
                   t.taskId,

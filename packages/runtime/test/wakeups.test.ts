@@ -69,7 +69,7 @@ describe('timer, schedule and timeout wake-ups', () => {
           ? {
               kind: 'waiting',
               wakeup: {
-                anyOf: [{ kind: 'human-action', requestId: 'never' }],
+                anyOf: [{ kind: 'event', subscription: 'never' }],
                 timeoutAt: '2026-11-05T00:10:00.000Z',
                 onTimeout,
               },

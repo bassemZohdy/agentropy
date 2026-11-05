@@ -9,3 +9,6 @@ export * from './communication.js';
 export * from './runtime.js';
 export * from './task-service.js';
 export * from './wakeups.js';
+export * from './outbox.js';
+export * from './inbox.js';
+export * from './human-actions.js';

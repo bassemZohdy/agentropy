@@ -7,6 +7,7 @@ import {
 import addFormatsModule from 'ajv-formats';
 import semver from 'semver';
 import type { AgentDefinition, JsonSchema } from './agent.js';
+import type { AgentMessage } from './communication.js';
 import { AgentropyError } from './errors.js';
 import type { SkillMetadata } from './skill.js';
 import type { ToolBinding, ToolDescriptor } from './tool.js';
@@ -360,4 +361,70 @@ export function validateSkillMetadata(value: unknown): SkillMetadata {
       formatErrors(validators.skillMetadata.errors),
     );
   return value as unknown as SkillMetadata;
+}
+
+/** Envelope schema version this build accepts (messaging contract). */
+export const MESSAGE_SCHEMA_VERSION = 1;
+
+const agentMessageSchema = {
+  type: 'object',
+  required: [
+    'schemaVersion',
+    'kind',
+    'name',
+    'messageId',
+    'correlationId',
+    'tenantId',
+    'actor',
+    'createdAt',
+    'payload',
+  ],
+  properties: {
+    schemaVersion: { type: 'integer' },
+    kind: { enum: ['command', 'query', 'event'] },
+    name: { type: 'string', minLength: 1 },
+    messageId: { type: 'string', minLength: 1 },
+    correlationId: { type: 'string', minLength: 1 },
+    causationId: { type: 'string' },
+    idempotencyKey: { type: 'string', minLength: 1 },
+    tenantId: { type: 'string', minLength: 1 },
+    actor: {
+      type: 'object',
+      required: ['principalId', 'principalType'],
+      properties: {
+        principalId: { type: 'string', minLength: 1 },
+        principalType: { enum: ['user', 'service', 'agent'] },
+        delegatedBy: { type: 'string' },
+      },
+    },
+    createdAt: { type: 'string', minLength: 1 },
+  },
+} as const;
+
+/**
+ * Boundary validation of an AgentMessage envelope (AC-17): malformed envelopes, an unsupported
+ * `schemaVersion` and a command without an idempotency key are rejected with SchemaViolation.
+ */
+export function validateAgentMessage(value: unknown): AgentMessage {
+  validateAgainst(agentMessageSchema, value, 'AgentMessage');
+  const m = value as AgentMessage;
+  if (m.schemaVersion !== MESSAGE_SCHEMA_VERSION)
+    throw new AgentropyError(
+      'SchemaViolation',
+      `Unsupported AgentMessage schemaVersion ${m.schemaVersion}`,
+      {
+        details: { reason: 'schemaVersion', supported: MESSAGE_SCHEMA_VERSION },
+      },
+    );
+  if (m.kind === 'command' && !m.idempotencyKey)
+    throw new AgentropyError(
+      'SchemaViolation',
+      'A command needs an idempotency key',
+      { details: { reason: 'missingIdempotencyKey' } },
+    );
+  if (Number.isNaN(Date.parse(m.createdAt)))
+    throw new AgentropyError('SchemaViolation', 'createdAt must be ISO 8601', {
+      details: { reason: 'createdAt' },
+    });
+  return m;
 }

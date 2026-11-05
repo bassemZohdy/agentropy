@@ -73,6 +73,8 @@ export interface CapabilityInvocationContext {
   principalId: string;
   delegatedAuthorityRef?: string;
   idempotencyKey?: string;
+  /** The handler's step key for this effect, when it gave one (the idempotency key is derived from it). */
+  stepKey?: string;
   signal: AbortSignal;
 }
 

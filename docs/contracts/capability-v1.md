@@ -1,4 +1,4 @@
-# Agentropy Capability Contract v1.0 — revision 6
+# Agentropy Capability Contract v1.0 — revision 7
 
 **Status:** Accepted for M1 implementation (2026-11-05). The catalog, profiles and resolver live in `packages/core`; behavior is claimed only where an executable test exists. **Errors:** [Errors v1](errors-v1.md).
 
@@ -12,6 +12,7 @@
 | 4 | 2026-11-04 | Align TaskAgent required `durable-execution` guarantee with accepted ADR-0019; no downgrade to `durable-acceptance` |
 | 5 | 2026-11-04 | Document effective config hierarchy, non-weakening security floors and acceptance-time snapshots |
 | 6 | 2026-11-05 | Readiness closure: title/revision corrected (header said revision 2); `generic` profile added (was in Agent v1's `AgentProfileId` but missing here); `tool-use` operation I/O bound to [Tool v1](tool-v1.md); missing step key mapped to `SchemaViolation`; unknown capability ID mapped to `CapabilityUnavailable`; tool/skill/implementation resolution steps appended |
+| 7 | 2026-11-05 | Implementation (FEAT-019/020): `CapabilityInvocationContext` carries the handler's `stepKey` beside the derived idempotency key; `notification.notify` and `human-input.requestAction` are platform-internal journaled effects (effect, journal entry and outbox event in one transaction; a replayed step returns the original result); a repeated `dedupeKey` from the same owner revises one inbox entry instead of adding one; `conversation.briefing` is refused (`PermissionDenied`) for a turn not submitted by the inbox owner |
 
 ## Classification
 
@@ -150,7 +151,7 @@ export interface CapabilityAccess {
 | `notification.notify` | `{ severity: "critical" \| "high" \| "normal" \| "low"; title: string; body: string; dedupeKey?: string }` | `{ entryId }` — writes an outbox `notificationCreated` event in the same transaction ([messaging](../messaging-contract.md)) |
 | `human-input.requestAction` | `{ kind, prompt, inputSchema, assignees, dueAt?, onExpiry }` | `{ requestId, dueAt? }` |
 | `event-handling.subscribe` | `{ source: string; filter?: unknown }` | `{ subscription: string }` |
-| `conversation.briefing` | `{ sessionId, limit? }` | `{ entries: InboxEntry[] }` (marks them `presented`) |
+| `conversation.briefing` | `{ sessionId, limit? }` | `{ entries: InboxEntry[] }` (marks them `presented`; only for turns the inbox owner submitted) |
 | `conversation.reply` | `{ sessionId, text }` | `{ messageId }` |
 | `session-context.get` / `put` | `{ sessionId, key }` / `{ sessionId, key, value }` | `{ value? }` / `{}` |
 | `tool-use.listTools` | `{}` | `{ tools: ToolDescriptor[] }` — only the task's pinned tools ([Tool v1](tool-v1.md)) |

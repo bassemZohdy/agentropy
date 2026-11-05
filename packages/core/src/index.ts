@@ -4,6 +4,7 @@ export const AGENTROPY_CONTRACT_VERSION = 'v1' as const;
 export * from './agent.js';
 export * from './capability.js';
 export * from './communication.js';
+export * from './messaging.js';
 export * from './errors.js';
 export * from './implementation.js';
 export * from './lifecycle.js';

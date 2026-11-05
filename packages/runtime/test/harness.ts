@@ -20,6 +20,16 @@ import {
   InMemoryImplementationProviderRegistry,
   NativeImplementationProvider,
 } from '../src/implementation.js';
+import {
+  HumanActionService,
+  humanActionOperationHandlers,
+} from '../src/human-actions.js';
+import {
+  InboxProjector,
+  InboxService,
+  inboxOperationHandlers,
+} from '../src/inbox.js';
+import { OutboxRelay, TaskEventStream, type FaultHook } from '../src/outbox.js';
 import { DefinitionRegistry, InstanceDirectory } from '../src/registry.js';
 import { AgentRuntime } from '../src/runtime.js';
 import { TaskService } from '../src/task-service.js';
@@ -86,6 +96,8 @@ export interface HarnessOptions {
   limits?: { maxDepth?: number; maxFanOut?: number };
   /** Use the real built-in delegation/event/scheduling handlers instead of the recording fake. */
   builtin?: boolean;
+  /** Fault hook passed to the outbox relay. */
+  faults?: FaultHook;
 }
 
 let harnessRun = 0;
@@ -129,16 +141,20 @@ export function harness(o: HarnessOptions = {}) {
     },
   });
   const wakeups = new WakeupService(tasks, instances);
-  const notifications: { input: unknown; idempotencyKey?: string }[] = [];
+  const inbox = new InboxService(tasks);
+  const human = new HumanActionService(tasks);
+  wakeups.addSweep(() => human.sweep());
+  const projector = new InboxProjector(tasks);
+  const stream = new TaskEventStream(tasks);
+  const relay = new OutboxRelay({
+    store,
+    consumers: [projector, stream],
+    ...(o.faults ? { faults: o.faults } : {}),
+  });
   const builtin = new BuiltinCapabilityProvider({
     ...coreOperationHandlers(tasks, wakeups),
-    notify: async (input, ctx) => {
-      notifications.push({
-        input,
-        ...(ctx.idempotencyKey ? { idempotencyKey: ctx.idempotencyKey } : {}),
-      });
-      return { entryId: `entry-${notifications.length}` };
-    },
+    ...inboxOperationHandlers(tasks, inbox),
+    ...humanActionOperationHandlers(human),
   });
   const runtime = new AgentRuntime({
     tasks,
@@ -149,6 +165,7 @@ export function harness(o: HarnessOptions = {}) {
     poolSize: o.poolSize ?? 4,
     leaseMs: 1_000,
     cancelGraceMs: o.cancelGraceMs ?? 20,
+    relay,
   });
 
   const define = (
@@ -225,7 +242,10 @@ export function harness(o: HarnessOptions = {}) {
     tasks,
     runtime,
     wakeups,
-    notifications,
+    inbox,
+    human,
+    relay,
+    stream,
     define,
     instance,
     delegate,
