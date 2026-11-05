@@ -31,6 +31,11 @@ import {
   type StoreTx,
   type StoredDocument,
   type TaskEventType,
+  type Telemetry,
+  METRICS,
+  NOOP_TELEMETRY,
+  SPANS,
+  sanitizeTraceparent,
   type TaskHandle,
   type TaskSnapshot,
   TRANSITION_EVENT,
@@ -53,6 +58,8 @@ export interface TaskRecord {
   callerId: string;
   /** Principal type of the delegating caller (dispatch-time policy checks use it). */
   callerType?: TrustedPrincipal['type'];
+  /** Trace context of the accepting span (W3C traceparent); parent of every execution span of this task. */
+  traceparent?: string;
   parentTaskId?: string;
   depth: number;
   definition: VersionedRef;
@@ -156,6 +163,8 @@ export interface TaskServiceOptions {
   limits?: { maxDepth?: number; maxFanOut?: number };
   /** Fault hook for audit-intent and recovery tests; production passes nothing. */
   faults?: FaultHook;
+  /** Spans and metrics (observability contract); defaults to no-op. */
+  telemetry?: Telemetry;
 }
 
 export const DEFAULT_RETRY: RetryPolicy = {
@@ -195,9 +204,53 @@ export class TaskService {
     this.cancelHooks.add(hook);
   }
 
+  get telemetry(): Telemetry {
+    return this.o.telemetry ?? NOOP_TELEMETRY;
+  }
+
+  /**
+   * Accept a task (see `accept`) inside an `agentropy.task.accept` span. `trace.traceparent` is an untrusted
+   * correlation hint from ingress or the parent capability span: it is sanitized and never used for authorization.
+   */
   async delegate<I>(
     request: DelegationRequest<I>,
     caller: TrustedPrincipal,
+    trace: { traceparent?: string } = {},
+  ): Promise<TaskHandle> {
+    const parent = sanitizeTraceparent(trace.traceparent);
+    if (trace.traceparent !== undefined && !parent)
+      this.telemetry.count(METRICS.traceRejected, 1, { carrier: 'delegate' });
+    const span = this.telemetry.startSpan(SPANS.accept, {
+      kind: 'server',
+      ...(parent ? { parent } : {}),
+      attributes: {
+        'agentropy.tenant.id': caller?.tenantId ?? '',
+        'agentropy.correlation_id': request?.correlationId ?? '',
+        ...(request?.target && 'instanceId' in request.target
+          ? { 'agentropy.instance.id': request.target.instanceId }
+          : {}),
+      },
+    });
+    try {
+      const handle = await this.accept(
+        request,
+        caller,
+        span.traceparent ?? parent,
+      );
+      span.setAttributes({ 'agentropy.task.id': handle.taskId });
+      return handle;
+    } catch (err) {
+      span.fail((err as { code?: string }).code ?? 'Internal');
+      throw err;
+    } finally {
+      span.end();
+    }
+  }
+
+  private async accept<I>(
+    request: DelegationRequest<I>,
+    caller: TrustedPrincipal,
+    traceparent: string | undefined,
   ): Promise<TaskHandle> {
     // 1. Authenticate.
     if (!caller?.id || !caller.tenantId)
@@ -300,6 +353,7 @@ export class TaskService {
       ownerId: instance.ownerId,
       callerId: caller.id,
       callerType: caller.type,
+      ...(traceparent ? { traceparent } : {}),
       ...(request.parentTaskId ? { parentTaskId: request.parentTaskId } : {}),
       depth,
       definition: instance.definition,
@@ -361,6 +415,10 @@ export class TaskService {
         return this.handleFor(winner.value.taskId);
       throw err;
     }
+    this.telemetry.count(METRICS.tasksAccepted, 1, {
+      'agentropy.agent.id': definition.id,
+      'agentropy.profile': definition.profile.id,
+    });
     return this.handleFor(taskId);
   }
 

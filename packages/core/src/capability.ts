@@ -75,6 +75,8 @@ export interface CapabilityInvocationContext {
   idempotencyKey?: string;
   /** The handler's step key for this effect, when it gave one (the idempotency key is derived from it). */
   stepKey?: string;
+  /** W3C traceparent of the capability span, for propagating trace context to child work (never authorization). */
+  traceparent?: string;
   signal: AbortSignal;
 }
 

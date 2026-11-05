@@ -18,5 +18,10 @@
   },
   "dependencies": {
     "@agentropy/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/sdk-metrics": "2.0.1",
+    "@opentelemetry/sdk-trace-base": "2.0.1"
   }
 }

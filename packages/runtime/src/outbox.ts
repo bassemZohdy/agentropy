@@ -13,6 +13,8 @@ import {
   type TrustedPrincipal,
   TASK_MACHINE,
   isTerminal,
+  METRICS,
+  type Telemetry,
 } from '@agentropy/core';
 import type { OutboxRecord, TaskService } from './task-service.js';
 
@@ -54,6 +56,9 @@ export interface OutboxRelayOptions {
   /** Rows handled per drain call (bounded work per tick). */
   batchSize?: number;
   faults?: FaultHook;
+  /** Delivery lag and terminal-outcome metrics, recorded once per published row. */
+  telemetry?: Telemetry;
+  now?: () => string;
 }
 
 export class OutboxRelay {
@@ -68,6 +73,24 @@ export class OutboxRelay {
     if (this.consumers.some((c) => c.id === consumer.id))
       throw new RangeError(`Consumer ${consumer.id} is already registered`);
     this.consumers.push(consumer);
+  }
+
+  private observe(r: OutboxRecord): void {
+    const t = this.o.telemetry;
+    if (!t) return;
+    if (this.o.now)
+      t.record(
+        METRICS.outboxLag,
+        Math.max(0, Date.parse(this.o.now()) - Date.parse(r.occurredAt)),
+        { 'agentropy.event.type': r.type },
+      );
+    if (r.sequence === 0 && isTerminal(TASK_MACHINE, r.status))
+      t.count(METRICS.tasksFinished, 1, {
+        'agentropy.task.status': r.status,
+        ...(r.payload.outcome
+          ? { 'agentropy.outcome.code': r.payload.outcome.code }
+          : {}),
+      });
   }
 
   /** Publish pending rows in commit order; stops at the first failing row so order is preserved. Returns rows published. */
@@ -96,6 +119,7 @@ export class OutboxRelay {
           this.o.faults?.checkpoint('relay.deliver');
           for (const c of this.consumers) await c.handle(event);
           this.o.faults?.checkpoint('relay.markPublished');
+          this.observe(row.value);
         } catch (err) {
           await this.o.store.transaction(async (tx) => {
             const cur = await tx.get<OutboxRecord>('outbox', row.id);

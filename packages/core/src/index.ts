@@ -5,6 +5,7 @@ export * from './agent.js';
 export * from './capability.js';
 export * from './communication.js';
 export * from './messaging.js';
+export * from './telemetry.js';
 export * from './errors.js';
 export * from './implementation.js';
 export * from './lifecycle.js';

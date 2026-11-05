@@ -27,6 +27,7 @@ import {
   type TaskEvent,
   type TaskHandle,
   type TaskSnapshot,
+  type Telemetry,
   type ToolExecutor,
   type TrustedPrincipal,
   type DelegationRequest,
@@ -91,6 +92,8 @@ export interface LocalAppOptions {
   >;
   limits?: { maxDepth?: number; maxFanOut?: number };
   faults?: FaultHook;
+  /** Spans and metrics (e.g. `openTelemetry({ api, tracer, meter })`); no-op by default. */
+  telemetry?: Telemetry;
   /** Unconsumed events kept per subscription before back-pressure drops (default 1000). */
   mailboxLimit?: number;
   /** Briefing policy, per-user preferences and urgent push (M2-04). */
@@ -118,9 +121,11 @@ export interface LocalApp {
   define(definition: AgentDefinition, handler?: Agent<never, unknown>): void;
 
   // AgentService (Agent v1)
+  /** `trace.traceparent`: optional W3C context from the caller's request (sanitized; never authorization). */
   delegate<I>(
     request: DelegationRequest<I>,
     caller: TrustedPrincipal,
+    trace?: { traceparent?: string },
   ): Promise<TaskHandle>;
   getTask(taskId: string, caller: TrustedPrincipal): Promise<TaskSnapshot>;
   listTasks(
@@ -218,6 +223,7 @@ export interface LocalApp {
     source: string;
     tenantId: string;
     payload: unknown;
+    traceparent?: string;
   }): Promise<boolean>;
   /** Poll wake-ups and run due work until nothing is left (bounded); for tests, examples and batch use. */
   runUntilIdle(maxRounds?: number): Promise<void>;
@@ -251,6 +257,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     now,
     ...(o.limits ? { limits: o.limits } : {}),
     ...(o.faults ? { faults: o.faults } : {}),
+    ...(o.telemetry ? { telemetry: o.telemetry } : {}),
     acceptance: {
       contracts: CAPABILITY_CATALOG,
       profiles: o.profiles ?? BUILTIN_PROFILES,
@@ -283,6 +290,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
   const relay = new OutboxRelay({
     store,
     consumers: [projector, stream],
+    ...(o.telemetry ? { telemetry: o.telemetry, now } : {}),
     ...(o.faults ? { faults: o.faults } : {}),
   });
   const forwarder = o.audit
@@ -381,7 +389,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
       }
       definitions.register(def);
     },
-    delegate: (r, c) => tasks.delegate(r, c),
+    delegate: (r, c, trace) => tasks.delegate(r, c, trace),
     getTask: (id, c) => tasks.getTask(id, c),
     listTasks: (q, c) => tasks.listTasks(q, c),
     listInstances: (c, ownerId) => instances.list(c, ownerId),

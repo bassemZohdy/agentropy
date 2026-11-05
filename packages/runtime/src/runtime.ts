@@ -20,6 +20,9 @@ import {
   type SkillAccess,
   type StoreTx,
   type StoredDocument,
+  type TelemetrySpan,
+  METRICS,
+  SPANS,
   type TrustedPrincipal,
   type WakeReason,
   type WakeupRequest,
@@ -47,6 +50,8 @@ export interface WakeupRecord {
   dueAt: string | null;
   /** Set by whoever fires it; delivered to the next activation. */
   reason?: WakeReason;
+  /** Sanitized traceparent of the inbound event that fired it; linked from the next execution span. */
+  causeTraceparent?: string;
 }
 
 export interface RuntimeOptions {
@@ -297,6 +302,9 @@ export class AgentRuntime {
       lastDecisionAt: now,
       attempt,
     };
+    this.o.tasks.telemetry.count(METRICS.dispatchGated, 1, {
+      'agentropy.gate.reason': reason,
+    });
     if (g) await tx.update<DispatchGate>('gates', g.id, g.revision, value);
     else await tx.insert<DispatchGate>('gates', t.id, value);
     await this.o.tasks.audit(
@@ -439,18 +447,34 @@ export class AgentRuntime {
     controller: AbortController,
   ): Promise<void> {
     const t = task.value;
+    const telemetry = this.o.tasks.telemetry;
+    const started = performance.now();
     let disposition:
       AgentDisposition<unknown> | { kind: 'threw'; error: AgentropyError };
+    let span: TelemetrySpan | undefined;
     try {
       const provider = this.o.implementations.get(
         t.snapshot.implementation.providerId,
         t.snapshot.implementation.providerVersion,
       );
       const agent = provider.createAgent(t.snapshot.implementation);
-      const { checkpoint, wakeReason } = await this.resumeState(
-        t.taskId,
-        exec.value.trigger,
-      );
+      const { checkpoint, wakeReason, causeTraceparent } =
+        await this.resumeState(t.taskId, exec.value.trigger);
+      span = telemetry.startSpan(SPANS.execute, {
+        kind: 'consumer',
+        ...(t.traceparent ? { parent: t.traceparent } : {}),
+        ...(causeTraceparent ? { links: [causeTraceparent] } : {}),
+        attributes: {
+          'agentropy.tenant.id': t.tenantId,
+          'agentropy.task.id': t.taskId,
+          'agentropy.execution.id': exec.id,
+          'agentropy.agent.id': t.snapshot.definition.id,
+          'agentropy.activation': exec.value.activation,
+          'agentropy.attempt': exec.value.attempt,
+          'agentropy.trigger': exec.value.trigger,
+          ...(wakeReason ? { 'agentropy.wake.kind': wakeReason.kind } : {}),
+        },
+      });
       const invocation: AgentInvocation = {
         taskId: t.taskId,
         executionId: exec.id,
@@ -463,7 +487,7 @@ export class AgentRuntime {
       };
       disposition = await agent.handle(
         invocation,
-        this.context(t, exec, controller),
+        this.context(t, exec, controller, span.traceparent),
       );
       // Validate a wake-up request before it reaches the transition transaction (invalid → non-retryable failure).
       if (disposition.kind === 'waiting') {
@@ -510,6 +534,19 @@ export class AgentRuntime {
         error: toAgentropyError(err, t.correlationId),
       };
     }
+    const outcome =
+      disposition.kind === 'threw'
+        ? disposition.error.code
+        : disposition.kind === 'failed'
+          ? disposition.code
+          : undefined;
+    span?.setAttributes({ 'agentropy.disposition': disposition.kind });
+    if (outcome) span?.fail(outcome);
+    span?.end();
+    telemetry.record(METRICS.executionDuration, performance.now() - started, {
+      'agentropy.agent.id': t.snapshot.definition.id,
+      'agentropy.disposition': disposition.kind,
+    });
     await this.applyDisposition(exec, disposition).catch((err) => {
       // A fenced (stale-epoch) write is expected after lease loss or cancel grace expiry: the result is discarded.
       if (!isAgentropyError(err, 'StaleRevision')) throw err;
@@ -519,7 +556,11 @@ export class AgentRuntime {
   private async resumeState(
     taskId: string,
     trigger: AgentInvocation['trigger'],
-  ): Promise<{ checkpoint?: unknown; wakeReason?: WakeReason }> {
+  ): Promise<{
+    checkpoint?: unknown;
+    wakeReason?: WakeReason;
+    causeTraceparent?: string;
+  }> {
     return this.store.transaction(async (tx) => {
       const cp = await tx.get<{ data: unknown }>('checkpoints', taskId);
       if (trigger !== 'resume') return { checkpoint: cp?.value.data };
@@ -531,6 +572,9 @@ export class AgentRuntime {
       return {
         checkpoint: cp?.value.data,
         ...(fired?.value.reason ? { wakeReason: fired.value.reason } : {}),
+        ...(fired?.value.causeTraceparent
+          ? { causeTraceparent: fired.value.causeTraceparent }
+          : {}),
       };
     });
   }
@@ -819,6 +863,7 @@ export class AgentRuntime {
     t: TaskRecord,
     exec: StoredDocument<StoredExecution>,
     controller: AbortController,
+    traceparent?: string,
   ): AgentContext {
     const principal: TrustedPrincipal = {
       id: t.instanceId,
@@ -840,6 +885,7 @@ export class AgentRuntime {
         exec.id,
         principal,
         controller.signal,
+        traceparent,
       ),
       progress: {
         report: async (p) => {
@@ -865,97 +911,133 @@ export class AgentRuntime {
     executionId: string,
     principal: TrustedPrincipal,
     signal: AbortSignal,
+    traceparent?: string,
   ): CapabilityAccess {
+    const telemetry = this.o.tasks.telemetry;
+    const traced = async <O>(
+      capabilityId: string,
+      operation: string,
+      run: (span: TelemetrySpan) => Promise<O>,
+    ): Promise<O> => {
+      const span = telemetry.startSpan(SPANS.capability, {
+        kind: 'client',
+        ...(traceparent ? { parent: traceparent } : {}),
+        attributes: {
+          'agentropy.task.id': t.taskId,
+          'agentropy.capability.id': capabilityId,
+          'agentropy.capability.operation': operation,
+        },
+      });
+      let result = 'ok';
+      try {
+        return await run(span);
+      } catch (err) {
+        result = (err as { code?: string }).code ?? 'Internal';
+        span.fail(result);
+        throw err;
+      } finally {
+        span.end();
+        telemetry.count(METRICS.capabilityCalls, 1, {
+          'agentropy.capability.id': capabilityId,
+          'agentropy.capability.operation': operation,
+          'agentropy.result': result,
+        });
+      }
+    };
     return {
-      invoke: async <I, O>(
+      invoke: <I, O>(
         capabilityId: string,
         operation: string,
         input: I,
         options: { stepKey?: string } = {},
-      ): Promise<O> => {
-        const binding = t.snapshot.bindings.find((b) => b.id === capabilityId);
-        if (!binding)
-          throw new AgentropyError(
-            'CapabilityNotDeclared',
-            `Capability ${capabilityId} is not in this task's snapshot`,
-            { details: { id: capabilityId } },
+      ): Promise<O> =>
+        traced(capabilityId, operation, async (span) => {
+          const binding = t.snapshot.bindings.find(
+            (b) => b.id === capabilityId,
           );
-        const contract = this.o.tasks.o.acceptance.contracts.find(
-          (c) => c.id === binding.id && c.version === binding.version,
-        );
-        const op = contract?.operations.find((x) => x.name === operation);
-        if (!op)
-          throw new AgentropyError(
-            'UnsupportedOperation',
-            `${capabilityId}.${operation} is not declared`,
-            { details: { id: capabilityId, operation } },
-          );
-        if (op.effect === 'external' && !options.stepKey)
-          throw new AgentropyError(
-            'SchemaViolation',
-            `${capabilityId}.${operation} requires a stepKey`,
-            { details: { reason: 'missingStepKey' } },
-          );
-        // SEC-02: every protected (non-read) effect re-validates the delegated grant; no stale Allow.
-        if (op.effect !== 'read' && t.grantRef && this.o.tasks.o.grants) {
-          const status = await this.o.tasks.o.grants
-            .check(t.grantRef, t.tenantId)
-            .catch(() => {
-              throw new AgentropyError(
-                'PolicyDecisionUnavailable',
-                'Grant status unavailable',
-              );
-            });
-          if (status !== 'valid')
+          if (!binding)
             throw new AgentropyError(
-              'AuthorityExpired',
-              `Delegated authority ${status}`,
-              { details: { status } },
+              'CapabilityNotDeclared',
+              `Capability ${capabilityId} is not in this task's snapshot`,
+              { details: { id: capabilityId } },
             );
-        }
-        await enforcePolicy(
-          this.o.tasks.o.pdp,
-          {
-            principal,
-            action: op.permission,
-            resource: {
-              type: 'capability',
-              id: capabilityId,
-              tenantId: t.tenantId,
-            },
-          },
-          signal,
-        );
-        const provider = this.o.capabilityProviders.get(binding.providerId);
-        if (!provider)
-          throw new AgentropyError(
-            'ProviderUnavailable',
-            `Capability provider ${binding.providerId} is not available`,
-            { details: { id: capabilityId } },
+          const contract = this.o.tasks.o.acceptance.contracts.find(
+            (c) => c.id === binding.id && c.version === binding.version,
           );
-        return provider.invoke<I, O>(operation, input, {
-          tenantId: t.tenantId,
-          taskId: t.taskId,
-          executionId,
-          principalId: principal.id,
-          ...(principal.delegatedAuthorityRef
-            ? { delegatedAuthorityRef: principal.delegatedAuthorityRef }
-            : {}),
-          ...(options.stepKey
-            ? {
-                stepKey: options.stepKey,
-                idempotencyKey: hashKey(
-                  t.tenantId,
-                  t.taskId,
-                  capabilityId,
-                  operation,
-                  options.stepKey,
-                ),
-              }
-            : {}),
-          signal,
-        });
-      },
+          const op = contract?.operations.find((x) => x.name === operation);
+          if (!op)
+            throw new AgentropyError(
+              'UnsupportedOperation',
+              `${capabilityId}.${operation} is not declared`,
+              { details: { id: capabilityId, operation } },
+            );
+          if (op.effect === 'external' && !options.stepKey)
+            throw new AgentropyError(
+              'SchemaViolation',
+              `${capabilityId}.${operation} requires a stepKey`,
+              { details: { reason: 'missingStepKey' } },
+            );
+          // SEC-02: every protected (non-read) effect re-validates the delegated grant; no stale Allow.
+          if (op.effect !== 'read' && t.grantRef && this.o.tasks.o.grants) {
+            const status = await this.o.tasks.o.grants
+              .check(t.grantRef, t.tenantId)
+              .catch(() => {
+                throw new AgentropyError(
+                  'PolicyDecisionUnavailable',
+                  'Grant status unavailable',
+                );
+              });
+            if (status !== 'valid')
+              throw new AgentropyError(
+                'AuthorityExpired',
+                `Delegated authority ${status}`,
+                { details: { status } },
+              );
+          }
+          await enforcePolicy(
+            this.o.tasks.o.pdp,
+            {
+              principal,
+              action: op.permission,
+              resource: {
+                type: 'capability',
+                id: capabilityId,
+                tenantId: t.tenantId,
+              },
+            },
+            signal,
+          );
+          const provider = this.o.capabilityProviders.get(binding.providerId);
+          if (!provider)
+            throw new AgentropyError(
+              'ProviderUnavailable',
+              `Capability provider ${binding.providerId} is not available`,
+              { details: { id: capabilityId } },
+            );
+          return provider.invoke<I, O>(operation, input, {
+            tenantId: t.tenantId,
+            taskId: t.taskId,
+            executionId,
+            principalId: principal.id,
+            ...(principal.delegatedAuthorityRef
+              ? { delegatedAuthorityRef: principal.delegatedAuthorityRef }
+              : {}),
+            ...(options.stepKey
+              ? {
+                  stepKey: options.stepKey,
+                  idempotencyKey: hashKey(
+                    t.tenantId,
+                    t.taskId,
+                    capabilityId,
+                    operation,
+                    options.stepKey,
+                  ),
+                }
+              : {}),
+            ...(span.traceparent ? { traceparent: span.traceparent } : {}),
+            signal,
+          });
+        }),
     };
   }
 }

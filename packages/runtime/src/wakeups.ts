@@ -18,6 +18,8 @@ import {
   type TaskSnapshot,
   type TrustedPrincipal,
   type WakeReason,
+  METRICS,
+  sanitizeTraceparent,
 } from '@agentropy/core';
 import type { StoredHumanAction } from './human-actions.js';
 import type { InstanceDirectory } from './registry.js';
@@ -46,6 +48,8 @@ export interface MailboxEntry {
   eventId: string;
   payload: unknown;
   consumed: 0 | 1;
+  /** Sanitized W3C traceparent the producer sent with the event (correlation only). */
+  traceparent?: string;
 }
 
 const matches = (
@@ -145,6 +149,7 @@ export class WakeupService {
     source: string;
     tenantId: string;
     payload: unknown;
+    traceparent?: string;
   }): Promise<boolean> {
     return (await this.offer(event)).accepted;
   }
@@ -158,8 +163,13 @@ export class WakeupService {
     source: string;
     tenantId: string;
     payload: unknown;
+    traceparent?: string;
   }): Promise<OfferResult> {
     const limit = this.options.mailboxLimit ?? 1000;
+    const telemetry = this.tasks.telemetry;
+    const traceparent = sanitizeTraceparent(event.traceparent);
+    if (event.traceparent !== undefined && !traceparent)
+      telemetry.count(METRICS.traceRejected, 1, { carrier: 'event' });
     const result = await this.store.transaction(async (tx) => {
       const r: OfferResult = { accepted: false, appended: 0, dropped: 0 };
       if (await tx.get('inboundEvents', event.eventId)) return r;
@@ -187,6 +197,9 @@ export class WakeupService {
             lastDroppedEventId: event.eventId,
           });
           r.dropped++;
+          telemetry.count(METRICS.mailboxDropped, 1, {
+            'agentropy.event.source': event.source,
+          });
           continue;
         }
         await tx.insert<MailboxEntry>('mailbox', `${s.id}:${event.eventId}`, {
@@ -195,6 +208,7 @@ export class WakeupService {
           eventId: event.eventId,
           payload: event.payload,
           consumed: 0,
+          ...(traceparent ? { traceparent } : {}),
         });
         r.appended++;
       }
@@ -304,6 +318,9 @@ export class WakeupService {
         ...w.value,
         status: 'fired',
         reason: hit.reason,
+        ...(hit.consume?.value.traceparent
+          ? { causeTraceparent: hit.consume.value.traceparent }
+          : {}),
       });
       if (hit.consume)
         await tx.update<MailboxEntry>(
@@ -507,6 +524,7 @@ export function coreOperationHandlers(
           ...(d.budget ? { budget: d.budget } : {}),
         },
         await agentPrincipal(ctx),
+        ctx.traceparent ? { traceparent: ctx.traceparent } : {},
       );
     },
     getTask: async (input, ctx): Promise<TaskSnapshot> => {

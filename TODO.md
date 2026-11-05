@@ -15,8 +15,8 @@
     - Done when: contract revisions and owner-control tests pass; `pnpm exec vitest run packages/testkit/test/governance.test.ts`
   - [ ] **TASK-026.3** · high · Authorization depth: grant narrowing and agent identities (D-15), credential rotation (D-17, SEC-06), PEP parity and decision caching (D-18, D-19), revocation checkpoints and compensation (D-20), audit SPI (D-21), proposed defaults (D-24)
     - Done when: Security v1 revision and conformance tests pass; `pnpm exec vitest run packages/testkit/test/authorization.test.ts`
-  - [ ] **TASK-026.4** · mid · Observability contracts: baseline metrics (D-12), OpenTelemetry spans and links (D-13), carrier propagation and sanitization (D-14)
-    - Done when: observability contract and propagation tests pass; `pnpm exec vitest run packages/testkit/test/observability.test.ts`
+  - [x] **TASK-026.4** · mid · Observability contracts: baseline metrics (D-12), OpenTelemetry spans and links (D-13), carrier propagation and sanitization (D-14)
+    - Done when: observability contract and propagation tests pass; `pnpm exec vitest run packages/testkit/test/telemetry.test.ts`
   - [ ] **TASK-026.5** · mid · Operations: provider outage recovery and failover (D-04), configurable limits and metrics (D-05), isolation levels (N-02), MCP/UTCP/direct tool protocol evaluation (T-04)
     - Done when: operations contract and outage tests pass; `pnpm exec vitest run packages/testkit/test/operations.test.ts`
 - [ ] **FEAT-027** · P1 · high · M2: always-on scale, A2A interoperability, control, observability and tenancy
@@ -32,7 +32,7 @@
     - Done when: scale suite passes with recorded baseline numbers; `pnpm exec vitest run packages/testkit/test/scale.test.ts`
   - [ ] **FEAT-027.5** · mid · Workflow-backed deterministic agent and a real reasoning provider adapter with bounded tools and budget (M2-07, M2-08)
     - Done when: workflow and reasoning-provider suites pass offline with recorded fixtures; `pnpm exec vitest run packages/testkit/test/providers.test.ts`
-  - [ ] **FEAT-027.6** · mid · Observability: OpenTelemetry traces and metrics, correlation through delegation, redaction (M2-10)
+  - [x] **FEAT-027.6** · mid · Observability: OpenTelemetry traces and metrics, correlation through delegation, redaction (M2-10)
     - Done when: telemetry suite passes; `pnpm exec vitest run packages/testkit/test/telemetry.test.ts`
   - [ ] **FEAT-027.7** · high · Tenant isolation and quotas, and the full threat model for identity flows (M2-09, M2-11)
     - Done when: tenancy and quota suite passes and the threat model is recorded; `pnpm exec vitest run packages/testkit/test/tenancy.test.ts`

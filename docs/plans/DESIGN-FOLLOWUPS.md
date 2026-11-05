@@ -42,9 +42,9 @@ Checked by `node scripts/check-readiness.mjs`: every item above has exactly one 
 | `D-08` | open | — | TASK-026.2 |
 | `D-09` | deferred | docs/plans/PROJECT.md | Deferred |
 | `D-11` | partial | packages/runtime/test/outbox-inbox.test.ts | FEAT-027.3 |
-| `D-12` | open | — | TASK-026.4 |
-| `D-13` | open | — | TASK-026.4 |
-| `D-14` | open | — | TASK-026.4 |
+| `D-12` | closed | docs/contracts/observability-v1.md | — |
+| `D-13` | closed | packages/testkit/test/telemetry.test.ts | — |
+| `D-14` | closed | packages/testkit/test/telemetry.test.ts | — |
 | `D-15` | open | — | TASK-026.3 |
 | `D-16` | closed | packages/testkit/test/security.test.ts | — |
 | `D-17` | open | — | TASK-026.3 |
@@ -66,4 +66,5 @@ Notes on the M1 evidence:
 - **D-16** — the persisted authorization hold is the ADR-0024 gate (not a task state), with grant renewal through `reauthorize`, policy-driven deadline/cancel while held, fresh checks at sensitive operations and restart/CAS tests (SEC-01/02; [runtime contract](../runtime-contract.md) rev 3).
 - **D-18 / D-19** — default-deny, fail-closed PEP order, bounded PDP retry and durable gate are done ([Security v1](../contracts/security-v1.md) rev 2); A2A/custom-provider enforcement parity, decision caching and revocation freshness remain.
 - **D-21** — mandatory audit intent commits with each protected change and is forwarded at least once (SEC-03); an independent AuditService SPI and tamper evidence remain (D-22 is M3).
+- **D-12 / D-13 / D-14** — closed by [Observability v1](../contracts/observability-v1.md) (TASK-026.4) and its OpenTelemetry-backed suite (FEAT-027.6).
 - **N-02** — logical tenant/app-context isolation is tested (AC-14); workspace/credential boundaries and provider sandboxes are not claimed.
