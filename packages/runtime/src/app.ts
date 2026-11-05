@@ -112,6 +112,24 @@ export interface LocalApp {
     caller: TrustedPrincipal,
   ): Promise<TaskHandle>;
   getTask(taskId: string, caller: TrustedPrincipal): Promise<TaskSnapshot>;
+  listTasks(
+    query: {
+      instanceId?: string;
+      status?: TaskSnapshot['status'][];
+      cursor?: string;
+      limit?: number;
+    },
+    caller: TrustedPrincipal,
+  ): Promise<{ tasks: TaskSnapshot[]; cursor: string }>;
+  listInstances(
+    caller: TrustedPrincipal,
+    ownerId?: string,
+  ): Promise<AgentInstance[]>;
+  /** Stop accepting new tasks; retire once the last task ends. */
+  drainInstance(
+    instanceId: string,
+    caller: TrustedPrincipal,
+  ): Promise<AgentInstance>;
   getTaskByIdempotencyKey(
     key: string,
     caller: TrustedPrincipal,
@@ -281,6 +299,13 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
           }),
       }
     : {};
+  async function hasActiveTasks(instanceId: string): Promise<boolean> {
+    return (
+      await store.transaction((tx) =>
+        tx.find<TaskRecord>('tasks', { where: { instanceId } }),
+      )
+    ).some((t) => !isTerminal(TASK_MACHINE, t.value.status));
+  }
   async function taskOf(taskId: string): Promise<TaskRecord> {
     const doc = await store.transaction((tx) =>
       tx.get<TaskRecord>('tasks', taskId),
@@ -331,6 +356,9 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     },
     delegate: (r, c) => tasks.delegate(r, c),
     getTask: (id, c) => tasks.getTask(id, c),
+    listTasks: (q, c) => tasks.listTasks(q, c),
+    listInstances: (c, ownerId) => instances.list(c, ownerId),
+    drainInstance: (id, c) => instances.drain(id, c),
     getTaskByIdempotencyKey: (k, c) => tasks.getTaskByIdempotencyKey(k, c),
     getResult: (id, c) => tasks.getResult(id, c),
     cancel: (id, c, reason) => tasks.cancel(id, c, reason),
@@ -342,12 +370,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     retireInstance: (id, c, opts = {}) =>
       instances.retire(id, c, {
         ...opts,
-        hasActiveTasks: async () =>
-          (
-            await store.transaction((tx) =>
-              tx.find<TaskRecord>('tasks', { where: { instanceId: id } }),
-            )
-          ).some((t) => !isTerminal(TASK_MACHINE, t.value.status)),
+        hasActiveTasks: () => hasActiveTasks(id),
       }),
     claimHumanAction: (id, c) => human.claim(id, c),
     releaseHumanAction: (id, c) => human.release(id, c),

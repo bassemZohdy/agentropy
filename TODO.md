@@ -22,7 +22,7 @@
 - [ ] **FEAT-027** · P1 · high · M2: always-on scale, A2A interoperability, control, observability and tenancy
   - Done when: M2 plan items verified by their suites; `pnpm check`
   - Links: Ref: docs/plans/M2-M3-PLAN.md#m2 · Depends: TASK-024 · Lane: interop
-  - [ ] **FEAT-027.1** · mid · Owner visibility and control: list, filter and cancel own tasks; suspend, resume and drain instances with access control (M2-05)
+  - [x] **FEAT-027.1** · mid · Owner visibility and control: list, filter and cancel own tasks; suspend, resume and drain instances with access control (M2-05)
     - Done when: owner-control suite passes; `pnpm exec vitest run packages/testkit/test/owner-control.test.ts`
   - [ ] **FEAT-027.2** · mid · Inbox reconciliation and rebuild; briefing policy with urgent vs deferred delivery and a priority resolver with policy floors (M2-03, M2-04)
     - Done when: inbox rebuild and briefing-policy suite passes; `pnpm exec vitest run packages/testkit/test/inbox-policy.test.ts`

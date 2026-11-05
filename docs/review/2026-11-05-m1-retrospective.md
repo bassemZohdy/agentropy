@@ -29,7 +29,7 @@ Agent v1, Communication v1, Errors v1, Agent Implementation v1 and Skill v1 need
 
 ## Decisions worth revisiting
 
-- **Facade beyond Agent v1.** `createLocalApp` exposes `getHumanAction`, `reauthorize` and `publishEvent` in addition to the `AgentService` operations. Agent v1 should either add them or move them to an operator/ingress interface (M2 contract revision).
+- **Facade beyond Agent v1.** `createLocalApp` exposes `getHumanAction`, `reauthorize` and `publishEvent` in addition to the `AgentService` operations. Agent v1 should either add them or move them to an operator/ingress interface (M2 contract revision). *Resolved in Agent v1 rev 8 (FEAT-027.1): `getHumanAction` and `reauthorize` joined `AgentService`; `publishEvent` stays an ingress operation.*
 - **Inbox projection policy.** Terminal task events project only for failed child tasks by default; completions are reported through `notification.notify`. Confirm with real conversational usage.
 - **Gate deny handling.** A PDP `deny` at dispatch keeps the task gated (`policy-denied`) until reauthorization instead of failing it; there is no terminal edge for "denied before start". Review with ADR-0021 owners.
 - **Cancel request revision.** Recording a cancel request on a running task bumps the task revision; the messaging contract now says so. A separate cancel-request record would keep revisions transition-only.

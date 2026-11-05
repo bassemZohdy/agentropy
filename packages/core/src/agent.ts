@@ -84,6 +84,8 @@ export interface AgentInstance {
   ownerId: string;
   state: 'available' | 'suspended' | 'retired';
   revision: number;
+  /** Set by drain: no new tasks are accepted; the instance retires when its last task ends (not a lifecycle state). */
+  draining?: boolean;
 }
 
 export interface TrustedPrincipal {

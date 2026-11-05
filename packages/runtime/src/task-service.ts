@@ -9,6 +9,7 @@ import {
   AgentropyError,
   EXECUTION_MACHINE,
   HUMAN_ACTION_MACHINE,
+  INSTANCE_MACHINE,
   TASK_MACHINE,
   assertTransition,
   digestOf,
@@ -18,6 +19,7 @@ import {
   validateAgainst,
   type AcceptanceEnvironment,
   type AcceptanceSnapshot,
+  type AgentInstance,
   type AgentInvocation,
   type AuditEvent,
   type ConversationTurn,
@@ -247,6 +249,12 @@ export class TaskService {
       throw new AgentropyError('InvalidState', 'Target instance is retired', {
         details: { kind: 'instance' },
       });
+    if (instance.draining)
+      throw new AgentropyError(
+        'InstanceUnavailable',
+        'Target instance is draining and accepts no new tasks',
+        { details: { reason: 'draining' } },
+      );
     // 6. Capability, guarantee and implementation resolution → pinned snapshot.
     const snapshot = await resolveAcceptance(
       { definition, principal: caller, tenantId: caller.tenantId },
@@ -310,6 +318,20 @@ export class TaskService {
     };
     try {
       await this.o.store.transaction(async (tx) => {
+        // Fence against a concurrent suspend, drain or retire between the checks above and this commit.
+        const live = await tx.get<AgentInstance>('instances', instance.id);
+        if (!live || live.value.state !== 'available' || live.value.draining)
+          throw new AgentropyError(
+            'InstanceUnavailable',
+            'Target instance changed state during acceptance',
+            {
+              details: {
+                reason: live?.value.draining
+                  ? 'draining'
+                  : (live?.value.state ?? 'missing'),
+              },
+            },
+          );
         await tx.insert<IdempotencyRecord>('idempotency', idemId, {
           tenantId: caller.tenantId,
           taskId,
@@ -371,6 +393,50 @@ export class TaskService {
       },
       caller,
     );
+  }
+
+  /**
+   * Owner visibility (R-13, M2-05): tasks the caller delegated or owns (a trusted service sees its tenant),
+   * newest last, with an opaque cursor. Other users' and tenants' tasks are never listed.
+   */
+  async listTasks(
+    query: {
+      instanceId?: string;
+      status?: TaskStatus[];
+      cursor?: string;
+      limit?: number;
+    },
+    caller: TrustedPrincipal,
+  ): Promise<{ tasks: TaskSnapshot[]; cursor: string }> {
+    if (!caller?.id || !caller.tenantId)
+      throw new AgentropyError('Unauthenticated', 'No trusted principal');
+    const after = query.cursor ? Number(query.cursor) : 0;
+    if (!Number.isSafeInteger(after) || after < 0)
+      throw new AgentropyError('SchemaViolation', 'Invalid task cursor');
+    const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
+    const docs = await this.o.store.transaction((tx) =>
+      tx.find<TaskRecord>('tasks', {
+        where: {
+          tenantId: caller.tenantId,
+          ...(query.instanceId ? { instanceId: query.instanceId } : {}),
+        },
+        orderBy: 'seq',
+        afterSeq: after,
+      }),
+    );
+    const page = docs
+      .filter(
+        (d) =>
+          (d.value.callerId === caller.id ||
+            d.value.ownerId === caller.id ||
+            caller.type === 'service') &&
+          (!query.status?.length || query.status.includes(d.value.status)),
+      )
+      .slice(0, limit);
+    return {
+      tasks: page.map((d) => toSnapshot(d.value, d.revision)),
+      cursor: String(page.at(-1)?.seq ?? after),
+    };
   }
 
   async getTask(
@@ -725,6 +791,25 @@ export class TaskService {
     }
     const gate = await tx.get('gates', cur.id);
     if (gate) await tx.remove('gates', gate.id, gate.revision);
+    // A draining instance retires when its last non-terminal task ends.
+    const inst = await tx.get<AgentInstance>('instances', cur.value.instanceId);
+    if (inst?.value.draining && inst.value.state !== 'retired') {
+      const others = await tx.find<TaskRecord>('tasks', {
+        where: { instanceId: cur.value.instanceId },
+      });
+      if (
+        others.every(
+          (o) => o.id === cur.id || isTerminal(TASK_MACHINE, o.value.status),
+        )
+      ) {
+        assertTransition(INSTANCE_MACHINE, inst.value.state, 'retired');
+        await tx.update<AgentInstance>('instances', inst.id, inst.revision, {
+          ...inst.value,
+          state: 'retired',
+          revision: inst.value.revision + 1,
+        });
+      }
+    }
     // Open human-action requests of a finished task can no longer be decided (H-revoke).
     for (const a of await tx.find<{
       status: string;

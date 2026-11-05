@@ -1,4 +1,4 @@
-# Agentropy Agent Contract v1.0 — revision 7
+# Agentropy Agent Contract v1.0 — revision 8
 
 **Status:** Accepted for M1 implementation (2026-11-05); not API-stable. Implemented types live in `packages/core`; behavior is claimed only where an executable test exists.
 **Scope:** Core logical Agent, AgentDefinition, AgentInstance, DelegatedTask and Execution. Transport/runtime are independent.
@@ -14,6 +14,7 @@
 | 4–5 | — | Not used (numbering gap preserved; no changes were recorded under these numbers) |
 | 6 | 2026-11-05 | Define mandatory/optional AgentDefinition properties, versioned implementation binding, distinct tool/skill selections and execution provider boundary; design only |
 | 7 | 2026-11-05 | Readiness closure: `AcceptanceSnapshot`; `Agent.definition` removed (handlers bind by implementation artifact); `HandlerRegistry` keyed by artifact and owned by the `native-ts` provider; `ToolSelection.bindingId`; read-only `AgentContext.skills`; implementation SPI moved to [Agent Implementation v1](agent-implementation-v1.md); tool and skill rules moved to [Tool v1](tool-v1.md) and [Skill v1](skill-v1.md) |
+| 8 | 2026-11-05 | Implementation (FEAT-027.1, M1 retrospective): `AgentService` gains `listTasks`, `listInstances`, `drainInstance`, `getHumanAction` and `reauthorize`; `AgentInstance.draining` (not a lifecycle state); event ingress (`publishEvent`) is a trusted adapter operation, not part of `AgentService` |
 
 ## Decisions
 
@@ -104,6 +105,7 @@ export interface AgentInstance {
   ownerId: string;                  // principal that owns the logical agent
   state: "available" | "suspended" | "retired";
   revision: number;
+  draining?: boolean;               // set by drainInstance; not a lifecycle state
 }
 
 export interface AgentInvocation<I = unknown> {
@@ -181,6 +183,8 @@ export interface AgentService {
   getTask(taskId: TaskId, caller: TrustedPrincipal): Promise<TaskSnapshot>;
   getTaskByIdempotencyKey(key: string, caller: TrustedPrincipal): Promise<TaskSnapshot>;
   getResult<O>(taskId: TaskId, caller: TrustedPrincipal): Promise<O>;   // NotReady / TaskFailed / TaskCancelled
+  listTasks(query: { instanceId?: AgentInstanceId; status?: TaskSnapshot["status"][]; cursor?: string; limit?: number }, caller: TrustedPrincipal): Promise<{ tasks: TaskSnapshot[]; cursor: string }>; // own tasks only; a trusted service sees its tenant
+  reauthorize(taskId: TaskId, caller: TrustedPrincipal): Promise<void>; // ADR-0024: re-establish authority for a gated task; never dispatches by itself
   cancel(taskId: TaskId, caller: TrustedPrincipal, reason?: string): Promise<TaskSnapshot>;
   subscribe(taskId: TaskId, caller: TrustedPrincipal, from?: { revision: number; sequence: number }): AsyncIterable<TaskEvent>;
   // Conversation (see "Conversation turn model")
@@ -190,9 +194,12 @@ export interface AgentService {
   suspendInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal): Promise<AgentInstance>;
   resumeInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal): Promise<AgentInstance>;
   retireInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal, opts?: { force?: boolean }): Promise<AgentInstance>;
+  drainInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal): Promise<AgentInstance>; // no new tasks; retires when the last task ends
+  listInstances(caller: TrustedPrincipal, ownerId?: string): Promise<AgentInstance[]>; // another owner's only for trusted services
   // Human actions (types in human-actions.md)
   claimHumanAction(requestId: string, caller: TrustedPrincipal): Promise<HumanActionRequest>;
   releaseHumanAction(requestId: string, caller: TrustedPrincipal): Promise<HumanActionRequest>;
+  getHumanAction(requestId: string, caller: TrustedPrincipal): Promise<HumanActionRequest>;
   provideHumanInput(decision: HumanDecision, caller: TrustedPrincipal): Promise<void>;
   // Inbox (projection; types in human-actions.md)
   listInbox(query: { cursor?: string; limit?: number }, caller: TrustedPrincipal): Promise<{ entries: InboxEntry[]; cursor: string }>;

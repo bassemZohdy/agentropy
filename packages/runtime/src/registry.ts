@@ -13,6 +13,8 @@ import {
   type AgentProfile,
   type PolicyDecisionPoint,
   type Store,
+  type StoreTx,
+  type StoredDocument,
   type TrustedPrincipal,
   type VersionedRef,
 } from '@agentropy/core';
@@ -254,6 +256,8 @@ export class InstanceDirectory {
     caller: TrustedPrincipal,
     ownerId = caller.id,
   ): Promise<AgentInstance[]> {
+    // Owners list their own instances; only trusted services may list another owner's (R-13).
+    if (ownerId !== caller.id && caller.type !== 'service') return [];
     const docs = await this.store.transaction((tx) =>
       tx.find<AgentInstance>('instances', {
         where: { tenantId: caller.tenantId, ownerId },
@@ -289,6 +293,64 @@ export class InstanceDirectory {
         { details: { kind: 'instance' } },
       );
     return this.move(instanceId, caller, 'retired');
+  }
+
+  /**
+   * Drain: stop accepting new tasks while existing tasks run to completion; the runtime retires the instance
+   * when its last non-terminal task ends (TaskService.terminate). Retires at once when nothing is active.
+   */
+  async drain(
+    instanceId: string,
+    caller: TrustedPrincipal,
+  ): Promise<AgentInstance> {
+    return this.store.transaction(async (tx) => {
+      const doc = await this.owned(tx, instanceId, caller);
+      const inst = doc.value;
+      if (inst.state === 'retired')
+        throw new AgentropyError('InvalidState', 'Instance is retired', {
+          details: { kind: 'instance' },
+        });
+      // Checked in the same transaction as the update, so no task can slip in between.
+      const active = (
+        await tx.find<{ status: string }>('tasks', { where: { instanceId } })
+      ).some(
+        (t) => !['completed', 'failed', 'cancelled'].includes(t.value.status),
+      );
+      if (!active) assertTransition(INSTANCE_MACHINE, inst.state, 'retired');
+      const next: AgentInstance = {
+        ...inst,
+        draining: true,
+        ...(active ? {} : { state: 'retired' as const }),
+        revision: inst.revision + 1,
+      };
+      return (
+        await tx.update<AgentInstance>(
+          'instances',
+          instanceId,
+          doc.revision,
+          next,
+        )
+      ).value;
+    });
+  }
+
+  private async owned(
+    tx: StoreTx,
+    instanceId: string,
+    caller: TrustedPrincipal,
+  ): Promise<StoredDocument<AgentInstance>> {
+    const doc = await tx.get<AgentInstance>('instances', instanceId);
+    const inst = doc?.value;
+    if (
+      !doc ||
+      !inst ||
+      inst.tenantId !== caller.tenantId ||
+      (inst.ownerId !== caller.id && caller.type !== 'service')
+    )
+      throw new AgentropyError('NotFound', 'Instance not found', {
+        details: { kind: 'instance' },
+      });
+    return doc;
   }
 
   private move(
