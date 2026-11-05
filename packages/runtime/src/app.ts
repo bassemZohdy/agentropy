@@ -48,6 +48,7 @@ import {
   inboxOperationHandlers,
 } from './inbox.js';
 import { OutboxRelay, TaskEventStream, type FaultHook } from './outbox.js';
+import { type InboxPreferences, type PriorityPolicy } from './priority.js';
 import { DefinitionRegistry, InstanceDirectory } from './registry.js';
 import { AgentRuntime, type RuntimeOptions } from './runtime.js';
 import {
@@ -90,6 +91,14 @@ export interface LocalAppOptions {
   >;
   limits?: { maxDepth?: number; maxFanOut?: number };
   faults?: FaultHook;
+  /** Briefing policy, per-user preferences and urgent push (M2-04). */
+  inbox?: {
+    policy?: PriorityPolicy;
+    preferences?: (
+      user: TrustedPrincipal,
+    ) => InboxPreferences | Promise<InboxPreferences>;
+    push?: (entry: InboxEntry) => Promise<boolean>;
+  };
 }
 
 export interface LocalApp {
@@ -193,6 +202,8 @@ export interface LocalApp {
     presentedRevision?: number,
   ): Promise<void>;
   reauthorize(taskId: string, caller: TrustedPrincipal): Promise<void>;
+  /** Operator reconciliation: re-project the inbox from committed events (trusted services only). */
+  rebuildInbox(caller: TrustedPrincipal): Promise<{ created: number }>;
 
   /** Trusted event ingress (e.g. a price feed adapter); duplicate event IDs are ignored. */
   publishEvent(event: {
@@ -249,13 +260,20 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     },
   });
   const wakeups = new WakeupService(tasks, instances);
-  const inbox = new InboxService(tasks);
+  const inbox = new InboxService(tasks, {
+    ...(o.inbox?.policy ? { policy: o.inbox.policy } : {}),
+    ...(o.inbox?.preferences ? { preferences: o.inbox.preferences } : {}),
+  });
+  const projector = new InboxProjector(tasks, {
+    ...(o.inbox?.policy ? { policy: o.inbox.policy } : {}),
+    ...(o.inbox?.push ? { push: o.inbox.push } : {}),
+  });
   const human = new HumanActionService(tasks);
   wakeups.addSweep(() => human.sweep());
   const stream = new TaskEventStream(tasks);
   const relay = new OutboxRelay({
     store,
-    consumers: [new InboxProjector(tasks), stream],
+    consumers: [projector, stream],
     ...(o.faults ? { faults: o.faults } : {}),
   });
   const forwarder = o.audit
@@ -379,6 +397,14 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     listInbox: (q, c) => inbox.list(q, c),
     markInbox: (id, m, c, rev) => inbox.mark(id, m, c, rev),
     reauthorize: (id, c) => tasks.reauthorize(id, c),
+    async rebuildInbox(caller) {
+      if (caller?.type !== 'service')
+        throw new AgentropyError(
+          'PermissionDenied',
+          'Inbox rebuild is an operator action',
+        );
+      return { created: await projector.rebuild() };
+    },
     publishEvent: (e) => wakeups.publish(e),
     async runUntilIdle(maxRounds = 20) {
       for (let i = 0; i < maxRounds; i++) {

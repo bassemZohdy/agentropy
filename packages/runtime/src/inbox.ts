@@ -17,8 +17,23 @@ import {
   type StoreTx,
   type TrustedPrincipal,
 } from '@agentropy/core';
-import type { EventConsumer, PublishedEvent } from './outbox.js';
-import { hashKey, type TaskRecord, type TaskService } from './task-service.js';
+import {
+  toTaskEvent,
+  type EventConsumer,
+  type PublishedEvent,
+} from './outbox.js';
+import {
+  SEVERITY_ORDER,
+  resolveDelivery,
+  type InboxPreferences,
+  type PriorityPolicy,
+} from './priority.js';
+import {
+  hashKey,
+  type OutboxRecord,
+  type TaskRecord,
+  type TaskService,
+} from './task-service.js';
 
 export interface StoredInboxEntry extends InboxEntry {
   ownerId: string;
@@ -53,8 +68,18 @@ function authenticated(caller: TrustedPrincipal | undefined): TrustedPrincipal {
   return caller;
 }
 
+export interface InboxServiceOptions {
+  policy?: PriorityPolicy;
+  preferences?: (
+    user: TrustedPrincipal,
+  ) => InboxPreferences | Promise<InboxPreferences>;
+}
+
 export class InboxService {
-  constructor(private readonly tasks: TaskService) {}
+  constructor(
+    private readonly tasks: TaskService,
+    private readonly options: InboxServiceOptions = {},
+  ) {}
 
   private get store() {
     return this.tasks.o.store;
@@ -114,14 +139,16 @@ export class InboxService {
   }
 
   /**
-   * Bounded snapshot of the user's entries not yet presented at their current revision, most severe first,
-   * marked presented in the same transaction.
+   * Turn-start briefing (R-36, R-26): entries not yet presented at their current revision, filtered and ordered by
+   * the delivery policy (interrupts first, then severity, then age), marked presented in the same transaction.
+   * On-demand entries are left unpresented and only counted.
    */
   async briefing(
     user: TrustedPrincipal,
     limit = 10,
-  ): Promise<{ entries: InboxEntry[] }> {
+  ): Promise<{ entries: InboxEntry[]; onDemand: number }> {
     const p = authenticated(user);
+    const prefs = (await this.options.preferences?.(p)) ?? {};
     return this.store.transaction(async (tx) => {
       const docs = await tx.find<StoredInboxEntry>('inbox', {
         where: { tenantId: p.tenantId, ownerId: p.id },
@@ -133,15 +160,29 @@ export class InboxService {
             !d.value.markers.acknowledgedAt &&
             d.value.markers.presentedRevision !== d.value.revision,
         )
+        .map((d) => ({
+          d,
+          decision: resolveDelivery(
+            publicEntry(d.value),
+            prefs,
+            this.options.policy,
+          ),
+        }));
+      const onDemand = due.filter((x) => x.decision.delivery === 'on-demand');
+      const shown = due
+        .filter((x) => x.decision.delivery !== 'on-demand')
         .sort(
           (a, b) =>
-            SEVERITIES.indexOf(a.value.severity) -
-              SEVERITIES.indexOf(b.value.severity) || a.seq - b.seq,
+            Number(b.decision.delivery === 'interrupt') -
+              Number(a.decision.delivery === 'interrupt') ||
+            SEVERITY_ORDER.indexOf(a.decision.severity) -
+              SEVERITY_ORDER.indexOf(b.decision.severity) ||
+            a.d.seq - b.d.seq,
         )
         .slice(0, Math.min(Math.max(limit, 1), 50));
       const now = this.tasks.o.now();
       const entries: InboxEntry[] = [];
-      for (const d of due) {
+      for (const { d, decision } of shown) {
         const next: StoredInboxEntry = {
           ...d.value,
           markers: {
@@ -151,9 +192,9 @@ export class InboxService {
           },
         };
         await tx.update<StoredInboxEntry>('inbox', d.id, d.revision, next);
-        entries.push(publicEntry(next));
+        entries.push({ ...publicEntry(next), severity: decision.severity });
       }
-      return { entries };
+      return { entries, onDemand: onDemand.length };
     });
   }
 }
@@ -162,16 +203,89 @@ export class InboxService {
 export class InboxProjector implements EventConsumer {
   readonly id = 'inbox';
 
+  private readonly projectTerminal: (
+    task: TaskRecord,
+    type: 'taskCompleted' | 'taskFailed',
+  ) => boolean;
+  private touched: string[] = [];
+
   constructor(
     private readonly tasks: TaskService,
-    /** Which terminal task events become entries; default: failures of delegated (child) tasks. */
-    private readonly projectTerminal: (
-      task: TaskRecord,
-      type: 'taskCompleted' | 'taskFailed',
-    ) => boolean = (task, type) => type === 'taskFailed' && !!task.parentTaskId,
-  ) {}
+    options: {
+      /** Which terminal task events become entries; default: failures of delegated (child) tasks. */
+      projectTerminal?: (
+        task: TaskRecord,
+        type: 'taskCompleted' | 'taskFailed',
+      ) => boolean;
+      /** Urgent push to active clients (e.g. SSE); `true` marks the entry delivered. Durable replay stays the briefing. */
+      push?: (entry: InboxEntry) => Promise<boolean>;
+      policy?: PriorityPolicy;
+    } = {},
+  ) {
+    this.projectTerminal =
+      options.projectTerminal ??
+      ((task, type) => type === 'taskFailed' && !!task.parentTaskId);
+    this.push = options.push;
+    this.policy = options.policy;
+  }
+  private readonly push?: (entry: InboxEntry) => Promise<boolean>;
+  private readonly policy?: PriorityPolicy;
 
-  async handle(event: PublishedEvent): Promise<void> {
+  /**
+   * Reconciliation (M2-03): re-apply every committed TaskEvent in commit order. Projection is idempotent per event,
+   * so existing entries and their markers are kept; missing entries are recreated. Task state is never changed.
+   * Returns how many entries were created.
+   */
+  async rebuild(): Promise<number> {
+    const store = this.tasks.o.store;
+    const before = (await store.transaction((tx) => tx.find('inbox', {})))
+      .length;
+    const rows = await store.transaction((tx) =>
+      tx.find<OutboxRecord>('outbox', { orderBy: 'seq' }),
+    );
+    for (const r of rows) await this.handle(toTaskEvent(r.value), false);
+    return (
+      (await store.transaction((tx) => tx.find('inbox', {}))).length - before
+    );
+  }
+
+  async handle(event: PublishedEvent, push = true): Promise<void> {
+    this.touched = [];
+    await this.project(event);
+    if (push && this.push) await this.pushUrgent(this.touched);
+  }
+
+  private async pushUrgent(ids: string[]): Promise<void> {
+    for (const id of ids) {
+      const doc = await this.tasks.o.store.transaction((tx) =>
+        tx.get<StoredInboxEntry>('inbox', id),
+      );
+      if (!doc) continue;
+      const entry = publicEntry(doc.value);
+      if (resolveDelivery(entry, {}, this.policy).delivery !== 'interrupt')
+        continue;
+      let delivered = false;
+      try {
+        delivered = await this.push!(entry);
+      } catch {
+        delivered = false; // push is best effort; the briefing still presents it
+      }
+      if (delivered)
+        await this.tasks.o.store.transaction(async (tx) => {
+          const cur = await tx.get<StoredInboxEntry>('inbox', id);
+          if (cur)
+            await tx.update<StoredInboxEntry>('inbox', id, cur.revision, {
+              ...cur.value,
+              markers: {
+                ...cur.value.markers,
+                deliveredAt: this.tasks.o.now(),
+              },
+            });
+        });
+    }
+  }
+
+  private async project(event: PublishedEvent): Promise<void> {
     if (
       event.type !== 'notificationCreated' &&
       event.type !== 'humanActionRequested' &&
@@ -283,6 +397,7 @@ export class InboxProjector implements EventConsumer {
   ): Promise<void> {
     const cur = await tx.get<StoredInboxEntry>('inbox', entryId);
     if (cur?.value.applied.includes(event.eventId)) return;
+    this.touched.push(entryId);
     const content = {
       source: {
         eventId: event.eventId,

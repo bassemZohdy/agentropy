@@ -14,3 +14,4 @@ export * from './inbox.js';
 export * from './human-actions.js';
 export * from './audit.js';
 export * from './app.js';
+export * from './priority.js';

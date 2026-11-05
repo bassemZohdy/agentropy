@@ -532,10 +532,8 @@ describe('inbox queries and markers', () => {
     const marked = (await h.inbox.list({}, alice)).entries[0]!;
     expect(marked.markers.readAt).toBeDefined();
     expect(marked.markers.acknowledgedAt).toBeDefined();
-    // Acknowledged entries are not briefed.
-    expect((await h.inbox.briefing(alice)).entries.map((e) => e.title)).toEqual(
-      ['n2', 'n3'],
-    );
+    // Low-severity entries are on-demand by default and acknowledged ones are never briefed.
+    expect(await h.inbox.briefing(alice)).toEqual({ entries: [], onDemand: 2 });
   });
 
   it('a failed child task is projected as one high-severity entry for its owner', async () => {
