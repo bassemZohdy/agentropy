@@ -102,3 +102,10 @@ These are **accepted design constraints**, not claims that the v1 contract or ru
 - **Acceptance (planned, not implemented):** same logical tool runs via two adapters without Agent code changes; negative security and failure-injection tests verify framework enforcement. Test milestones and approved SEC scope remain subject to readiness review.
 
 See [ADR-0026](adr/0026-protocol-agnostic-tool-integration.md) and the T-01…T-04 tasks in [TODO](../TODO.md).
+
+## 2026-11-05 — Standard Agent Skills (ADR-0026; contract amendment pending)
+
+- **R-01/R-02/R-03:** AgentDefinition must be able to reference immutable/version-resolved standard Agent Skills separately from its selected Capabilities; no Skill-derived implied permissions.
+- **R-06/R-27:** SkillRegistry/SkillLoader discover verified Skill metadata first, then read `SKILL.md` and optional resources as needed, preserving standard compatibility. Skill distribution/provenance, activation and updates are governed and auditable.
+- **R-09/R-28:** Skill content and scripts are untrusted; scripts/tools require explicit authorized execution and enforce tenant, delegated scope, workspace/credential isolation and sandbox guarantees, with typed unsupported errors.
+- **Planned tests:** fixture-based open-standard compatibility; lazy loading; version pinning; required-Skill absence; malicious instructions/scripts; denied unauthorized execution. No M1 scope expansion without readiness approval.
