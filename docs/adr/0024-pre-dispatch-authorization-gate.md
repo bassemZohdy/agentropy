@@ -1,6 +1,6 @@
 # ADR-0024: Durable pre-dispatch authorization deferral
 
-- Status: **Accepted** (2026-11-04) — architectural eligibility-gate principle; implementation and conformance pending
+- Status: **Accepted** (2026-11-04) — architectural eligibility-gate principle. Implemented 2026-11-05 by FEAT-022.2; conformance in `packages/testkit/test/security.test.ts`; implementation details in [Security v1](../contracts/security-v1.md#m1-implementation-feat-0222)
 - Scope: Agentropy M0-05 lifecycle/security compatibility; no implementation authorized
 
 ## Problem

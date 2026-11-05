@@ -7,7 +7,7 @@
   - Links: Ref: docs/plans/acceptance-matrix.json · Depends: FEAT-018, FEAT-019, FEAT-020, FEAT-021 · Lane: testkit
   - [x] **FEAT-022.1** · low · Offline fakes: clock, model, fault injector, policy, audit, grants
     - Done when: fake unit tests pass; `pnpm exec vitest run packages/testkit/test`
-  - [ ] **FEAT-022.2** · high · ADR-0024 eligibility gate and SEC-01/02/03/04 plus AC-09 security suite
+  - [x] **FEAT-022.2** · high · ADR-0024 eligibility gate and SEC-01/02/03/04 plus AC-09 security suite
     - Done when: SEC rows pass offline; `pnpm exec vitest run packages/testkit/test/security.test.ts`
   - [ ] **FEAT-022.3** · high · Restart, effect-journal and history suite: AC-05, AC-07, AC-13, AC-20
     - Done when: rows pass on SQLite reopen; `pnpm exec vitest run packages/testkit/test/recovery.test.ts packages/testkit/test/effects.test.ts`

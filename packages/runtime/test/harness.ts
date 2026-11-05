@@ -14,12 +14,18 @@ import {
   type TrustedPrincipal,
 } from '@agentropy/core';
 import { SqliteStore } from '@agentropy/store-sqlite';
-import { FakeClock, FakeGrants, FakePolicy } from '@agentropy/testkit';
+import {
+  FakeAudit,
+  FakeClock,
+  FakeGrants,
+  FakePolicy,
+} from '@agentropy/testkit';
 import {
   InMemoryHandlerRegistry,
   InMemoryImplementationProviderRegistry,
   NativeImplementationProvider,
 } from '../src/implementation.js';
+import { AuditForwarder } from '../src/audit.js';
 import {
   HumanActionService,
   humanActionOperationHandlers,
@@ -124,6 +130,7 @@ export function harness(o: HarnessOptions = {}) {
     grants,
     now: clock.iso,
     newId: (kind) => `${kind}-${run}-${++ids}`,
+    ...(o.faults ? { faults: o.faults } : {}),
     ...(o.limits ? { limits: o.limits } : {}),
     acceptance: {
       contracts: CAPABILITY_CATALOG,
@@ -146,6 +153,12 @@ export function harness(o: HarnessOptions = {}) {
   wakeups.addSweep(() => human.sweep());
   const projector = new InboxProjector(tasks);
   const stream = new TaskEventStream(tasks);
+  const audit = new FakeAudit();
+  const forwarder = new AuditForwarder({
+    store,
+    sink: audit,
+    ...(o.faults ? { faults: o.faults } : {}),
+  });
   const relay = new OutboxRelay({
     store,
     consumers: [projector, stream],
@@ -165,7 +178,9 @@ export function harness(o: HarnessOptions = {}) {
     poolSize: o.poolSize ?? 4,
     leaseMs: 1_000,
     cancelGraceMs: o.cancelGraceMs ?? 20,
-    relay,
+    relay: {
+      drain: async () => (await relay.drain()) + (await forwarder.drain()),
+    },
   });
 
   const define = (
@@ -245,6 +260,8 @@ export function harness(o: HarnessOptions = {}) {
     inbox,
     human,
     relay,
+    audit,
+    forwarder,
     stream,
     define,
     instance,
@@ -269,3 +286,4 @@ export async function code(
 export const completes = (output: unknown = { ok: true }): Agent => ({
   handle: async () => ({ kind: 'completed', output }),
 });
+export { SqliteStore };

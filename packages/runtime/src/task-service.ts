@@ -19,6 +19,7 @@ import {
   type AcceptanceEnvironment,
   type AcceptanceSnapshot,
   type AgentInvocation,
+  type AuditEvent,
   type ConversationTurn,
   type DelegationRequest,
   type ExecutionRecord,
@@ -37,6 +38,8 @@ import {
   type VersionedRef,
   type WakeupRequest,
 } from '@agentropy/core';
+import { recordAuditIntent } from './audit.js';
+import type { FaultHook } from './outbox.js';
 import type { DefinitionRegistry, InstanceDirectory } from './registry.js';
 
 export interface TaskRecord {
@@ -46,6 +49,8 @@ export interface TaskRecord {
   instanceId: string;
   ownerId: string;
   callerId: string;
+  /** Principal type of the delegating caller (dispatch-time policy checks use it). */
+  callerType?: TrustedPrincipal['type'];
   parentTaskId?: string;
   depth: number;
   definition: VersionedRef;
@@ -107,6 +112,25 @@ export const actionUsers = (
 ): string[] =>
   a.assignees.principalIds?.length ? a.assignees.principalIds : [task.ownerId];
 
+/** ADR-0024 activation eligibility gate: scheduler metadata, never a task status (store doc revision = gateRevision). */
+export interface DispatchGate {
+  taskId: string;
+  /** Task revision observed when the gate was written. */
+  taskRevision: number;
+  reason:
+    | 'policy-indeterminate'
+    | 'policy-denied'
+    | 'authority-expired'
+    | 'authority-revoked';
+  /** Present while a bounded PDP retry is scheduled; null when reauthorization (or an operator) is required. */
+  nextCheckAt: string | null;
+  /** Grant to evaluate at the next check (set by reauthorization); applied to the task at lease time. */
+  grantRef?: string;
+  lastDecisionAt: string;
+  /** Gate evaluations since the last reauthorization (not Execution.attempt). */
+  attempt: number;
+}
+
 export interface GrantVerifier {
   /** Validates a delegated authority reference at a protected boundary (never cached across operations). */
   check(
@@ -116,7 +140,7 @@ export interface GrantVerifier {
 }
 
 export type IdKind =
-  'task' | 'execution' | 'event' | 'wakeup' | 'action' | 'entry';
+  'task' | 'execution' | 'event' | 'wakeup' | 'action' | 'entry' | 'audit';
 
 export interface TaskServiceOptions {
   store: Store;
@@ -128,6 +152,8 @@ export interface TaskServiceOptions {
   now: () => string;
   newId?: (kind: IdKind) => string;
   limits?: { maxDepth?: number; maxFanOut?: number };
+  /** Fault hook for audit-intent and recovery tests; production passes nothing. */
+  faults?: FaultHook;
 }
 
 export const DEFAULT_RETRY: RetryPolicy = {
@@ -265,6 +291,7 @@ export class TaskService {
       instanceId: instance.id,
       ownerId: instance.ownerId,
       callerId: caller.id,
+      callerType: caller.type,
       ...(request.parentTaskId ? { parentTaskId: request.parentTaskId } : {}),
       depth,
       definition: instance.definition,
@@ -290,6 +317,14 @@ export class TaskService {
         });
         assertTransition(TASK_MACHINE, null, 'created', 'T1');
         const created = await tx.insert('tasks', taskId, task);
+        await this.audit(tx, caller, {
+          type: 'task.accept',
+          action: 'delegation:delegate',
+          resource: { type: 'task', id: taskId },
+          decision: 'allow',
+          correlationId: task.correlationId,
+          taskId,
+        });
         await this.emit(tx, task, created.revision);
         // T2: the instance is available, so bind it and queue the first execution in the same unit of work.
         await this.transition(tx, created, 'assigned', 'T2');
@@ -391,6 +426,14 @@ export class TaskService {
       const t = cur.value;
       if (isTerminal(TASK_MACHINE, t.status))
         throw new AgentropyError('InvalidState', `Task is ${t.status}`);
+      await this.audit(tx, caller, {
+        type: 'task.cancel',
+        action: 'delegation:cancel',
+        resource: { type: 'task', id: taskId },
+        decision: 'allow',
+        correlationId: t.correlationId,
+        taskId,
+      });
       if (t.status === 'running') {
         if (t.cancelRequestedAt) return cur;
         const next = {
@@ -507,6 +550,66 @@ export class TaskService {
     };
   }
 
+  /** Mandatory audit intent in the caller's transaction (SEC-03); failure aborts it with AuditCommitUnavailable. */
+  async audit(
+    tx: StoreTx,
+    principal: { id: string; tenantId: string },
+    event: Omit<AuditEvent, 'at' | 'tenantId' | 'principalId'>,
+  ): Promise<void> {
+    await recordAuditIntent(
+      tx,
+      this.newId('audit'),
+      {
+        ...event,
+        tenantId: principal.tenantId,
+        principalId: principal.id,
+        at: this.o.now(),
+      },
+      this.o.faults,
+    );
+  }
+
+  /**
+   * ADR-0024: a trusted principal re-establishes authority for a task held by the dispatch gate. Nothing is
+   * dispatched here; the next scheduler pass re-evaluates the gate with a fresh policy decision and the new grant.
+   */
+  async reauthorize(taskId: string, caller: TrustedPrincipal): Promise<void> {
+    await this.visible(taskId, caller);
+    await this.checkGrant(caller);
+    await enforcePolicy(this.o.pdp, {
+      principal: caller,
+      action: 'delegation:reauthorize',
+      resource: { type: 'task', id: taskId, tenantId: caller.tenantId },
+    });
+    await this.o.store.transaction(async (tx) => {
+      const task = (await tx.get<TaskRecord>('tasks', taskId))!;
+      const gate = await tx.get<DispatchGate>('gates', taskId);
+      if (!gate || isTerminal(TASK_MACHINE, task.value.status))
+        throw new AgentropyError(
+          'InvalidState',
+          'Task is not held by the dispatch gate',
+          {
+            details: { kind: 'gate' },
+          },
+        );
+      const grantRef = caller.delegatedAuthorityRef ?? gate.value.grantRef;
+      await tx.update<DispatchGate>('gates', gate.id, gate.revision, {
+        ...gate.value,
+        nextCheckAt: this.o.now(),
+        attempt: 0,
+        ...(grantRef ? { grantRef } : {}),
+      });
+      await this.audit(tx, caller, {
+        type: 'task.reauthorize',
+        action: 'delegation:reauthorize',
+        resource: { type: 'task', id: taskId },
+        decision: 'allow',
+        correlationId: task.value.correlationId,
+        taskId,
+      });
+    });
+  }
+
   /**
    * Append one TaskEvent to the outbox in the caller's transaction. Without `type` it is the transition
    * event for the status the task just entered (sequence 0); otherwise a non-transition event at the
@@ -620,6 +723,8 @@ export class TaskService {
         status: 'revoked',
       });
     }
+    const gate = await tx.get('gates', cur.id);
+    if (gate) await tx.remove('gates', gate.id, gate.revision);
     // Open human-action requests of a finished task can no longer be decided (H-revoke).
     for (const a of await tx.find<{
       status: string;

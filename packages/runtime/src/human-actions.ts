@@ -259,6 +259,14 @@ export class HumanActionService {
         'human decision input',
       );
       const task = (await tx.get<TaskRecord>('tasks', live.value.taskId))!;
+      await this.tasks.audit(tx, caller, {
+        type: 'human-action.decide',
+        action: 'human-input:decide',
+        resource: { type: 'human-action', id: live.id },
+        decision: 'allow',
+        correlationId: task.value.correlationId,
+        taskId: task.id,
+      });
       assertTransition(
         HUMAN_ACTION_MACHINE,
         live.value.status,

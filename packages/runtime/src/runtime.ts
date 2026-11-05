@@ -28,6 +28,7 @@ import type { InMemoryImplementationProviderRegistry } from './implementation.js
 import {
   DEFAULT_RETRY,
   hashKey,
+  type DispatchGate,
   type StoredExecution,
   type TaskRecord,
   type TaskService,
@@ -61,6 +62,18 @@ export interface RuntimeOptions {
   skills?: (task: TaskRecord) => SkillAccess;
   /** Outbox relay drained on every tick and when the pool goes idle (R-29). */
   relay?: { drain(): Promise<number> };
+  /** ADR-0024 gate: bounded re-checks after a policy outage (default 1 s doubling to 5 min, 8 evaluations). */
+  gateRetry?: { initialMs: number; maxMs: number; maxAttempts: number };
+  /** A policy decision slower than this is treated as unavailable (default 5 s). */
+  pdpTimeoutMs?: number;
+}
+
+type GateReason = DispatchGate['reason'];
+
+interface Admission {
+  taskRevision: number;
+  gateRevision: number | null;
+  grantRef?: string;
 }
 
 const EMPTY_SKILLS: SkillAccess = {
@@ -97,6 +110,8 @@ export class AgentRuntime {
       leaseMs: 60_000,
       cancelGraceMs: 30_000,
       keepExecutions: 20,
+      gateRetry: { initialMs: 1_000, maxMs: 300_000, maxAttempts: 8 },
+      pdpTimeoutMs: 5_000,
       ...options,
     };
     this.o.tasks.onCancelRequested((taskId) => {
@@ -125,7 +140,16 @@ export class AgentRuntime {
     for (const e of due) {
       if (started >= free) break;
       if (e.value.runAt > this.now() || this.running.has(e.id)) continue;
-      const leased = await this.lease(e.id);
+      let leased: Awaited<ReturnType<typeof this.lease>>;
+      try {
+        const admission = await this.admit(e);
+        if (!admission) continue;
+        leased = await this.lease(e.id, admission);
+      } catch (err) {
+        // A failed audit intent aborts the gate or lease transaction: nothing is dispatched; retried next tick.
+        if (isAgentropyError(err, 'AuditCommitUnavailable')) continue;
+        throw err;
+      }
       if (!leased) continue;
       const controller = new AbortController();
       let release!: () => void;
@@ -172,8 +196,159 @@ export class AgentRuntime {
     return this.running.size;
   }
 
+  /**
+   * ADR-0024 activation eligibility gate, evaluated before every lease with a fresh grant check and policy
+   * decision. A blocked task keeps its status (`assigned`) and its queued execution; the gate row records why,
+   * and when (if ever) to look again. Deadlines are enforced while gated (T9). Returns undefined when not admitted.
+   */
+  private async admit(
+    e: StoredDocument<StoredExecution>,
+  ): Promise<Admission | undefined> {
+    const now = this.now();
+    const [task, gate] = await this.store.transaction(
+      async (tx) =>
+        [
+          await tx.get<TaskRecord>('tasks', e.value.taskId),
+          await tx.get<DispatchGate>('gates', e.value.taskId),
+        ] as const,
+    );
+    if (!task || task.value.status !== 'assigned') return undefined;
+    if (task.value.deadline && task.value.deadline <= now) {
+      await this.store.transaction(async (tx) => {
+        const cur = await tx.get<TaskRecord>('tasks', task.id);
+        if (cur && cur.revision === task.revision)
+          await this.o.tasks.terminate(tx, cur, 'failed', 'T9', {
+            code: 'Timeout',
+            message: 'Task deadline passed',
+          });
+      });
+      return undefined;
+    }
+    // No busy retries: a gate waits for its scheduled check, or for reauthorization when it has none.
+    if (
+      gate &&
+      (gate.value.nextCheckAt === null || gate.value.nextCheckAt > now)
+    )
+      return undefined;
+    const grantRef = gate?.value.grantRef ?? task.value.grantRef;
+    const verdict = await this.dispatchDecision(task.value, grantRef);
+    if (verdict === 'allow')
+      return {
+        taskRevision: task.revision,
+        gateRevision: gate?.revision ?? null,
+        ...(grantRef ? { grantRef } : {}),
+      };
+    await this.store.transaction(async (tx) => {
+      const t = await tx.get<TaskRecord>('tasks', task.id);
+      const g = await tx.get<DispatchGate>('gates', task.id);
+      // CAS on both the task and the gate: a concurrent scheduler or a cancel wins, this decision is dropped.
+      if (!t || t.revision !== task.revision) return;
+      if ((g?.revision ?? null) !== (gate?.revision ?? null)) return;
+      await this.writeGate(tx, t, g, verdict, grantRef);
+    });
+    return undefined;
+  }
+
+  private async writeGate(
+    tx: StoreTx,
+    t: StoredDocument<TaskRecord>,
+    g: StoredDocument<DispatchGate> | undefined,
+    reason: GateReason,
+    grantRef: string | undefined,
+  ): Promise<void> {
+    const now = this.now();
+    const attempt = (g?.value.attempt ?? 0) + 1;
+    const r = this.o.gateRetry;
+    const retry = reason === 'policy-indeterminate' && attempt < r.maxAttempts;
+    const value: DispatchGate = {
+      taskId: t.id,
+      taskRevision: t.revision,
+      reason,
+      nextCheckAt: retry
+        ? addMs(now, Math.min(r.maxMs, r.initialMs * 2 ** (attempt - 1)))
+        : null,
+      ...(grantRef ? { grantRef } : {}),
+      lastDecisionAt: now,
+      attempt,
+    };
+    if (g) await tx.update<DispatchGate>('gates', g.id, g.revision, value);
+    else await tx.insert<DispatchGate>('gates', t.id, value);
+    await this.o.tasks.audit(
+      tx,
+      { id: t.value.callerId, tenantId: t.value.tenantId },
+      {
+        type: 'task.dispatch',
+        action: 'task:dispatch',
+        resource: { type: 'task', id: t.id },
+        decision: reason === 'policy-indeterminate' ? 'error' : 'deny',
+        details: { reason, attempt, retry },
+        correlationId: t.value.correlationId,
+        taskId: t.id,
+      },
+    );
+  }
+
+  /** Fresh grant check and policy decision for dispatching a task; never reuses an earlier Allow. */
+  private async dispatchDecision(
+    t: TaskRecord,
+    grantRef: string | undefined,
+  ): Promise<'allow' | GateReason> {
+    const grants = this.o.tasks.o.grants;
+    if (grantRef && grants) {
+      let status: string;
+      try {
+        status = await grants.check(grantRef, t.tenantId);
+      } catch {
+        return 'policy-indeterminate';
+      }
+      if (status === 'expired') return 'authority-expired';
+      if (status !== 'valid') return 'authority-revoked';
+    }
+    const principal: TrustedPrincipal = {
+      id: t.callerId,
+      type: t.callerType ?? 'user',
+      tenantId: t.tenantId,
+      ...(grantRef ? { delegatedAuthorityRef: grantRef } : {}),
+    };
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const decision = await Promise.race([
+        this.o.tasks.o.pdp.decide(
+          {
+            principal,
+            action: 'task:dispatch',
+            resource: {
+              type: 'agent-instance',
+              id: t.instanceId,
+              tenantId: t.tenantId,
+            },
+          },
+          abort.signal,
+        ),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            abort.abort();
+            reject(new Error('policy decision timed out'));
+          }, this.o.pdpTimeoutMs);
+        }),
+      ]);
+      const effect = (decision as { effect?: unknown } | null)?.effect;
+      if (effect === 'allow') return 'allow';
+      if (effect === 'deny') return 'policy-denied';
+      return 'policy-indeterminate';
+    } catch {
+      return 'policy-indeterminate';
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   /** E2+E3 with T3 in one transaction; the lease epoch fences every later write of this execution. */
-  private async lease(executionId: string): Promise<
+  private async lease(
+    executionId: string,
+    admission: Admission,
+  ): Promise<
     | {
         exec: StoredDocument<StoredExecution>;
         task: StoredDocument<TaskRecord>;
@@ -185,6 +360,29 @@ export class AgentRuntime {
       if (!e || e.value.state !== 'queued') return undefined;
       const t = (await tx.get<TaskRecord>('tasks', e.value.taskId))!;
       if (t.value.status !== 'assigned') return undefined;
+      // Lease fence (ADR-0024): the admission decision is only valid for the task and gate revisions it saw.
+      const gate = await tx.get<DispatchGate>('gates', t.id);
+      if (
+        t.revision !== admission.taskRevision ||
+        (gate?.revision ?? null) !== admission.gateRevision
+      )
+        return undefined;
+      if (gate) {
+        await tx.remove('gates', gate.id, gate.revision);
+        await this.o.tasks.audit(
+          tx,
+          { id: t.value.callerId, tenantId: t.value.tenantId },
+          {
+            type: 'task.dispatch',
+            action: 'task:dispatch',
+            resource: { type: 'task', id: t.id },
+            decision: 'allow',
+            details: { after: gate.value.reason, attempts: gate.value.attempt },
+            correlationId: t.value.correlationId,
+            taskId: t.id,
+          },
+        );
+      }
       const epoch = (t.value.leaseEpoch ?? 0) + 1;
       assertTransition(EXECUTION_MACHINE, 'queued', 'leased', 'E2');
       assertTransition(EXECUTION_MACHINE, 'leased', 'running', 'E3');
@@ -203,6 +401,7 @@ export class AgentRuntime {
       );
       const task = await this.o.tasks.transition(tx, t, 'running', 'T3', {
         leaseEpoch: epoch,
+        ...(admission.grantRef ? { grantRef: admission.grantRef } : {}),
       });
       return { exec, task };
     });
@@ -403,6 +602,37 @@ export class AgentRuntime {
         await this.o.tasks.transition(tx, cur, 'waiting', 'T4', {
           waitingOn: d.wakeup,
         });
+        return this.prune(tx, t.taskId);
+      }
+      // Lost authority or an unavailable policy decision at a protected effect is not a handler failure:
+      // the task goes back to `assigned` behind the dispatch gate (T6), keeping its checkpoint and journal.
+      if (
+        d.kind === 'threw' &&
+        (d.error.code === 'AuthorityExpired' ||
+          d.error.code === 'PolicyDecisionUnavailable')
+      ) {
+        await end('failed', 'E6');
+        const next = await this.o.tasks.transition(tx, cur, 'assigned', 'T6');
+        await this.o.tasks.queueExecution(
+          tx,
+          t.taskId,
+          t.activation,
+          t.attempt,
+          'retry',
+          this.now(),
+        );
+        const status = d.error.details?.['status'];
+        await this.writeGate(
+          tx,
+          next,
+          await tx.get<DispatchGate>('gates', t.taskId),
+          d.error.code === 'PolicyDecisionUnavailable'
+            ? 'policy-indeterminate'
+            : status === 'revoked'
+              ? 'authority-revoked'
+              : 'authority-expired',
+          t.grantRef,
+        );
         return this.prune(tx, t.taskId);
       }
       const failure =
@@ -624,6 +854,23 @@ export class AgentRuntime {
             `${capabilityId}.${operation} requires a stepKey`,
             { details: { reason: 'missingStepKey' } },
           );
+        // SEC-02: every protected (non-read) effect re-validates the delegated grant; no stale Allow.
+        if (op.effect !== 'read' && t.grantRef && this.o.tasks.o.grants) {
+          const status = await this.o.tasks.o.grants
+            .check(t.grantRef, t.tenantId)
+            .catch(() => {
+              throw new AgentropyError(
+                'PolicyDecisionUnavailable',
+                'Grant status unavailable',
+              );
+            });
+          if (status !== 'valid')
+            throw new AgentropyError(
+              'AuthorityExpired',
+              `Delegated authority ${status}`,
+              { details: { status } },
+            );
+        }
         await enforcePolicy(
           this.o.tasks.o.pdp,
           {
