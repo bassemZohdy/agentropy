@@ -11,7 +11,7 @@
   - Links: Ref: docs/plans/DESIGN-FOLLOWUPS.md · Lane: contracts
   - [x] **TASK-026.1** · low · Resolution ledger: close or defer follow-ups with M1 evidence, enforced by the readiness check
     - Done when: every follow-up has a ledger row with evidence or owner; `node scripts/check-readiness.mjs`
-  - [ ] **TASK-026.2** · mid · Governance and ownership contracts: instance drain and retire policy (D-03), agent owner/share vs task ownership and tenant boundaries (D-08)
+  - [x] **TASK-026.2** · mid · Governance and ownership contracts: instance drain and retire policy (D-03), agent owner/share vs task ownership and tenant boundaries (D-08)
     - Done when: contract revisions and owner-control tests pass; `pnpm exec vitest run packages/testkit/test/governance.test.ts`
   - [ ] **TASK-026.3** · high · Authorization depth: grant narrowing and agent identities (D-15), credential rotation (D-17, SEC-06), PEP parity and decision caching (D-18, D-19), revocation checkpoints and compensation (D-20), audit SPI (D-21), proposed defaults (D-24)
     - Done when: Security v1 revision and conformance tests pass; `pnpm exec vitest run packages/testkit/test/authorization.test.ts`

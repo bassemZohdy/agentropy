@@ -143,6 +143,12 @@ export interface LocalApp {
     caller: TrustedPrincipal,
     ownerId?: string,
   ): Promise<AgentInstance[]>;
+  /** Owner-only: set the principals allowed to delegate to an instance (D-08). */
+  shareInstance(
+    instanceId: string,
+    principalIds: string[],
+    caller: TrustedPrincipal,
+  ): Promise<AgentInstance>;
   /** Stop accepting new tasks; retire once the last task ends. */
   drainInstance(
     instanceId: string,
@@ -403,6 +409,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     listTasks: (q, c) => tasks.listTasks(q, c),
     listInstances: (c, ownerId) => instances.list(c, ownerId),
     drainInstance: (id, c) => instances.drain(id, c),
+    shareInstance: (id, ids, c) => instances.share(id, ids, c),
     getTaskByIdempotencyKey: (k, c) => tasks.getTaskByIdempotencyKey(k, c),
     getResult: (id, c) => tasks.getResult(id, c),
     cancel: (id, c, reason) => tasks.cancel(id, c, reason),

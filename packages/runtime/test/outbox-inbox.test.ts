@@ -486,6 +486,13 @@ describe('conversation turns and briefing (AC-02, R-36)', () => {
   it('a turn delegated by someone other than the owner cannot read the owner’s briefing', async () => {
     const h = harness({ builtin: true });
     const assistantId = await journey(h).setup();
+    // Unshared, bob cannot even see alice's assistant (D-08); once shared he can delegate, but not read her inbox.
+    expect(
+      await code(
+        h.delegate(assistantId, { sessionId: 's', text: 'hi' }, 'x', bob),
+      ),
+    ).toBe('NotFound');
+    await h.instances.share(assistantId, ['bob'], alice);
     const t = await h.delegate(
       assistantId,
       { sessionId: 's', text: 'hi' },

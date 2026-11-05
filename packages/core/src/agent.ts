@@ -86,6 +86,8 @@ export interface AgentInstance {
   revision: number;
   /** Set by drain: no new tasks are accepted; the instance retires when its last task ends (not a lifecycle state). */
   draining?: boolean;
+  /** Principals (users or services) the owner allows to delegate to this instance; see D-08 governance rules. */
+  sharedWith?: string[];
 }
 
 export interface TrustedPrincipal {

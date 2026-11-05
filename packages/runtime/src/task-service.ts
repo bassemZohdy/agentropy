@@ -628,6 +628,30 @@ export class TaskService {
       );
   }
 
+  /**
+   * D-08 delegation governance: an instance accepts work from its owner, principals the owner shared it with,
+   * agents whose own instance has the same owner (or a shared one), and trusted services. Everyone else in the
+   * tenant gets NotFound, so instance IDs do not reveal other users' agents. Policy (PDP) still applies after this.
+   */
+  private async checkInstanceAccess(
+    target: AgentInstance,
+    caller: TrustedPrincipal,
+  ): Promise<void> {
+    if (caller.type === 'service' || caller.id === target.ownerId) return;
+    const shared = target.sharedWith ?? [];
+    if (shared.includes(caller.id)) return;
+    if (caller.type === 'agent') {
+      const own = await this.o.store.transaction((tx) =>
+        tx.get<AgentInstance>('instances', caller.id),
+      );
+      const owner = own?.value.ownerId;
+      if (owner && (owner === target.ownerId || shared.includes(owner))) return;
+    }
+    throw new AgentropyError('NotFound', 'Instance not found', {
+      details: { kind: 'instance' },
+    });
+  }
+
   private async resolveTarget(
     request: DelegationRequest<unknown>,
     caller: TrustedPrincipal,
@@ -641,7 +665,12 @@ export class TaskService {
           'Cross-tenant delegation denied',
         );
       }
-      return this.o.instances.get(request.target.instanceId, caller);
+      const target = await this.o.instances.get(
+        request.target.instanceId,
+        caller,
+      );
+      await this.checkInstanceAccess(target, caller);
+      return target;
     }
     if (request.target.definition) {
       return this.o.instances.create(

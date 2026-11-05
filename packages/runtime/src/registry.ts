@@ -334,6 +334,45 @@ export class InstanceDirectory {
     });
   }
 
+  /** Owner-only: replace who may delegate to the instance (D-08). Shares never cross the tenant boundary. */
+  async share(
+    instanceId: string,
+    principalIds: string[],
+    caller: TrustedPrincipal,
+  ): Promise<AgentInstance> {
+    if (
+      !Array.isArray(principalIds) ||
+      principalIds.some((p) => typeof p !== 'string' || !p)
+    )
+      throw new AgentropyError(
+        'SchemaViolation',
+        'principalIds must be non-empty strings',
+      );
+    return this.store.transaction(async (tx) => {
+      const doc = await this.owned(tx, instanceId, caller);
+      if (doc.value.ownerId !== caller.id)
+        throw new AgentropyError(
+          'PermissionDenied',
+          'Only the owner can share an instance',
+        );
+      const next: AgentInstance = {
+        ...doc.value,
+        sharedWith: [...new Set(principalIds)].filter(
+          (p) => p !== doc.value.ownerId,
+        ),
+        revision: doc.value.revision + 1,
+      };
+      return (
+        await tx.update<AgentInstance>(
+          'instances',
+          instanceId,
+          doc.revision,
+          next,
+        )
+      ).value;
+    });
+  }
+
   private async owned(
     tx: StoreTx,
     instanceId: string,

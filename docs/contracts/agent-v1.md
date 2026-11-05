@@ -1,4 +1,4 @@
-# Agentropy Agent Contract v1.0 — revision 8
+# Agentropy Agent Contract v1.0 — revision 9
 
 **Status:** Accepted for M1 implementation (2026-11-05); not API-stable. Implemented types live in `packages/core`; behavior is claimed only where an executable test exists.
 **Scope:** Core logical Agent, AgentDefinition, AgentInstance, DelegatedTask and Execution. Transport/runtime are independent.
@@ -15,6 +15,7 @@
 | 6 | 2026-11-05 | Define mandatory/optional AgentDefinition properties, versioned implementation binding, distinct tool/skill selections and execution provider boundary; design only |
 | 7 | 2026-11-05 | Readiness closure: `AcceptanceSnapshot`; `Agent.definition` removed (handlers bind by implementation artifact); `HandlerRegistry` keyed by artifact and owned by the `native-ts` provider; `ToolSelection.bindingId`; read-only `AgentContext.skills`; implementation SPI moved to [Agent Implementation v1](agent-implementation-v1.md); tool and skill rules moved to [Tool v1](tool-v1.md) and [Skill v1](skill-v1.md) |
 | 8 | 2026-11-05 | Implementation (FEAT-027.1, M1 retrospective): `AgentService` gains `listTasks`, `listInstances`, `drainInstance`, `getHumanAction` and `reauthorize`; `AgentInstance.draining` (not a lifecycle state); event ingress (`publishEvent`) is a trusted adapter operation, not part of `AgentService` |
+| 9 | 2026-11-05 | Governance (TASK-026.2, D-03/D-08): an instance accepts delegations only from its owner, principals in `AgentInstance.sharedWith`, agents whose own instance has the same (or a shared) owner, and trusted services — anyone else in the tenant gets `NotFound`; owner-only `shareInstance`; delegators see their own tasks, owners every task on their instance |
 
 ## Decisions
 
@@ -106,6 +107,7 @@ export interface AgentInstance {
   state: "available" | "suspended" | "retired";
   revision: number;
   draining?: boolean;               // set by drainInstance; not a lifecycle state
+  sharedWith?: string[];            // principals allowed to delegate (owner-managed, same tenant)
 }
 
 export interface AgentInvocation<I = unknown> {
@@ -195,6 +197,7 @@ export interface AgentService {
   resumeInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal): Promise<AgentInstance>;
   retireInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal, opts?: { force?: boolean }): Promise<AgentInstance>;
   drainInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal): Promise<AgentInstance>; // no new tasks; retires when the last task ends
+  shareInstance(instanceId: AgentInstanceId, principalIds: string[], caller: TrustedPrincipal): Promise<AgentInstance>; // owner only; replaces the share list
   listInstances(caller: TrustedPrincipal, ownerId?: string): Promise<AgentInstance[]>; // another owner's only for trusted services
   // Human actions (types in human-actions.md)
   claimHumanAction(requestId: string, caller: TrustedPrincipal): Promise<HumanActionRequest>;

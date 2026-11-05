@@ -35,11 +35,11 @@ Checked by `node scripts/check-readiness.mjs`: every item above has exactly one 
 
 | ID | Status | Evidence | Remaining owner |
 |---|---|---|---|
-| `D-03` | partial | packages/runtime/test/registry.test.ts | TASK-026.2 |
+| `D-03` | closed | packages/testkit/test/governance.test.ts | — |
 | `D-04` | partial | packages/testkit/test/delivery.test.ts | TASK-026.5 |
 | `D-05` | open | — | TASK-026.5 |
 | `D-07` | deferred | — | FEAT-028 |
-| `D-08` | open | — | TASK-026.2 |
+| `D-08` | closed | packages/testkit/test/governance.test.ts | — |
 | `D-09` | deferred | docs/plans/PROJECT.md | Deferred |
 | `D-11` | closed | packages/testkit/test/delivery.test.ts | — |
 | `D-12` | closed | docs/contracts/observability-v1.md | — |
@@ -60,7 +60,7 @@ Checked by `node scripts/check-readiness.mjs`: every item above has exactly one 
 
 Notes on the M1 evidence:
 
-- **D-03** — suspend, resume and retire (with the active-task guard) and `cancelTask` exist and are tested; drain semantics and central governance policy remain.
+- **D-03 / D-08** — closed by TASK-026.2 ([Agent v1](../contracts/agent-v1.md) rev 9): suspend/resume/drain/retire with the active-task guard; delegation limited to owner, shares, same-owner agents and trusted services; task visibility per delegator and owner. Tenant-wide central governance policy stays with the PDP.
 - **D-09** — Temporal + LangGraph TypeScript integration stays an explicitly deferred decision ([PROJECT](PROJECT.md)); Codex collaboration and model verification stay optional extensions. No milestone.
 - **D-11** — transactional outbox, ordered at-least-once relay, consumer deduplication, step-key idempotency and the explicit no-exactly-once rule are implemented ([messaging contract](../messaging-contract.md) rev 3, AC-07/AC-19). Provider guarantee negotiation beyond the in-process transport is M2-06.
 - **D-16** — the persisted authorization hold is the ADR-0024 gate (not a task state), with grant renewal through `reauthorize`, policy-driven deadline/cancel while held, fresh checks at sensitive operations and restart/CAS tests (SEC-01/02; [runtime contract](../runtime-contract.md) rev 3).
