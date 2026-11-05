@@ -299,3 +299,18 @@ A handler expresses business logic and acts only through the injected `Capabilit
 
 
 Distinct identity tests; profile resolution; acceptance + idempotency + unknown acceptance; unauthorized delegation; disposition mapping; wait → restart → resume with checkpoint; child-task wait (`all`/`any`); timeout wake-up; stale lease fencing; cancellation with non-cooperative handler; step-key replay without duplicate effect; version pinning; multi-instance isolation; deterministic workflow-only agent; conversational turn that delegates and a later turn whose briefing reports the result. Each maps to an acceptance check in [POC scope](../poc-scope.md) or a later milestone.
+
+## Agent Skills selection (2026-11-05 design addendum; pending contract revision)
+
+AgentDefinition will select standard [Agent Skills](https://agentskills.io/specification) **independently** from `capabilities`, with an optional versioned `skills?: SkillSelection[]` field in the next explicit schema revision. Conceptual form:
+
+```ts
+interface SkillSelection {
+  id: string;            // stable registry ID; not a filesystem path supplied by an agent
+  versionRange: string;  // resolved to an immutable version for task acceptance
+  required?: boolean;    // required Skill missing => typed resolution failure
+}
+// AgentDefinition addition: skills?: SkillSelection[]
+```
+
+Each Skill preserves the open standard's `SKILL.md` and optional resources. SkillRegistry performs trusted discovery/version resolution; SkillLoader performs metadata-first and on-demand instruction/resource loading. These platform components do not add another agent execution lifecycle. Agent handler still obtains authorized behavior through `CapabilityAccess`; tool/script invocation passes policy gates, never gains authorization from Skill text. Resolved Skill versions must be pinned for execution consistency; exact selection constraints and schema updates require contract review. See [ADR-0026](../adr/0026-protocol-agnostic-tool-integration.md).
