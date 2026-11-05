@@ -11,12 +11,12 @@
 
 ## Prior PRs and merge decision
 
-| PR | Description | Current integration outcome | Required action |
-|---|---|---|---|
-| [#3](https://github.com/bassemZohdy/agentropy/pull/3) | Error Contract v1 | **Closed as superseded, not merged.** FEAT-011 already provides a more complete `ERROR_CATALOG`, `AgentropyError`, redaction and serialization. The old alternative `ERROR_DEFINITIONS` would duplicate API surfaces. | No change to main from PR #3. Preserve historical review only |
+| PR                                                    | Description          | Current integration outcome                                                                                                                                                                                                    | Required action                                                                |
+| ----------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| [#3](https://github.com/bassemZohdy/agentropy/pull/3) | Error Contract v1    | **Closed as superseded, not merged.** FEAT-011 already provides a more complete `ERROR_CATALOG`, `AgentropyError`, redaction and serialization. The old alternative `ERROR_DEFINITIONS` would duplicate API surfaces.          | No change to main from PR #3. Preserve historical review only                  |
 | [#4](https://github.com/bassemZohdy/agentropy/pull/4) | Scheduling FakeClock | **Open; not safe to merge unchanged.** main already exports `FakeClock` from `packages/testkit/src/fakes.ts` with an ISO-time API. PR #4 adds a different `FakeClock` class and export, risking ambiguity/semantic divergence. | Resolve API/naming overlap, rebase/refresh against main, test, and satisfy DCO |
-| [#5](https://github.com/bassemZohdy/agentropy/pull/5) | FaultInjector | **Open; technical CI succeeded** on the reviewed head, but module must align with current `@agentropy/testkit` export/conformance conventions and satisfy DCO. | Integrate into FEAT-022 without duplicate modules, test and sign commits |
-| [#6](https://github.com/bassemZohdy/agentropy/pull/6) | Scripted FakeModel | **Open; technical CI succeeded** on the reviewed head, but main's testkit conventions and J2 contract must be reconciled and DCO satisfied. | Integrate under FEAT-022, validate J2, sign commits |
+| [#5](https://github.com/bassemZohdy/agentropy/pull/5) | FaultInjector        | **Open; technical CI succeeded** on the reviewed head, but module must align with current `@agentropy/testkit` export/conformance conventions and satisfy DCO.                                                                 | Integrate into FEAT-022 without duplicate modules, test and sign commits       |
+| [#6](https://github.com/bassemZohdy/agentropy/pull/6) | Scripted FakeModel   | **Open; technical CI succeeded** on the reviewed head, but main's testkit conventions and J2 contract must be reconciled and DCO satisfied.                                                                                    | Integrate under FEAT-022, validate J2, sign commits                            |
 
 ## DCO governance gate
 
@@ -29,3 +29,13 @@ Technical CI success is not sufficient for merging: the DCO workflow rejects the
 3. **Governance/ops**: TASK-025 remains blocked pending a genuine signed PR validation. No lowering of the DCO gate.
 
 No blocked PR was merged by this review. Protect the newer main baseline from regressions.
+
+## Owner decision — 2026-11-05 (supersedes the PR outcomes above)
+
+The repository owner, who authored every commit on PRs #3–#6, instructed that all four be merged into `main` without adding `Signed-off-by` lines. This is a **one-off, owner-approved DCO exception** for these four historical PRs only; no sign-off was written on the owner's behalf. The DCO workflow and policy are unchanged, every future pull request is still checked, and TASK-025 stays blocked until a genuine signed and unsigned PR run is recorded.
+
+Reconciliation applied by TASK-029:
+
+- **#3:** main's `ERROR_CATALOG`, `AgentropyError` and contract-table test are kept. The branch adds `ERROR_DEFINITIONS` (an alias of the same catalog), `agentropyError()` and `isAgentropyErrorValue()` for validating serialized errors at transport boundaries; its test is kept as `errors-value.test.ts`.
+- **#4:** the branch's `FakeClock` becomes the single testkit clock. It accepts an ISO start time and exposes `iso()`; the earlier ISO `FakeClock` in `fakes.ts` was removed and runtime tests use `advanceBy()`.
+- **#5 / #6:** `FaultInjector` and `FakeModel` are exported from the `@agentropy/testkit` entry point without duplicate modules.

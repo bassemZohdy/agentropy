@@ -41,15 +41,15 @@ ADR-0025 security failure codes and the ADR-0024 minimal gate shape are accepted
 
 ### Mandatory readiness gates (complete BEFORE /todo-init migration)
 
-| Gate | Required evidence | Status |
-|---|---|---|
-| G0-01 Architecture consistency | Durability, communication/config and ADR-0024 gate shape and ADR-0025 errors are aligned; runnable race/recovery tests remain M1 | CLOSED (design only) |
-| G0-02 Requirements completeness | Requirements traced to the executable [acceptance matrix](acceptance-matrix.json) | CLOSED (design, 2026-11-05) |
-| G0-03 ADR review | Individual ADR dispositions recorded; ADR-0027 setup choices accepted; proposals stay proposed | CLOSED (2026-11-05) |
-| G0-04 Technology/tooling | Scaffold CI, frozen lockfile (D-28), ADR-0027; DCO PR run tracked separately as TASK-025 | CLOSED for implementation (2026-11-05) |
-| G0-05 Test scope | [M1 security scope accepted](M1-SECURITY-ACCEPTANCE-DECISION.md): SEC-01/02/03/04/07 required; SEC-05/06 full coverage deferred | CLOSED (design only) |
-| G0-06 Todo skills migration readiness | 96/96 IDs mapped in the [crosswalk](TODO-ID-CROSSWALK.md#migration-destinations-2026-11-05); `TODO.md` passes todo-skills lint | CLOSED (2026-11-05) |
-| G0-07 Final design signoff | [Readiness signoff](../review/2026-11-05-readiness-signoff.md) | CLOSED (2026-11-05) |
+| Gate                                  | Required evidence                                                                                                                | Status                                 |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| G0-01 Architecture consistency        | Durability, communication/config and ADR-0024 gate shape and ADR-0025 errors are aligned; runnable race/recovery tests remain M1 | CLOSED (design only)                   |
+| G0-02 Requirements completeness       | Requirements traced to the executable [acceptance matrix](acceptance-matrix.json)                                                | CLOSED (design, 2026-11-05)            |
+| G0-03 ADR review                      | Individual ADR dispositions recorded; ADR-0027 setup choices accepted; proposals stay proposed                                   | CLOSED (2026-11-05)                    |
+| G0-04 Technology/tooling              | Scaffold CI, frozen lockfile (D-28), ADR-0027; DCO PR run tracked separately as TASK-025                                         | CLOSED for implementation (2026-11-05) |
+| G0-05 Test scope                      | [M1 security scope accepted](M1-SECURITY-ACCEPTANCE-DECISION.md): SEC-01/02/03/04/07 required; SEC-05/06 full coverage deferred  | CLOSED (design only)                   |
+| G0-06 Todo skills migration readiness | 96/96 IDs mapped in the [crosswalk](TODO-ID-CROSSWALK.md#migration-destinations-2026-11-05); `TODO.md` passes todo-skills lint   | CLOSED (2026-11-05)                    |
+| G0-07 Final design signoff            | [Readiness signoff](../review/2026-11-05-readiness-signoff.md)                                                                   | CLOSED (2026-11-05)                    |
 
 No gate is marked closed merely because a proposal was written.
 
@@ -75,19 +75,19 @@ No gate is marked closed merely because a proposal was written.
 
 Live queue: [TODO.md](../../TODO.md). Verified work: `CHANGELOG.md` `[Unreleased]`. Acceptance evidence: [acceptance-matrix.json](acceptance-matrix.json) (15 of 31 criteria verified by drained roots).
 
-| Wave 1 step | Lane | Roots | Status |
-|---|---|---|---|
-| 1. Project structure, offline CI, test command | ops | M0-08, D-28 | Done |
-| 2. Schemas, errors, lifecycle tables, contracts, fakes | contracts, testkit | FEAT-011, FEAT-012, FEAT-013, FEAT-022.1 | Done |
-| 3. SQLite store, task service, CAS, leases, retries, checkpoints, wake-up registrations | runtime | FEAT-016, FEAT-017, FEAT-018 | Done |
-| 4. Effect journal, outbox/inbox, audit intent on sensitive effects | runtime, security | FEAT-019, FEAT-022.2 | Open — audit intent exists for tools/skills only |
-| 5. Router/direct provider, delegation, conversation/briefing, human approvals | collaboration | FEAT-021 (done), FEAT-019, FEAT-020 | Partly done — router and delegation done; briefing and approvals open |
-| 6. J1, J2, AC-01…AC-20, SEC-01/02/03/04/07 | testkit | FEAT-022.2–.4, TASK-023 | Open |
-| 7. M1 exit gate and retrospective | contracts | TASK-024 | Open |
+| Wave 1 step                                                                             | Lane               | Roots                                    | Status                                                                |
+| --------------------------------------------------------------------------------------- | ------------------ | ---------------------------------------- | --------------------------------------------------------------------- |
+| 1. Project structure, offline CI, test command                                          | ops                | M0-08, D-28                              | Done                                                                  |
+| 2. Schemas, errors, lifecycle tables, contracts, fakes                                  | contracts, testkit | FEAT-011, FEAT-012, FEAT-013, FEAT-022.1 | Done                                                                  |
+| 3. SQLite store, task service, CAS, leases, retries, checkpoints, wake-up registrations | runtime            | FEAT-016, FEAT-017, FEAT-018             | Done                                                                  |
+| 4. Effect journal, outbox/inbox, audit intent on sensitive effects                      | runtime, security  | FEAT-019, FEAT-022.2                     | Open — audit intent exists for tools/skills only                      |
+| 5. Router/direct provider, delegation, conversation/briefing, human approvals           | collaboration      | FEAT-021 (done), FEAT-019, FEAT-020      | Partly done — router and delegation done; briefing and approvals open |
+| 6. J1, J2, AC-01…AC-20, SEC-01/02/03/04/07                                              | testkit            | FEAT-022.2–.4, TASK-023                  | Open                                                                  |
+| 7. M1 exit gate and retrospective                                                       | contracts          | TASK-024                                 | Open                                                                  |
 
 Also delivered outside the original wave list: tool registry/executor (FEAT-014), Agent Skills loader (FEAT-015). Blocked: TASK-025 (DCO run on real pull requests, owner action). Not started: TASK-026, FEAT-027 (M2), FEAT-028 (M3). Next in order: FEAT-019 → FEAT-020 → FEAT-022.2/.3/.4 → TASK-023 → TASK-024. M1 exit criteria are **not** met.
 
-Feature branches `feat/core-error-contract`, `feat/testkit-fake-clock`, `feat/testkit-fake-model` and `feat/testkit-fault-injector` were merged into `main` by TASK-029; they remain on the remote until the owner deletes them.
+Feature branches `feat/core-error-contract`, `feat/testkit-fake-clock`, `feat/testkit-fake-model` and `feat/testkit-fault-injector` were merged into `main` by TASK-029 under a one-off, owner-approved DCO exception (see [legacy PR review](../review/2026-11-05-legacy-pr-integration.md#owner-decision--2026-11-05-supersedes-the-pr-outcomes-above)); the DCO gate is unchanged for future PRs. The branches remain on the remote until the owner deletes them.
 
 ## Todo-skills activation / compatibility
 
