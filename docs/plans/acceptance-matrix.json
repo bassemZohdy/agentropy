@@ -148,7 +148,7 @@
       "id": "CT-IMPLEMENTATION",
       "root": "FEAT-013",
       "test": "packages/runtime/test/implementation.test.ts",
-      "description": "Agent Implementation v1 conformance checks"
+      "description": "Agent Implementation v1 provider-level conformance; the two-provider lifecycle parity (A-02) is verified with the TaskService in FEAT-017"
     },
     {
       "id": "CT-TOOL",

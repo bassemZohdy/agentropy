@@ -2,9 +2,6 @@
 
 ## 🌳 Task Tree
 
-- [ ] **FEAT-013** · P0 · mid · Definition registry, instance directory, discovery and native-ts implementation provider (M1-03)
-  - Done when: AC-15 registry cases and native provider pass; `pnpm exec vitest run packages/runtime/test/registry.test.ts packages/runtime/test/implementation.test.ts`
-  - Links: Ref: docs/contracts/agent-implementation-v1.md · Depends: FEAT-012 · Lane: contracts
 - [ ] **FEAT-014** · P0 · high · Tool registry and executor with PEP, audit and two direct adapters (T-01, T-02, T-03, N-01)
   - Done when: tool conformance and negative security matrix pass; `pnpm exec vitest run packages/runtime/test/tools.test.ts`
   - Links: Ref: docs/contracts/tool-v1.md · Depends: FEAT-012 · Lane: security

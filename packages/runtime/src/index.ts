@@ -1,2 +1,5 @@
-/** runtime package scaffold: no production implementation yet. */
+/** @agentropy/runtime — registries, providers and services. */
 export const packageName = '@agentropy/runtime' as const;
+
+export * from './implementation.js';
+export * from './registry.js';
