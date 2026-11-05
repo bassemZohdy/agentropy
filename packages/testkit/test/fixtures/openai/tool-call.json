@@ -1,0 +1,27 @@
+{
+  "id": "chatcmpl-fixture-2",
+  "object": "chat.completion",
+  "created": 1762300801,
+  "model": "gpt-fixture",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+              "name": "finance_quote",
+              "arguments": "{\"symbol\":\"ACME\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": { "prompt_tokens": 60, "completion_tokens": 20, "total_tokens": 80 }
+}

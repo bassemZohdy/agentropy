@@ -1,4 +1,4 @@
-# Agentropy Capability Contract v1.0 — revision 10
+# Agentropy Capability Contract v1.0 — revision 11
 
 **Status:** Accepted for M1 implementation (2026-11-05). The catalog, profiles and resolver live in `packages/core`; behavior is claimed only where an executable test exists. **Errors:** [Errors v1](errors-v1.md).
 
@@ -16,6 +16,7 @@
 | 8 | 2026-11-05 | FEAT-027.2: `conversation.briefing` applies the delivery policy (interrupts first; entries below the user's threshold are on-demand unless policy-floored) and returns `onDemand` with the count left unpresented; entry `severity` is the effective (floored) severity |
 | 9 | 2026-11-05 | FEAT-027.6: `CapabilityInvocationContext.traceparent` carries the capability span's W3C context to providers (correlation only; see [Observability v1](observability-v1.md)) |
 | 10 | 2026-11-05 | TASK-026.5 (N-02): new `isolation` guarantee with levels `logical` < `process` < `sandbox`; the local runtime provides `logical`, so a definition requiring more is refused with `GuaranteeUnavailable` |
+| 11 | 2026-11-05 | FEAT-027.5: `ReasoningProvider` and `WorkflowEngine` SPIs. `reasoning.complete` `{ prompt? , system?, messages?, maxTokens?, temperature?, tools?: toolId[] }` → `{ text, toolCalls?: { toolId, input }[], usage, model }`; only snapshot-pinned tools may be offered and proposed calls are never executed by the capability; task `budget.maxCostUnits` counts model tokens (`BudgetExceeded`, `maxTokens` capped to the remainder). `workflow.start` `{ workflow, input }` is idempotent per step key; completion arrives as a `workflow` event `{ runId, state, output?, code? }`; `workflow.status` `{ runId }` |
 
 ## Classification
 

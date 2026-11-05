@@ -59,6 +59,8 @@ export interface TaskRecord {
   callerId: string;
   /** Principal type of the delegating caller (dispatch-time policy checks use it). */
   callerType?: TrustedPrincipal['type'];
+  /** Resource budget from the delegation request (cost units = model tokens for `reasoning`). */
+  budget?: { maxCostUnits?: number; maxActivations?: number };
   /** Trace context of the accepting span (W3C traceparent); parent of every execution span of this task. */
   traceparent?: string;
   parentTaskId?: string;
@@ -395,6 +397,7 @@ export class TaskService {
       attempt: 1,
       ...(request.deadline ? { deadline: request.deadline } : {}),
       ...(grantRef ? { grantRef } : {}),
+      ...(request.budget ? { budget: request.budget } : {}),
       createdAt: now,
       updatedAt: now,
     };

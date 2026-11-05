@@ -29,6 +29,8 @@ import {
   type TaskHandle,
   type TaskSnapshot,
   type Telemetry,
+  type ReasoningProvider,
+  type WorkflowEngine,
   type ToolExecutor,
   type TrustedPrincipal,
   type DelegationRequest,
@@ -53,6 +55,11 @@ import { OutboxRelay, TaskEventStream, type FaultHook } from './outbox.js';
 import { type InboxPreferences, type PriorityPolicy } from './priority.js';
 import { resolveLimits, type RuntimeLimits } from './limits.js';
 import { CachingPolicyDecisionPoint } from './policy-cache.js';
+import { reasoningOperationHandlers } from './reasoning.js';
+import {
+  bridgeWorkflowCompletions,
+  workflowOperationHandlers,
+} from './workflow.js';
 import { DefinitionRegistry, InstanceDirectory } from './registry.js';
 import { AgentRuntime, type RuntimeOptions } from './runtime.js';
 import {
@@ -87,6 +94,10 @@ export interface LocalAppOptions {
     providers: ToolProviderRegistry;
     executor: ToolExecutor;
   };
+  /** Model provider behind `reasoning.complete` (bounded tools and budget), e.g. `openAICompatibleReasoning(…)`. */
+  reasoning?: ReasoningProvider;
+  /** Deterministic workflow engine behind `workflow.start` / `workflow.status`; completions wake waiting tasks. */
+  workflow?: WorkflowEngine;
   /** Extra built-in operation handlers, e.g. `complete` for `reasoning` backed by a model client. */
   operations?: Record<string, OperationHandler>;
   runtime?: Omit<
@@ -397,6 +408,14 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     ...inboxOperationHandlers(tasks, inbox),
     ...humanActionOperationHandlers(human),
     ...toolHandlers,
+    ...(o.reasoning
+      ? reasoningOperationHandlers({
+          tasks,
+          provider: o.reasoning,
+          ...(o.tools ? { tools: o.tools.registry } : {}),
+        })
+      : {}),
+    ...(o.workflow ? workflowOperationHandlers(o.workflow) : {}),
     ...o.operations,
   });
   const runtime = new AgentRuntime({
@@ -417,6 +436,8 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     },
   });
 
+  if (o.workflow)
+    bridgeWorkflowCompletions(o.workflow, (e) => wakeups.publish(e));
   const app: LocalApp = {
     store,
     definitions,
