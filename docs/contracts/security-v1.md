@@ -1,4 +1,4 @@
-# Agentropy Security Contract v1 — revision 3 (PEP/PDP, audit, credentials)
+# Agentropy Security Contract v1 — revision 4 (PEP/PDP, audit, credentials)
 
 **Status:** Accepted for M1 implementation (2026-11-05). Implements the M1 subset of [ADR-0021](../adr/0021-delegated-authorization.md), [ADR-0024](../adr/0024-pre-dispatch-authorization-gate.md) and [ADR-0025](../adr/0025-security-infrastructure-errors.md). Policy engines, identity providers, credential backends and audit storage remain deferred (D-17…D-22). **Errors:** [Errors v1](errors-v1.md).
 
@@ -9,6 +9,7 @@
 | 1 | 2026-11-05 | Minimal `PolicyDecisionPoint`, PEP evaluation order, `AuditIntentWriter` and `CredentialProvider` shapes for M1 |
 | 2 | 2026-11-05 | Implementation (FEAT-022.2): dispatch gate and its policy actions, in-transaction audit intents with an at-least-once forwarder, grant re-validation at every protected effect (see "M1 implementation") |
 | 3 | 2026-11-05 | TASK-026.3 (D-17, D-21): credential failure semantics (`AuthorityExpired`, `kind: credential`) and just-in-time resolution; per-tenant audit hash chain; `AuditService` read/verify with `audit:read` / `audit:verify` |
+| 4 | 2026-11-05 | TASK-026.3 (D-15, D-18, D-19, D-20): grant narrowing for child tasks, one PEP for every ingress path, policy decision cache rules, revocation checkpoint for running work |
 
 ## TypeScript contract (normative)
 
@@ -86,3 +87,7 @@ Verified by `packages/testkit/test/authorization.test.ts` (SEC-06, SEC-05 M2 par
 
 - **Credentials (D-17).** `CredentialProvider.resolve(ref, { tenantId, principal, purpose })` is called for every protected invocation that needs a credential; results are never cached by the runtime or stored. A provider signals a missing, expired, rotated-away or revoked credential by throwing `AgentropyError('AuthorityExpired', …, { details: { kind: 'credential', status } })`; any other failure is `ProviderUnavailable`. The task returns to `assigned` behind the dispatch gate (runtime contract T6 gate case) and resumes only after `reauthorize`. Journaled and keyed steps already done are not repeated.
 - **Audit integrity and access (D-21).** Each audit intent row stores `prevHash` and `hash = digest(prevHash, auditId, event)`, chained per tenant inside the writing transaction. `AuditService.query` and `verify` need the independent permissions `audit:read` and `audit:verify`; another tenant's log is `NotFound`. `verify` reports the first altered or orphaned row. Retention, legal hold and external anchoring are M3 (D-22).
+- **Grant narrowing and agent identity (D-15).** An agent delegates as itself (`type: agent`, `id` = its instance). When `GrantVerifier.narrow(ref, { tenantId, agentInstanceId, parentTaskId })` exists, the child task stores the narrowed grant; if narrowing fails the delegation is `PermissionDenied`, never accepted under the wider grant. The `task.accept` audit event records `callerType`, `parentTaskId` and `narrowed`.
+- **PEP parity (D-18).** `AgentService.delegate`, the activation ingress and the built-in `delegation.delegate` operation run the same checks in the same order (authenticate, grant, tenant/visibility, `delegation:delegate` policy). The A2A provider must reuse them (FEAT-027.8).
+- **Decision cache (D-19).** `CachingPolicyDecisionPoint` caches `allow` (optionally `deny`) per tenant, principal, principal type, grant, action and resource for at most `ttlMs` (default 30 s); requests with `context` are not cached; failures and malformed decisions are never cached; a changed `policyVersion` or `invalidate({ tenantId, principalId, grantRef })` drops entries immediately. Grant status is never cached.
+- **Revocation checkpoint (D-20).** `revokeAuthority(grantRef)` (trusted services) aborts running executions under that grant with `AuthorityExpired` (status `revoked`), invalidates cached decisions and audits the revocation with the grant's digest only. Queued work is held by the dispatch gate. Committed effects are not rolled back; `listEffects(taskId)` returns the journal for an authorized compensation decided by the application.

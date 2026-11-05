@@ -199,6 +199,30 @@ export class AgentRuntime {
     });
   }
 
+  /**
+   * Revocation checkpoint (D-20): signal every execution this pool is running under `grantRef` to stop. The
+   * handler sees its AbortSignal fire with `AuthorityExpired` (status revoked); its next protected effect is refused
+   * anyway (grants are checked per operation), and the task waits behind the dispatch gate. Committed effects are
+   * not rolled back: they stay in the effect journal for authorized compensation. Returns the affected task IDs.
+   */
+  async revokeAuthority(grantRef: string, tenantId: string): Promise<string[]> {
+    const affected: string[] = [];
+    for (const r of this.running.values()) {
+      const t = await this.store.transaction((tx) =>
+        tx.get<TaskRecord>('tasks', r.taskId),
+      );
+      if (t?.value.grantRef !== grantRef || t.value.tenantId !== tenantId)
+        continue;
+      r.controller.abort(
+        new AgentropyError('AuthorityExpired', 'Delegated authority revoked', {
+          details: { status: 'revoked' },
+        }),
+      );
+      affected.push(t.id);
+    }
+    return affected;
+  }
+
   /** Wait for every in-flight execution to settle. */
   async idle(): Promise<void> {
     while (this.running.size)

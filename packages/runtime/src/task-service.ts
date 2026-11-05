@@ -7,6 +7,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   AgentropyError,
+  isAgentropyError,
   EXECUTION_MACHINE,
   HUMAN_ACTION_MACHINE,
   INSTANCE_MACHINE,
@@ -146,6 +147,14 @@ export interface GrantVerifier {
     ref: string,
     tenantId: string,
   ): Promise<'valid' | 'expired' | 'revoked'>;
+  /**
+   * Optional (D-15): derive a grant no wider than `ref`, scoped to one target agent instance, for a child task.
+   * Throwing denies the delegation.
+   */
+  narrow?(
+    ref: string,
+    scope: { tenantId: string; agentInstanceId: string; parentTaskId?: string },
+  ): Promise<string>;
 }
 
 export type IdKind =
@@ -345,6 +354,27 @@ export class TaskService {
 
     const now = this.o.now();
     const taskId = this.newId('task');
+    // D-15: an agent delegating on someone's behalf passes on a grant narrowed to the target, when the grant
+    // service supports narrowing; a refused narrowing is a denial, never a silent fallback to the wider grant.
+    let grantRef = caller.delegatedAuthorityRef;
+    if (grantRef && caller.type === 'agent' && this.o.grants?.narrow) {
+      try {
+        grantRef = await this.o.grants.narrow(grantRef, {
+          tenantId: caller.tenantId,
+          agentInstanceId: instance.id,
+          ...(request.parentTaskId
+            ? { parentTaskId: request.parentTaskId }
+            : {}),
+        });
+      } catch (cause) {
+        if (isAgentropyError(cause)) throw cause;
+        throw new AgentropyError(
+          'PermissionDenied',
+          'Delegated authority cannot be narrowed to the target',
+          { cause },
+        );
+      }
+    }
     const task: TaskRecord = {
       taskId,
       tenantId: caller.tenantId,
@@ -364,9 +394,7 @@ export class TaskService {
       activation: 1,
       attempt: 1,
       ...(request.deadline ? { deadline: request.deadline } : {}),
-      ...(caller.delegatedAuthorityRef
-        ? { grantRef: caller.delegatedAuthorityRef }
-        : {}),
+      ...(grantRef ? { grantRef } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -400,6 +428,16 @@ export class TaskService {
           decision: 'allow',
           correlationId: task.correlationId,
           taskId,
+          // Audit chain (D-15): who delegated, on whose behalf, and whether authority was narrowed.
+          details: {
+            callerType: caller.type,
+            ...(request.parentTaskId
+              ? { parentTaskId: request.parentTaskId }
+              : {}),
+            ...(caller.delegatedAuthorityRef
+              ? { narrowed: grantRef !== caller.delegatedAuthorityRef }
+              : {}),
+          },
         });
         await this.emit(tx, task, created.revision);
         // T2: the instance is available, so bind it and queue the first execution in the same unit of work.

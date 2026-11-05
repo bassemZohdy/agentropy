@@ -7,6 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   AgentropyError,
+  digestOf,
   BUILTIN_PROFILES,
   CAPABILITY_CATALOG,
   TASK_MACHINE,
@@ -51,6 +52,7 @@ import {
 import { OutboxRelay, TaskEventStream, type FaultHook } from './outbox.js';
 import { type InboxPreferences, type PriorityPolicy } from './priority.js';
 import { resolveLimits, type RuntimeLimits } from './limits.js';
+import { CachingPolicyDecisionPoint } from './policy-cache.js';
 import { DefinitionRegistry, InstanceDirectory } from './registry.js';
 import { AgentRuntime, type RuntimeOptions } from './runtime.js';
 import {
@@ -223,6 +225,19 @@ export interface LocalApp {
     presentedRevision?: number,
   ): Promise<void>;
   reauthorize(taskId: string, caller: TrustedPrincipal): Promise<void>;
+  /**
+   * D-20 revocation checkpoint (trusted services only): stop running work under a revoked grant, drop cached policy
+   * decisions for it, and audit the revocation. Queued and future work is held by the dispatch gate.
+   */
+  revokeAuthority(
+    grantRef: string,
+    caller: TrustedPrincipal,
+  ): Promise<{ signalled: string[]; invalidatedDecisions: number }>;
+  /** Committed effects of a visible task (journal entries), e.g. to plan an authorized compensation. */
+  listEffects(
+    taskId: string,
+    caller: TrustedPrincipal,
+  ): Promise<{ operation: string; stepKey?: string; at: string }[]>;
   /** Operator compaction of consumed and expired runtime records (trusted services only). */
   compact(
     retainMs: number,
@@ -452,6 +467,46 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     listInbox: (q, c) => inbox.list(q, c),
     markInbox: (id, m, c, rev) => inbox.mark(id, m, c, rev),
     reauthorize: (id, c) => tasks.reauthorize(id, c),
+    async revokeAuthority(grantRef, caller) {
+      if (caller?.type !== 'service')
+        throw new AgentropyError(
+          'PermissionDenied',
+          'Revoking authority is an operator action',
+        );
+      const signalled = await runtime.revokeAuthority(
+        grantRef,
+        caller.tenantId,
+      );
+      const invalidatedDecisions =
+        o.pdp instanceof CachingPolicyDecisionPoint
+          ? o.pdp.invalidate({ tenantId: caller.tenantId, grantRef })
+          : 0;
+      await store.transaction((tx) =>
+        tasks.audit(tx, caller, {
+          type: 'authority.revoke',
+          action: 'grant:revoke',
+          // The reference itself stays out of the audit trail; its digest identifies it.
+          resource: { type: 'grant', id: digestOf(grantRef) },
+          decision: 'allow',
+          details: { signalled: signalled.length, invalidatedDecisions },
+        }),
+      );
+      return { signalled, invalidatedDecisions };
+    },
+    async listEffects(taskId, caller) {
+      await tasks.visible(taskId, caller);
+      const rows = await store.transaction((tx) =>
+        tx.find<{ operation: string; stepKey?: string; at: string }>(
+          'effects',
+          { where: { taskId }, orderBy: 'seq' },
+        ),
+      );
+      return rows.map((r) => ({
+        operation: r.value.operation,
+        ...(r.value.stepKey ? { stepKey: r.value.stepKey } : {}),
+        at: r.value.at,
+      }));
+    },
     async compact(retainMs, caller) {
       if (caller?.type !== 'service')
         throw new AgentropyError(

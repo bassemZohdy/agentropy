@@ -18,3 +18,4 @@ export * from './priority.js';
 export * from './otel.js';
 export * from './ingress.js';
 export * from './limits.js';
+export * from './policy-cache.js';
