@@ -86,6 +86,17 @@ export const CAPABILITY_CATALOG: readonly CapabilityContract[] = [
     operations: [],
     levels: [...DURABILITY_LEVELS],
   },
+  {
+    // N-02: execution isolation the runtime can promise. The local runtime provides `logical` (tenant and
+    // app-context separation in one process); process and sandbox isolation need a provider that offers them.
+    id: 'isolation',
+    version: '1.0.0',
+    kind: 'guarantee',
+    configSchema: { type: 'object' },
+    dependencies: [],
+    operations: [],
+    levels: ['logical', 'process', 'sandbox'],
+  },
 ];
 
 export const CAPABILITY_IDS = CAPABILITY_CATALOG.map((c) => c.id);

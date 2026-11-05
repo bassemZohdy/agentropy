@@ -398,21 +398,63 @@ export class DefaultToolExecutor implements ToolExecutor {
             ctx.stepKey,
           )
         : undefined);
-    const credential = binding.credentialRef
-      ? await this.resolveCredential(binding.credentialRef, ctx)
-      : undefined;
-    const timeoutMs =
-      typeof binding.config.timeoutMs === 'number'
-        ? binding.config.timeoutMs
-        : (this.o.defaultTimeoutMs ?? 30_000);
-    const output = await this.dispatch(
-      provider,
-      binding,
-      d,
-      input,
-      { ...ctx, idempotencyKey, credential },
-      timeoutMs,
-    );
+    const attempt = async (b: ToolBinding, p: ToolProvider) => {
+      const credential = b.credentialRef
+        ? await this.resolveCredential(b.credentialRef, ctx)
+        : undefined;
+      const timeoutMs =
+        typeof b.config.timeoutMs === 'number'
+          ? b.config.timeoutMs
+          : (this.o.defaultTimeoutMs ?? 30_000);
+      return this.dispatch(
+        p,
+        b,
+        d,
+        input,
+        { ...ctx, idempotencyKey, credential },
+        timeoutMs,
+      );
+    };
+    let output: unknown;
+    try {
+      output = await attempt(binding, provider);
+    } catch (err) {
+      // D-04 failover (opt-in): a read-only tool may move to the bindings its pinned binding lists in
+      // `config.fallbackBindings`, in that order, after an outage or timeout. Tools with effects never fail over
+      // (a second provider could not deduplicate the first one's effect); the task-level retry handles them.
+      const fallbacks = Array.isArray(binding.config.fallbackBindings)
+        ? (binding.config.fallbackBindings as unknown[]).filter(
+            (x): x is string => typeof x === 'string',
+          )
+        : [];
+      if (
+        d.effect !== 'read' ||
+        !(
+          isAgentropyError(err, 'ProviderUnavailable') ||
+          isAgentropyError(err, 'Timeout')
+        )
+      )
+        throw err;
+      let last: unknown = err;
+      let recovered = false;
+      for (const id of fallbacks) {
+        const alt = record.bindings.find((b) => b.bindingId === id);
+        if (!alt || alt.bindingId === binding.bindingId) continue;
+        if (!this.o.providers.has(alt.providerId, alt.providerVersion))
+          continue;
+        try {
+          output = await attempt(
+            alt,
+            this.o.providers.get(alt.providerId, alt.providerVersion),
+          );
+          recovered = true;
+          break;
+        } catch (e) {
+          last = e;
+        }
+      }
+      if (!recovered) throw last;
+    }
     // 9. Output schema.
     if (d.outputSchema !== undefined)
       validateAgainst(d.outputSchema, output, `${d.id} output`);

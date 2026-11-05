@@ -36,8 +36,8 @@ Checked by `node scripts/check-readiness.mjs`: every item above has exactly one 
 | ID | Status | Evidence | Remaining owner |
 |---|---|---|---|
 | `D-03` | closed | packages/testkit/test/governance.test.ts | — |
-| `D-04` | partial | packages/testkit/test/delivery.test.ts | TASK-026.5 |
-| `D-05` | open | — | TASK-026.5 |
+| `D-04` | closed | packages/testkit/test/operations.test.ts | — |
+| `D-05` | closed | packages/testkit/test/operations.test.ts | — |
 | `D-07` | deferred | — | FEAT-028 |
 | `D-08` | closed | packages/testkit/test/governance.test.ts | — |
 | `D-09` | deferred | docs/plans/PROJECT.md | Deferred |
@@ -54,9 +54,9 @@ Checked by `node scripts/check-readiness.mjs`: every item above has exactly one 
 | `D-21` | partial | packages/testkit/test/security.test.ts | TASK-026.3 |
 | `D-22` | deferred | — | FEAT-028 |
 | `D-24` | open | — | TASK-026.3 |
-| `N-02` | partial | packages/testkit/test/isolation.test.ts | TASK-026.5 |
+| `N-02` | closed | packages/testkit/test/operations.test.ts | — |
 | `N-03` | deferred | — | FEAT-028 |
-| `T-04` | open | — | TASK-026.5 |
+| `T-04` | closed | docs/review/2026-11-05-tool-protocol-evaluation.md | — |
 
 Notes on the M1 evidence:
 
@@ -67,5 +67,6 @@ Notes on the M1 evidence:
 - **D-18 / D-19** — default-deny, fail-closed PEP order, bounded PDP retry and durable gate are done ([Security v1](../contracts/security-v1.md) rev 2); A2A/custom-provider enforcement parity, decision caching and revocation freshness remain.
 - **D-21** — mandatory audit intent commits with each protected change and is forwarded at least once (SEC-03); an independent AuditService SPI and tamper evidence remain (D-22 is M3).
 - **D-04 / D-11** — FEAT-027.3 adds the relay leader lease (failover between relays on one store), retry of retryable provider outages on the same idempotency key, and deduplicated delayed callbacks through the activation ingress ([messaging contract](../messaging-contract.md) rev 4). Provider failover to an alternative binding remains (D-04).
+- **D-04 / D-05 / N-02 / T-04** — closed by TASK-026.5: opt-in read-only tool failover (`fallbackBindings`), never for tools with effects; validated `RuntimeLimits` with documented defaults exposed as `app.limits`; the `isolation` guarantee (local runtime = `logical`, stronger levels refused with `GuaranteeUnavailable`; process and sandbox providers are M3); [tool protocol evaluation](../review/2026-11-05-tool-protocol-evaluation.md).
 - **D-12 / D-13 / D-14** — closed by [Observability v1](../contracts/observability-v1.md) (TASK-026.4) and its OpenTelemetry-backed suite (FEAT-027.6).
 - **N-02** — logical tenant/app-context isolation is tested (AC-14); workspace/credential boundaries and provider sandboxes are not claimed.

@@ -1,4 +1,4 @@
-# Agentropy Capability Contract v1.0 — revision 9
+# Agentropy Capability Contract v1.0 — revision 10
 
 **Status:** Accepted for M1 implementation (2026-11-05). The catalog, profiles and resolver live in `packages/core`; behavior is claimed only where an executable test exists. **Errors:** [Errors v1](errors-v1.md).
 
@@ -15,6 +15,7 @@
 | 7 | 2026-11-05 | Implementation (FEAT-019/020): `CapabilityInvocationContext` carries the handler's `stepKey` beside the derived idempotency key; `notification.notify` and `human-input.requestAction` are platform-internal journaled effects (effect, journal entry and outbox event in one transaction; a replayed step returns the original result); a repeated `dedupeKey` from the same owner revises one inbox entry instead of adding one; `conversation.briefing` is refused (`PermissionDenied`) for a turn not submitted by the inbox owner |
 | 8 | 2026-11-05 | FEAT-027.2: `conversation.briefing` applies the delivery policy (interrupts first; entries below the user's threshold are on-demand unless policy-floored) and returns `onDemand` with the count left unpresented; entry `severity` is the effective (floored) severity |
 | 9 | 2026-11-05 | FEAT-027.6: `CapabilityInvocationContext.traceparent` carries the capability span's W3C context to providers (correlation only; see [Observability v1](observability-v1.md)) |
+| 10 | 2026-11-05 | TASK-026.5 (N-02): new `isolation` guarantee with levels `logical` < `process` < `sandbox`; the local runtime provides `logical`, so a definition requiring more is refused with `GuaranteeUnavailable` |
 
 ## Classification
 
@@ -41,6 +42,7 @@ IDs below are the only valid capability IDs in v1. Other documents must use thes
 | `memory` | behavior | Durable agent knowledge with retention | `recall` (read), `remember` (internal) | M2 |
 | `workflow` | behavior | Start/await a deterministic workflow on a provider | `start` (external, step key), `status` (read) | M2 |
 | `durability` | guarantee | Survival semantics: `none` \| `durable-acceptance` \| `durable-execution` | — | POC |
+| `isolation` | guarantee | Execution isolation: `logical` \| `process` \| `sandbox` | — | M2 (`logical` only) |
 
 \* Model calls are `read` for idempotency purposes (no external effect) but **are** metered against budget.
 

@@ -17,7 +17,7 @@
     - Done when: Security v1 revision and conformance tests pass; `pnpm exec vitest run packages/testkit/test/authorization.test.ts`
   - [x] **TASK-026.4** · mid · Observability contracts: baseline metrics (D-12), OpenTelemetry spans and links (D-13), carrier propagation and sanitization (D-14)
     - Done when: observability contract and propagation tests pass; `pnpm exec vitest run packages/testkit/test/telemetry.test.ts`
-  - [ ] **TASK-026.5** · mid · Operations: provider outage recovery and failover (D-04), configurable limits and metrics (D-05), isolation levels (N-02), MCP/UTCP/direct tool protocol evaluation (T-04)
+  - [x] **TASK-026.5** · mid · Operations: provider outage recovery and failover (D-04), configurable limits and metrics (D-05), isolation levels (N-02), MCP/UTCP/direct tool protocol evaluation (T-04)
     - Done when: operations contract and outage tests pass; `pnpm exec vitest run packages/testkit/test/operations.test.ts`
 - [ ] **FEAT-027** · P1 · high · M2: always-on scale, A2A interoperability, control, observability and tenancy
   - Done when: M2 plan items verified by their suites; `pnpm check`

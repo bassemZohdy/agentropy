@@ -50,6 +50,7 @@ import {
 } from './inbox.js';
 import { OutboxRelay, TaskEventStream, type FaultHook } from './outbox.js';
 import { type InboxPreferences, type PriorityPolicy } from './priority.js';
+import { resolveLimits, type RuntimeLimits } from './limits.js';
 import { DefinitionRegistry, InstanceDirectory } from './registry.js';
 import { AgentRuntime, type RuntimeOptions } from './runtime.js';
 import {
@@ -90,7 +91,8 @@ export interface LocalAppOptions {
     RuntimeOptions,
     'tasks' | 'implementations' | 'capabilityProviders' | 'relay'
   >;
-  limits?: { maxDepth?: number; maxFanOut?: number };
+  /** Operational limits (D-05); validated at startup, see DEFAULT_LIMITS. */
+  limits?: Partial<RuntimeLimits>;
   faults?: FaultHook;
   /** Spans and metrics (e.g. `openTelemetry({ api, tracer, meter })`); no-op by default. */
   telemetry?: Telemetry;
@@ -118,6 +120,8 @@ export interface LocalApp {
   readonly inbox: InboxService;
   readonly human: HumanActionService;
   readonly relay: OutboxRelay;
+  /** The effective, validated limits this app runs with. */
+  readonly limits: RuntimeLimits;
 
   /** Register a definition and, for `native-ts` implementations, its handler. */
   define(definition: AgentDefinition, handler?: Agent<never, unknown>): void;
@@ -240,6 +244,13 @@ export interface LocalApp {
 }
 
 export function createLocalApp(o: LocalAppOptions): LocalApp {
+  const { skills: _skills, ...runtimeLimitFields } = o.runtime ?? {};
+  void _skills;
+  const limits = resolveLimits({
+    ...(runtimeLimitFields as Partial<RuntimeLimits>),
+    ...(o.mailboxLimit ? { mailboxLimit: o.mailboxLimit } : {}),
+    ...o.limits,
+  });
   const now = o.now ?? (() => new Date().toISOString());
   const store = o.store;
   const definitions = new DefinitionRegistry(o.profiles ?? BUILTIN_PROFILES);
@@ -263,7 +274,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     pdp: o.pdp,
     ...(o.grants ? { grants: o.grants } : {}),
     now,
-    ...(o.limits ? { limits: o.limits } : {}),
+    limits: { maxDepth: limits.maxDepth, maxFanOut: limits.maxFanOut },
     ...(o.faults ? { faults: o.faults } : {}),
     ...(o.telemetry ? { telemetry: o.telemetry } : {}),
     acceptance: {
@@ -282,7 +293,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     },
   });
   const wakeups = new WakeupService(tasks, instances, {
-    ...(o.mailboxLimit ? { mailboxLimit: o.mailboxLimit } : {}),
+    mailboxLimit: limits.mailboxLimit,
   });
   const inbox = new InboxService(tasks, {
     ...(o.inbox?.policy ? { policy: o.inbox.policy } : {}),
@@ -373,6 +384,13 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
   });
   const runtime = new AgentRuntime({
     ...o.runtime,
+    poolSize: limits.poolSize,
+    leaseMs: limits.leaseMs,
+    cancelGraceMs: limits.cancelGraceMs,
+    keepExecutions: limits.keepExecutions,
+    maxCheckpointBytes: limits.maxCheckpointBytes,
+    pdpTimeoutMs: limits.pdpTimeoutMs,
+    gateRetry: limits.gateRetry,
     tasks,
     implementations,
     capabilityProviders: new Map([[builtin.id, builtin]]),
@@ -392,6 +410,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     inbox,
     human,
     relay,
+    limits,
     define(definition, handler) {
       const def = validateAgentDefinition(definition);
       if (def.implementation.providerId === 'native-ts') {
