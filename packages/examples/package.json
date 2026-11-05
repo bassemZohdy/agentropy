@@ -1,0 +1,15 @@
+{
+  "name": "@agentropy/examples",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@agentropy/core": "workspace:*",
+    "@agentropy/runtime": "workspace:*",
+    "@agentropy/store-sqlite": "workspace:*",
+    "@agentropy/testkit": "workspace:*"
+  }
+}

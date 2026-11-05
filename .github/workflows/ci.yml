@@ -31,6 +31,10 @@ jobs:
         run: pnpm lint
       - name: Tests (offline)
         run: pnpm test
+      - name: Examples (J1 price watch, J2 expense approval)
+        run: |
+          node packages/examples/dist/price-watch.js
+          node packages/examples/dist/expense-approval.js
       - name: DCO script unit tests
         run: node --test scripts/check-dco.test.mjs
       - name: Verify documentation link targets

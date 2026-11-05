@@ -4,7 +4,7 @@
 
 Agentropy models agents as reusable definitions with configurable capability profiles, independent logical identities and lifecycles, and pluggable execution backends. It supports conversational, task-oriented, monitoring, and coordinating agents, with visible delegation and a unified user experience.
 
-> **Project stage:** M1 walking skeleton in progress. Architecture readiness was signed off on 2026-11-05; only what is listed in [CHANGELOG.md](CHANGELOG.md) under a drained root is implemented and tested. M1 exit criteria are not met yet.
+> **Project stage:** M1 walking skeleton complete (2026-11-05) for its single-process, offline scope ([retrospective](docs/review/2026-11-05-m1-retrospective.md)); M2 not started. Only what is listed in [CHANGELOG.md](CHANGELOG.md) under a drained root is implemented and tested.
 
 ## Why Agentropy?
 
@@ -105,6 +105,6 @@ Keep the core contracts small; prefer composition over inheritance and provider 
 
 ## Status and contributions
 
-Architecture readiness gates are closed ([signoff](docs/review/2026-11-05-readiness-signoff.md)) and the backlog runs on [todo-skills](https://github.com/bassemZohdy/todo-skills): `TODO.md` is the live task tree, `CHANGELOG.md` records verified roots. Implemented functionality is exactly what drained roots in the changelog describe: contract types and schemas, the acceptance resolver, registries, tools, skills, the SQLite store, the task service and runtime, communication routing, wake-ups, the outbox relay and inbox projection, conversation turns with briefing, human actions, the ADR-0024 dispatch gate with mandatory audit intent, and offline AC/SEC suites for every M1 criterion except AC-01. **The runnable J1/J2 examples (AC-01) are not implemented yet**, so the M1 walking skeleton is not complete. The project is [Apache-2.0 licensed](LICENSE) and uses [DCO](CONTRIBUTING.md); live DCO PR verification is still pending (TASK-025). No API stability or production readiness claims are made.
+Architecture readiness gates are closed ([signoff](docs/review/2026-11-05-readiness-signoff.md)) and the backlog runs on [todo-skills](https://github.com/bassemZohdy/todo-skills): `TODO.md` is the live task tree, `CHANGELOG.md` records verified roots. Implemented functionality is exactly what drained roots in the changelog describe: contract types and schemas, the acceptance resolver, registries, tools, skills, the SQLite store, the task service and runtime, communication routing, wake-ups, the outbox relay and inbox projection, conversation turns with briefing, human actions, the ADR-0024 dispatch gate with mandatory audit intent, a local `createLocalApp` facade for the `AgentService` operations, offline AC/SEC suites for every M1 criterion, and the two runnable journeys: `pnpm example:price-watch` (J1, no model) and `pnpm example:expense-approval` (J2, fake model plus human approval). The single-process M1 walking skeleton is complete; see the [M1 retrospective](docs/review/2026-11-05-m1-retrospective.md) for what it does not cover. The project is [Apache-2.0 licensed](LICENSE) and uses [DCO](CONTRIBUTING.md); live DCO PR verification is still pending (TASK-025). No API stability or production readiness claims are made.
 
 Tests: `pnpm check`

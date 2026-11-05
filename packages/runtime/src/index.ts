@@ -13,3 +13,4 @@ export * from './outbox.js';
 export * from './inbox.js';
 export * from './human-actions.js';
 export * from './audit.js';
+export * from './app.js';

@@ -46,6 +46,21 @@ importers:
         specifier: ^7.8.0
         version: 7.8.0
 
+  packages/examples:
+    dependencies:
+      '@agentropy/core':
+        specifier: workspace:*
+        version: link:../core
+      '@agentropy/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@agentropy/store-sqlite':
+        specifier: workspace:*
+        version: link:../store-sqlite
+      '@agentropy/testkit':
+        specifier: workspace:*
+        version: link:../testkit
+
   packages/runtime:
     dependencies:
       '@agentropy/core':

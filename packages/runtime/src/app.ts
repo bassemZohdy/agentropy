@@ -1,0 +1,390 @@
+/**
+ * Local single-process composition (M1, ADR-0017): wires the Store, registries, TaskService, runtime pool,
+ * wake-ups, outbox relay, inbox, human actions, audit forwarding and the built-in capability provider, and
+ * exposes the Agent v1 `AgentService` operations as one facade. Examples and embedding applications use this
+ * instead of assembling the services by hand. Trusted principals are supplied by the embedding ingress.
+ */
+import { randomUUID } from 'node:crypto';
+import {
+  AgentropyError,
+  BUILTIN_PROFILES,
+  CAPABILITY_CATALOG,
+  TASK_MACHINE,
+  isTerminal,
+  validateAgentDefinition,
+  type Agent,
+  type AgentDefinition,
+  type AgentInstance,
+  type AgentProfile,
+  type AuditIntentWriter,
+  type ConversationTurn,
+  type HumanActionRequest,
+  type HumanDecision,
+  type InboxEntry,
+  type InboxMarker,
+  type PolicyDecisionPoint,
+  type Store,
+  type TaskEvent,
+  type TaskHandle,
+  type TaskSnapshot,
+  type ToolExecutor,
+  type TrustedPrincipal,
+  type DelegationRequest,
+  type VersionedRef,
+} from '@agentropy/core';
+import { AuditForwarder } from './audit.js';
+import {
+  HumanActionService,
+  humanActionOperationHandlers,
+} from './human-actions.js';
+import {
+  InMemoryHandlerRegistry,
+  InMemoryImplementationProviderRegistry,
+  NativeImplementationProvider,
+} from './implementation.js';
+import {
+  InboxProjector,
+  InboxService,
+  inboxOperationHandlers,
+} from './inbox.js';
+import { OutboxRelay, TaskEventStream, type FaultHook } from './outbox.js';
+import { DefinitionRegistry, InstanceDirectory } from './registry.js';
+import { AgentRuntime, type RuntimeOptions } from './runtime.js';
+import {
+  TaskService,
+  type GrantVerifier,
+  type TaskRecord,
+} from './task-service.js';
+import {
+  ToolUseCapability,
+  type InMemoryToolRegistry,
+  type ToolProviderRegistry,
+} from './tools.js';
+import {
+  BuiltinCapabilityProvider,
+  WakeupService,
+  coreOperationHandlers,
+  type OperationHandler,
+} from './wakeups.js';
+
+export interface LocalAppOptions {
+  store: Store;
+  /** Required: there is no implicit allow-all policy. */
+  pdp: PolicyDecisionPoint;
+  grants?: GrantVerifier;
+  /** Sink for committed audit intents; without one they stay in the Store's `audit` collection. */
+  audit?: AuditIntentWriter;
+  now?: () => string;
+  profiles?: readonly AgentProfile[];
+  /** Tool registry, providers and executor backing `tool-use.listTools` / `tool-use.call`. */
+  tools?: {
+    registry: InMemoryToolRegistry;
+    providers: ToolProviderRegistry;
+    executor: ToolExecutor;
+  };
+  /** Extra built-in operation handlers, e.g. `complete` for `reasoning` backed by a model client. */
+  operations?: Record<string, OperationHandler>;
+  runtime?: Omit<
+    RuntimeOptions,
+    'tasks' | 'implementations' | 'capabilityProviders' | 'relay'
+  >;
+  limits?: { maxDepth?: number; maxFanOut?: number };
+  faults?: FaultHook;
+}
+
+export interface LocalApp {
+  readonly store: Store;
+  readonly definitions: DefinitionRegistry;
+  readonly instances: InstanceDirectory;
+  readonly tasks: TaskService;
+  readonly runtime: AgentRuntime;
+  readonly wakeups: WakeupService;
+  readonly inbox: InboxService;
+  readonly human: HumanActionService;
+  readonly relay: OutboxRelay;
+
+  /** Register a definition and, for `native-ts` implementations, its handler. */
+  define(definition: AgentDefinition, handler?: Agent<never, unknown>): void;
+
+  // AgentService (Agent v1)
+  delegate<I>(
+    request: DelegationRequest<I>,
+    caller: TrustedPrincipal,
+  ): Promise<TaskHandle>;
+  getTask(taskId: string, caller: TrustedPrincipal): Promise<TaskSnapshot>;
+  getTaskByIdempotencyKey(
+    key: string,
+    caller: TrustedPrincipal,
+  ): Promise<TaskSnapshot>;
+  getResult<O>(taskId: string, caller: TrustedPrincipal): Promise<O>;
+  cancel(
+    taskId: string,
+    caller: TrustedPrincipal,
+    reason?: string,
+  ): Promise<TaskSnapshot>;
+  subscribe(
+    taskId: string,
+    caller: TrustedPrincipal,
+    from?: { revision: number; sequence: number },
+  ): AsyncIterable<TaskEvent>;
+  submitTurn(
+    turn: ConversationTurn,
+    caller: TrustedPrincipal,
+  ): Promise<TaskHandle>;
+  createInstance(
+    req: { definition: VersionedRef; ownerId: string; idempotencyKey: string },
+    caller: TrustedPrincipal,
+  ): Promise<AgentInstance>;
+  suspendInstance(
+    instanceId: string,
+    caller: TrustedPrincipal,
+  ): Promise<AgentInstance>;
+  resumeInstance(
+    instanceId: string,
+    caller: TrustedPrincipal,
+  ): Promise<AgentInstance>;
+  retireInstance(
+    instanceId: string,
+    caller: TrustedPrincipal,
+    opts?: { force?: boolean },
+  ): Promise<AgentInstance>;
+  claimHumanAction(
+    requestId: string,
+    caller: TrustedPrincipal,
+  ): Promise<HumanActionRequest>;
+  releaseHumanAction(
+    requestId: string,
+    caller: TrustedPrincipal,
+  ): Promise<HumanActionRequest>;
+  getHumanAction(
+    requestId: string,
+    caller: TrustedPrincipal,
+  ): Promise<HumanActionRequest>;
+  provideHumanInput(
+    decision: HumanDecision,
+    caller: TrustedPrincipal,
+  ): Promise<void>;
+  listInbox(
+    query: { cursor?: string; limit?: number },
+    caller: TrustedPrincipal,
+  ): Promise<{ entries: InboxEntry[]; cursor: string }>;
+  markInbox(
+    entryId: string,
+    marker: InboxMarker,
+    caller: TrustedPrincipal,
+    presentedRevision?: number,
+  ): Promise<void>;
+  reauthorize(taskId: string, caller: TrustedPrincipal): Promise<void>;
+
+  /** Trusted event ingress (e.g. a price feed adapter); duplicate event IDs are ignored. */
+  publishEvent(event: {
+    eventId: string;
+    source: string;
+    tenantId: string;
+    payload: unknown;
+  }): Promise<boolean>;
+  /** Poll wake-ups and run due work until nothing is left (bounded); for tests, examples and batch use. */
+  runUntilIdle(maxRounds?: number): Promise<void>;
+  /** Periodic scheduler loop for a long-running process; returns a stop function. */
+  start(intervalMs?: number): () => Promise<void>;
+}
+
+export function createLocalApp(o: LocalAppOptions): LocalApp {
+  const now = o.now ?? (() => new Date().toISOString());
+  const store = o.store;
+  const definitions = new DefinitionRegistry(o.profiles ?? BUILTIN_PROFILES);
+  const instances = new InstanceDirectory(
+    definitions,
+    store,
+    () => `inst-${randomUUID()}`,
+  );
+  const handlers = new InMemoryHandlerRegistry();
+  const implementations = new InMemoryImplementationProviderRegistry();
+  implementations.register(new NativeImplementationProvider(handlers));
+  const builtinContracts = CAPABILITY_CATALOG.map((c) => ({
+    id: c.id,
+    version: c.version,
+    ...(c.id === 'durability' ? { level: store.durability } : {}),
+  }));
+  const tasks = new TaskService({
+    store,
+    definitions,
+    instances,
+    pdp: o.pdp,
+    ...(o.grants ? { grants: o.grants } : {}),
+    now,
+    ...(o.limits ? { limits: o.limits } : {}),
+    ...(o.faults ? { faults: o.faults } : {}),
+    acceptance: {
+      contracts: CAPABILITY_CATALOG,
+      profiles: o.profiles ?? BUILTIN_PROFILES,
+      providers: [
+        { id: 'builtin', version: '1.0.0', contracts: builtinContracts },
+      ],
+      runtimeDurability: store.durability,
+      implementationProvider: (id, v) => implementations.find(id, v),
+      toolVersions: (id) => o.tools?.registry.versions(id) ?? [],
+      toolProviderRegistered: (id, v) => o.tools?.providers.has(id, v) ?? false,
+      skillVersions: () => [],
+      pdp: o.pdp,
+      now,
+    },
+  });
+  const wakeups = new WakeupService(tasks, instances);
+  const inbox = new InboxService(tasks);
+  const human = new HumanActionService(tasks);
+  wakeups.addSweep(() => human.sweep());
+  const stream = new TaskEventStream(tasks);
+  const relay = new OutboxRelay({
+    store,
+    consumers: [new InboxProjector(tasks), stream],
+    ...(o.faults ? { faults: o.faults } : {}),
+  });
+  const forwarder = o.audit
+    ? new AuditForwarder({
+        store,
+        sink: o.audit,
+        ...(o.faults ? { faults: o.faults } : {}),
+      })
+    : undefined;
+
+  const toolHandlers: Record<string, OperationHandler> = o.tools
+    ? {
+        listTools: async (_input, ctx) =>
+          new ToolUseCapability(
+            o.tools!.executor,
+            o.tools!.registry,
+            (await taskOf(ctx.taskId)).snapshot.tools,
+          ).listTools(),
+        call: async (input, ctx) =>
+          new ToolUseCapability(
+            o.tools!.executor,
+            o.tools!.registry,
+            (await taskOf(ctx.taskId)).snapshot.tools,
+          ).call(input as { toolId: string; input: unknown }, {
+            tenantId: ctx.tenantId,
+            taskId: ctx.taskId,
+            executionId: ctx.executionId,
+            principal: {
+              id: ctx.principalId,
+              type: 'agent',
+              tenantId: ctx.tenantId,
+              ...(ctx.delegatedAuthorityRef
+                ? { delegatedAuthorityRef: ctx.delegatedAuthorityRef }
+                : {}),
+            },
+            signal: ctx.signal,
+            ...(ctx.idempotencyKey
+              ? { idempotencyKey: ctx.idempotencyKey }
+              : {}),
+            ...(ctx.stepKey ? { stepKey: ctx.stepKey } : {}),
+          }),
+      }
+    : {};
+  async function taskOf(taskId: string): Promise<TaskRecord> {
+    const doc = await store.transaction((tx) =>
+      tx.get<TaskRecord>('tasks', taskId),
+    );
+    if (!doc) throw new AgentropyError('NotFound', 'Task not found');
+    return doc.value;
+  }
+
+  const builtin = new BuiltinCapabilityProvider({
+    ...coreOperationHandlers(tasks, wakeups),
+    ...inboxOperationHandlers(tasks, inbox),
+    ...humanActionOperationHandlers(human),
+    ...toolHandlers,
+    ...o.operations,
+  });
+  const runtime = new AgentRuntime({
+    ...o.runtime,
+    tasks,
+    implementations,
+    capabilityProviders: new Map([[builtin.id, builtin]]),
+    relay: {
+      drain: async () =>
+        (await relay.drain()) + ((await forwarder?.drain()) ?? 0),
+    },
+  });
+
+  const app: LocalApp = {
+    store,
+    definitions,
+    instances,
+    tasks,
+    runtime,
+    wakeups,
+    inbox,
+    human,
+    relay,
+    define(definition, handler) {
+      const def = validateAgentDefinition(definition);
+      if (def.implementation.providerId === 'native-ts') {
+        if (!handler)
+          throw new AgentropyError(
+            'InvalidConfiguration',
+            `Definition ${def.id}@${def.version} needs a native handler`,
+          );
+        handlers.register(def.implementation.artifact, handler as Agent);
+      }
+      definitions.register(def);
+    },
+    delegate: (r, c) => tasks.delegate(r, c),
+    getTask: (id, c) => tasks.getTask(id, c),
+    getTaskByIdempotencyKey: (k, c) => tasks.getTaskByIdempotencyKey(k, c),
+    getResult: (id, c) => tasks.getResult(id, c),
+    cancel: (id, c, reason) => tasks.cancel(id, c, reason),
+    subscribe: (id, c, from) => stream.subscribe(id, c, from),
+    submitTurn: (t, c) => tasks.submitTurn(t, c),
+    createInstance: (req, c) => instances.create(req, c),
+    suspendInstance: (id, c) => instances.suspend(id, c),
+    resumeInstance: (id, c) => instances.resume(id, c),
+    retireInstance: (id, c, opts = {}) =>
+      instances.retire(id, c, {
+        ...opts,
+        hasActiveTasks: async () =>
+          (
+            await store.transaction((tx) =>
+              tx.find<TaskRecord>('tasks', { where: { instanceId: id } }),
+            )
+          ).some((t) => !isTerminal(TASK_MACHINE, t.value.status)),
+      }),
+    claimHumanAction: (id, c) => human.claim(id, c),
+    releaseHumanAction: (id, c) => human.release(id, c),
+    getHumanAction: (id, c) => human.get(id, c),
+    provideHumanInput: (d, c) => human.decide(d, c),
+    listInbox: (q, c) => inbox.list(q, c),
+    markInbox: (id, m, c, rev) => inbox.mark(id, m, c, rev),
+    reauthorize: (id, c) => tasks.reauthorize(id, c),
+    publishEvent: (e) => wakeups.publish(e),
+    async runUntilIdle(maxRounds = 20) {
+      for (let i = 0; i < maxRounds; i++) {
+        const fired = await wakeups.poll();
+        await runtime.runUntilIdle();
+        if (fired === 0 && runtime.activeCount === 0) {
+          const again = await wakeups.poll();
+          if (again === 0) return;
+          await runtime.runUntilIdle();
+        }
+      }
+    },
+    start(intervalMs = 250) {
+      let stopped = false;
+      let running: Promise<void> = Promise.resolve();
+      const timer = setInterval(() => {
+        if (stopped) return;
+        running = running.then(async () => {
+          await wakeups.poll();
+          await runtime.tick();
+        });
+      }, intervalMs);
+      return async () => {
+        stopped = true;
+        clearInterval(timer);
+        await running;
+        await runtime.idle();
+      };
+    },
+  };
+  return app;
+}

@@ -2,12 +2,6 @@
 
 ## 🌳 Task Tree
 
-- [ ] **TASK-023** · P0 · mid · Runnable examples price-watch (J1) and expense-approval (J2) (M1-12)
-  - Done when: J1/J2 run offline via examples; `pnpm exec vitest run packages/testkit/test/journeys.test.ts`
-  - Links: Ref: docs/poc-scope.md#journeys · Depends: FEAT-022 · Lane: collaboration
-- [ ] **TASK-024** · P1 · low · M1 retrospective with contract revisions forced by implementation (M1-13)
-  - Done when: retrospective recorded and links valid; `node scripts/check-doc-links.mjs`
-  - Links: Ref: docs/poc-scope.md#exit-criteria · Depends: TASK-023 · Lane: contracts
 - [!] **TASK-025** · P1 · low · Verify the DCO workflow on real signed and unsigned pull requests (D-29)
   - Done when: signed PR passes and unsigned PR fails in Actions; `node --test scripts/check-dco.test.mjs`
   - Links: Ref: CONTRIBUTING.md · Lane: ops

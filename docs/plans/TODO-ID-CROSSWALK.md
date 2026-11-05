@@ -218,10 +218,12 @@ Legacy items whose destination root is now drained to `CHANGELOG.md` with passin
 | `S-02`, `S-03`, `S-04` | FEAT-015 | Filesystem source; script execution unsupported |
 | `M1-06` | FEAT-016 | SQLite single-process store |
 | `M1-11` | FEAT-021 | Direct provider and router conformance |
-| `M1-04`, `M1-05`, `A-02` | FEAT-017 | Task operations; turns, inbox and human actions arrived with FEAT-019/020 as separate services, no single `AgentService` facade yet |
+| `M1-04`, `M1-05`, `A-02` | FEAT-017 | Task operations; turns, inbox and human actions arrived with FEAT-019/020; the `AgentService` facade is `createLocalApp` (TASK-023) |
 | `M1-08` | FEAT-018 | UTC-only schedules |
 | `M1-07` | FEAT-019 | Outbox relay, TaskEvent stream, inbox projection, turns and briefing; envelope validation in the direct provider |
 | `M1-09` | FEAT-020 | Human actions; role eligibility delegated to the policy point |
-| `M1-10`, `A-04` | FEAT-022 | Offline fakes, ADR-0024 gate, security, recovery, effect and isolation suites; AC-01 follows with TASK-023 |
+| `M1-10`, `A-04` | FEAT-022 | Offline fakes, ADR-0024 gate, security, recovery, effect and isolation suites |
+| `M1-12` | TASK-023 | J1/J2 examples on `createLocalApp`, run in CI; AC-01 |
+| `M1-13` | TASK-024 | [M1 retrospective](../review/2026-11-05-m1-retrospective.md) |
 
 All other open legacy IDs remain open.
