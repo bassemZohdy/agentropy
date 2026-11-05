@@ -146,3 +146,12 @@ All T tasks are open design/implementation follow-ups and do not change current 
 - [ ] S-04 (P1 compatibility) Define version pinning, invalid/missing dependency errors, sandbox/unsupported guarantees, restart and conformance tests. **Done when:** tests and milestone allocation reviewed in readiness gates.
 
 These are open follow-ups. No Agent Skills loader or runtime implementation is claimed.
+
+## 2026-11-05 — Agent Definition and pluggable implementations (contract revision 6)
+
+- [ ] A-01 (P0 schema compatibility) Review and ratify the revised mandatory/optional `AgentDefinition` shape, including `implementation`, optional `skills`/`tools`, generic profile, JSON Schemas and backwards migration. **Done when:** cross-contract schema/type validation and migration examples are approved; revision 6 remains design-only until acceptance.
+- [ ] A-02 (P0 implementation SPI) Specify `AgentImplementationProvider` registration, artifact trust, feature/guarantee negotiation and version pinning; distinguish native handler, LangGraph.js, workflow, and remote A2A proxy from task transport authority. **Done when:** two different implementations pass an equivalent task lifecycle test plan without bypassing TaskService.
+- [ ] A-03 (P0 resolution/security) Reconcile profile/capability resolution with ToolSelection, SkillSelection, dependency checks, policy intersection and redacted acceptance snapshots. **Done when:** missing/invalid dependencies, privilege escalation, revoked grants and incompatible guarantees fail with mapped typed errors.
+- [ ] A-04 (P1 conformance) Add provider-neutral tests for optionality, durable profile requirements, skill authorization separation, version pinning, recovery, cancellation, and remote task authority. **Done when:** runnable test commands and milestone scope are reviewed by readiness gates.
+
+These are open implementation/design follow-ups; editing documentation does not close S-01, T-01, M1 gates or mean a provider has been implemented.
