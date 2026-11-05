@@ -2,13 +2,6 @@
 
 ## 🌳 Task Tree
 
-- [ ] **FEAT-012** · P0 · high · Pure acceptance resolver: capability catalog/profiles, implementation, tools, skills (M1-02, A-03, D-01)
-  - Done when: AC-16 resolver cases and acceptance snapshot pass; `pnpm exec vitest run packages/core/test/resolver.test.ts packages/core/test/acceptance.test.ts`
-  - Links: Ref: docs/contracts/capability-v1.md#resolution-algorithm-authoritative-ordering · Depends: FEAT-011 · Lane: contracts
-  - [ ] **FEAT-012.1** · high · Capability catalog, built-in profiles and capability resolution
-    - Done when: merge, removal, dependency, provider, guarantee cases pass; `pnpm exec vitest run packages/core/test/resolver.test.ts`
-  - [ ] **FEAT-012.2** · high · Implementation, tool and skill resolution into AcceptanceSnapshot
-    - Done when: required/optional/omitted/dependency cases pass; `pnpm exec vitest run packages/core/test/acceptance.test.ts`
 - [ ] **FEAT-013** · P0 · mid · Definition registry, instance directory, discovery and native-ts implementation provider (M1-03)
   - Done when: AC-15 registry cases and native provider pass; `pnpm exec vitest run packages/runtime/test/registry.test.ts packages/runtime/test/implementation.test.ts`
   - Links: Ref: docs/contracts/agent-implementation-v1.md · Depends: FEAT-012 · Lane: contracts

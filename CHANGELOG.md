@@ -6,6 +6,7 @@ This project follows a human-readable changelog. Release versions will be introd
 
 ### Added
 
+- **FEAT-012** (feat): Pure acceptance resolver: capability catalog/profiles, implementation, tools, skills (M1-02, A-03, D-01). Ref: docs/contracts/capability-v1.md#resolution-algorithm-authoritative-ordering. Validated: `pnpm exec vitest run packages/core/test/resolver.test.ts packages/core/test/acceptance.test.ts`. Docs: updated docs/contracts/agent-implementation-v1.md. Includes: FEAT-012.1, FEAT-012.2.
 - **FEAT-011** (feat): Core contract package: error catalog, transition tables, types and JSON Schemas (M1-01, A-01, S-01). Ref: docs/contracts/agent-v1.md. Validated: `pnpm exec vitest run packages/core/test`. Includes: FEAT-011.1, FEAT-011.2, FEAT-011.3.
 
 ### Changed

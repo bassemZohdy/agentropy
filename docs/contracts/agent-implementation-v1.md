@@ -71,6 +71,7 @@ The built-in `native-ts` provider is backed by the `HandlerRegistry` of Agent v1
 2. `provider.resolve(ref)`; an unknown artifact → `NotFound` (`kind: "implementation-artifact"`); an untrusted or unverifiable artifact → `PermissionDenied`; an incompatible artifact revision → `IncompatibleVersion`.
 3. Feature negotiation against the effective profile guarantees:
    - effective durability `durable-execution` requires `checkpointResume: true`, otherwise `GuaranteeUnavailable`;
+   - when durable-execution was not requested but the runtime offers it, a provider without `checkpointResume` makes the task disclose `durable-acceptance` (it can only be re-run from scratch);
    - `remoteAuthority: true` is rejected in M1 with `UnsupportedOperation` (remote tasks go through `TaskService → CommunicationRouter`, [Communication v1](communication-v1.md)).
 4. The resulting `ImplementationBinding` is pinned in the task's [`AcceptanceSnapshot`](agent-v1.md#acceptance-snapshot-revision-7). No provider or artifact is re-selected for an accepted task.
 
