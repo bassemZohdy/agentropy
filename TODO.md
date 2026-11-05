@@ -2,11 +2,6 @@
 
 ## 🌳 Task Tree
 
-- [ ] **FEAT-018** · P0 · high · Wake-ups: polling scheduler, event bus, durable subscriptions and mailboxes (M1-08)
-  - Done when: timer/event/child/human wake-ups pass; `pnpm exec vitest run packages/runtime/test/wakeups.test.ts`
-  - Links: Ref: docs/runtime-contract.md#event-subscriptions-no-lost-events-between-activations · Depends: FEAT-017 · Lane: runtime
-  - [ ] **FEAT-018.1** · mid · Persist the instance directory in the Store so instances survive restart (R-08)
-    - Done when: instances reload after reopen; `pnpm exec vitest run packages/runtime/test/registry.test.ts`
 - [ ] **FEAT-019** · P0 · high · Outbox relay, TaskEvent publication, inbox projection, submitTurn and briefing (M1-07)
   - Done when: AC-02/AC-19 pass; `pnpm exec vitest run packages/runtime/test/outbox-inbox.test.ts`
   - Links: Ref: docs/messaging-contract.md · Depends: FEAT-017 · Lane: collaboration

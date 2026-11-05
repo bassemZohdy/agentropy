@@ -23,6 +23,11 @@ import {
 import { DefinitionRegistry, InstanceDirectory } from '../src/registry.js';
 import { AgentRuntime } from '../src/runtime.js';
 import { TaskService } from '../src/task-service.js';
+import {
+  BuiltinCapabilityProvider,
+  WakeupService,
+  coreOperationHandlers,
+} from '../src/wakeups.js';
 
 export const alice: TrustedPrincipal = {
   id: 'alice',
@@ -79,15 +84,20 @@ export interface HarnessOptions {
   poolSize?: number;
   cancelGraceMs?: number;
   limits?: { maxDepth?: number; maxFanOut?: number };
+  /** Use the real built-in delegation/event/scheduling handlers instead of the recording fake. */
+  builtin?: boolean;
 }
 
+let harnessRun = 0;
+
 export function harness(o: HarnessOptions = {}) {
+  const run = ++harnessRun;
   const clock = new FakeClock();
   const store = o.store ?? sqliteTempStore();
   const pdp = new FakePolicy();
   const grants = new FakeGrants();
   const definitions = new DefinitionRegistry(BUILTIN_PROFILES);
-  const instances = new InstanceDirectory(definitions);
+  const instances = new InstanceDirectory(definitions, store);
   const handlers = new InMemoryHandlerRegistry();
   const implementations = new InMemoryImplementationProviderRegistry();
   implementations.register(new NativeImplementationProvider(handlers));
@@ -101,7 +111,7 @@ export function harness(o: HarnessOptions = {}) {
     pdp,
     grants,
     now: clock.now,
-    newId: (kind) => `${kind}-${++ids}`,
+    newId: (kind) => `${kind}-${run}-${++ids}`,
     ...(o.limits ? { limits: o.limits } : {}),
     acceptance: {
       contracts: CAPABILITY_CATALOG,
@@ -118,10 +128,24 @@ export function harness(o: HarnessOptions = {}) {
       now: clock.now,
     },
   });
+  const wakeups = new WakeupService(tasks, instances);
+  const notifications: { input: unknown; idempotencyKey?: string }[] = [];
+  const builtin = new BuiltinCapabilityProvider({
+    ...coreOperationHandlers(tasks, wakeups),
+    notify: async (input, ctx) => {
+      notifications.push({
+        input,
+        ...(ctx.idempotencyKey ? { idempotencyKey: ctx.idempotencyKey } : {}),
+      });
+      return { entryId: `entry-${notifications.length}` };
+    },
+  });
   const runtime = new AgentRuntime({
     tasks,
     implementations,
-    capabilityProviders: new Map([[cap.id, cap]]),
+    capabilityProviders: new Map<string, CapabilityProvider>([
+      [cap.id, o.builtin ? builtin : cap],
+    ]),
     poolSize: o.poolSize ?? 4,
     leaseMs: 1_000,
     cancelGraceMs: o.cancelGraceMs ?? 20,
@@ -200,6 +224,8 @@ export function harness(o: HarnessOptions = {}) {
     cap,
     tasks,
     runtime,
+    wakeups,
+    notifications,
     define,
     instance,
     delegate,

@@ -4,7 +4,7 @@
  * idempotency replay → entity state → capability/guarantee → limits. Every transition is a CAS in the
  * Store and emits exactly one outbox event in the same transaction.
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   AgentropyError,
   EXECUTION_MACHINE,
@@ -121,13 +121,13 @@ export function toSnapshot(t: TaskRecord, revision: number): TaskSnapshot {
 }
 
 export class TaskService {
-  private seq = 0;
   private readonly cancelHooks = new Set<(taskId: string) => void>();
 
   constructor(readonly o: TaskServiceOptions) {}
 
   newId(kind: IdKind): string {
-    return this.o.newId ? this.o.newId(kind) : `${kind}-${++this.seq}`;
+    // IDs must stay unique across restarts of the same store.
+    return this.o.newId ? this.o.newId(kind) : `${kind}-${randomUUID()}`;
   }
 
   /** The runtime registers to hear cancel requests for running executions. */
@@ -399,7 +399,7 @@ export class TaskService {
   ) {
     if (request.target.instanceId) {
       // AC-09: a target owned by another tenant is TenantMismatch; an unknown ID stays NotFound.
-      const tenant = this.o.instances.tenantOf(request.target.instanceId);
+      const tenant = await this.o.instances.tenantOf(request.target.instanceId);
       if (tenant !== undefined && tenant !== caller.tenantId) {
         throw new AgentropyError(
           'TenantMismatch',

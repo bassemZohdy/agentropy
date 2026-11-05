@@ -1,13 +1,19 @@
 // AC-15 (registry part): immutable definitions, deterministic authorized discovery, distinct instances.
 // Concurrent task execution on two instances of one definition is covered by the TaskService suite (FEAT-017).
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   BUILTIN_PROFILES,
+  MemoryStore,
   isAgentropyError,
   type AgentDefinition,
   type PolicyDecisionPoint,
+  type Store,
   type TrustedPrincipal,
 } from '@agentropy/core';
 import { describe, expect, it } from 'vitest';
+import { SqliteStore } from '@agentropy/store-sqlite';
 import { DefinitionRegistry, InstanceDirectory } from '../src/registry.js';
 
 const alice: TrustedPrincipal = { id: 'alice', type: 'user', tenantId: 't-1' };
@@ -154,55 +160,48 @@ describe('DefinitionRegistry (AC-15, R-01, R-06)', () => {
 });
 
 describe('InstanceDirectory (R-01, R-13)', () => {
-  const setup = () => {
+  const setup = (store: Store = new MemoryStore()) => {
     const reg = new DefinitionRegistry(BUILTIN_PROFILES);
     reg.register(def('price-watch'));
-    return new InstanceDirectory(reg);
+    return { reg, store, dir: new InstanceDirectory(reg, store) };
+  };
+  const ref = { id: 'price-watch', version: '1.0.0' };
+  const acode = async (p: Promise<unknown>) => {
+    try {
+      await p;
+    } catch (err) {
+      return isAgentropyError(err) ? err.code : 'non-agentropy';
+    }
+    return 'no-error';
   };
 
-  it('creates distinct logical identities from one definition; creation is idempotent per key', () => {
-    const dir = setup();
-    const a = dir.create(
-      {
-        definition: { id: 'price-watch', version: '1.0.0' },
-        ownerId: 'alice',
-        idempotencyKey: 'k1',
-      },
+  it('creates distinct logical identities from one definition; creation is idempotent per key', async () => {
+    const { dir } = setup();
+    const a = await dir.create(
+      { definition: ref, ownerId: 'alice', idempotencyKey: 'k1' },
       alice,
     );
-    const b = dir.create(
-      {
-        definition: { id: 'price-watch', version: '1.0.0' },
-        ownerId: 'alice',
-        idempotencyKey: 'k2',
-      },
+    const b = await dir.create(
+      { definition: ref, ownerId: 'alice', idempotencyKey: 'k2' },
       alice,
     );
     expect(a.id).not.toBe(b.id);
     expect(
-      dir.create(
-        {
-          definition: { id: 'price-watch', version: '1.0.0' },
-          ownerId: 'alice',
-          idempotencyKey: 'k1',
-        },
+      await dir.create(
+        { definition: ref, ownerId: 'alice', idempotencyKey: 'k1' },
         alice,
       ),
     ).toEqual(a);
     expect(
-      code(() =>
+      await acode(
         dir.create(
-          {
-            definition: { id: 'price-watch', version: '1.0.0' },
-            ownerId: 'bob',
-            idempotencyKey: 'k1',
-          },
+          { definition: ref, ownerId: 'bob', idempotencyKey: 'k1' },
           alice,
         ),
       ),
     ).toBe('IdempotencyConflict');
     expect(
-      code(() =>
+      await acode(
         dir.create(
           {
             definition: { id: 'ghost', version: '1.0.0' },
@@ -215,33 +214,62 @@ describe('InstanceDirectory (R-01, R-13)', () => {
     ).toBe('NotFound');
   });
 
-  it('suspend/resume/retire follow the instance table; other tenants and non-owners get NotFound', () => {
-    const dir = setup();
-    const a = dir.create(
-      {
-        definition: { id: 'price-watch', version: '1.0.0' },
-        ownerId: 'alice',
-        idempotencyKey: 'k',
-      },
+  it('suspend/resume/retire follow the instance table; other tenants and non-owners get NotFound', async () => {
+    const { dir } = setup();
+    const a = await dir.create(
+      { definition: ref, ownerId: 'alice', idempotencyKey: 'k' },
       alice,
     );
-    expect(dir.suspend(a.id, alice)).toMatchObject({
+    expect(await dir.suspend(a.id, alice)).toMatchObject({
       state: 'suspended',
       revision: 2,
     });
-    expect(code(() => dir.suspend(a.id, alice))).toBe('InvalidState');
-    expect(dir.resume(a.id, alice).state).toBe('available');
-    expect(code(() => dir.suspend(a.id, bob))).toBe('NotFound');
-    expect(code(() => dir.get(a.id, mallory))).toBe('NotFound');
+    expect(await acode(dir.suspend(a.id, alice))).toBe('InvalidState');
+    expect((await dir.resume(a.id, alice)).state).toBe('available');
+    expect(await acode(dir.suspend(a.id, bob))).toBe('NotFound');
+    expect(await acode(dir.get(a.id, mallory))).toBe('NotFound');
     expect(
-      code(() => dir.retire(a.id, alice, { hasActiveTasks: () => true })),
+      await acode(dir.retire(a.id, alice, { hasActiveTasks: () => true })),
     ).toBe('InvalidState');
     expect(
-      dir.retire(a.id, alice, { force: true, hasActiveTasks: () => true })
-        .state,
+      (
+        await dir.retire(a.id, alice, {
+          force: true,
+          hasActiveTasks: () => true,
+        })
+      ).state,
     ).toBe('retired');
-    expect(code(() => dir.resume(a.id, alice))).toBe('InvalidState');
-    expect(dir.list(alice).map((i) => i.state)).toEqual(['retired']);
-    expect(dir.list(mallory)).toEqual([]);
+    expect(await acode(dir.resume(a.id, alice))).toBe('InvalidState');
+    expect((await dir.list(alice)).map((i) => i.state)).toEqual(['retired']);
+    expect(await dir.list(mallory)).toEqual([]);
+  });
+
+  it('instances and their idempotency survive a restart of a durable store (FEAT-018.1, R-08)', async () => {
+    const path = join(
+      mkdtempSync(join(tmpdir(), 'agentropy-inst-')),
+      'store.db',
+    );
+    const first = setup(new SqliteStore({ path }));
+    const a = await first.dir.create(
+      { definition: ref, ownerId: 'alice', idempotencyKey: 'k' },
+      alice,
+    );
+    await first.dir.suspend(a.id, alice);
+    await first.store.close();
+    const second = setup(new SqliteStore({ path }));
+    expect(await second.dir.get(a.id, alice)).toMatchObject({
+      id: a.id,
+      state: 'suspended',
+      revision: 2,
+    });
+    expect(
+      (
+        await second.dir.create(
+          { definition: ref, ownerId: 'alice', idempotencyKey: 'k' },
+          alice,
+        )
+      ).id,
+    ).toBe(a.id);
+    await second.store.close();
   });
 });

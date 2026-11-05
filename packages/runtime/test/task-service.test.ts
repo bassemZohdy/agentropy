@@ -20,7 +20,7 @@ describe('delegate (AC-03, R-20)', () => {
         output: { echo: inv.input },
       }),
     });
-    const inst = h.instance('echo');
+    const inst = await h.instance('echo');
     const handle = await h.delegate(inst.id, { a: 1 }, 'k1');
     expect(handle).toMatchObject({
       agentInstanceId: inst.id,
@@ -40,9 +40,9 @@ describe('delegate (AC-03, R-20)', () => {
   it('a lost response is resolved by re-sending the same key, even after the target is suspended (AC-03)', async () => {
     const h = harness();
     h.define('echo', completes());
-    const inst = h.instance('echo');
+    const inst = await h.instance('echo');
     const first = await h.delegate(inst.id, { a: 1 }, 'dup'); // response "dropped" by the transport
-    h.instances.suspend(inst.id, alice);
+    await h.instances.suspend(inst.id, alice);
     expect(await h.delegate(inst.id, { a: 1 }, 'dup')).toEqual(first);
     expect((await h.tasks.getTaskByIdempotencyKey('dup', alice)).taskId).toBe(
       first.taskId,
@@ -58,7 +58,7 @@ describe('delegate (AC-03, R-20)', () => {
   it('concurrent duplicates create one task', async () => {
     const h = harness();
     h.define('echo', completes());
-    const inst = h.instance('echo');
+    const inst = await h.instance('echo');
     const handles = await Promise.all(
       Array.from({ length: 5 }, () => h.delegate(inst.id, { a: 1 }, 'race')),
     );
@@ -70,29 +70,29 @@ describe('delegate (AC-03, R-20)', () => {
     h.define('typed', completes(), {
       inputSchema: { type: 'object', required: ['symbol'] },
     });
-    expect(await code(h.delegate(h.instance('typed').id, {}, 'k'))).toBe(
-      'SchemaViolation',
-    );
+    expect(
+      await code(h.delegate((await h.instance('typed')).id, {}, 'k')),
+    ).toBe('SchemaViolation');
   });
 
   it('a durable profile on a non-durable store is refused (AC-13 service part)', async () => {
     const h = harness({ store: new MemoryStore() });
     h.define('task-agent', completes());
-    expect(await code(h.delegate(h.instance('task-agent').id, {}, 'k'))).toBe(
-      'GuaranteeUnavailable',
-    );
+    expect(
+      await code(h.delegate((await h.instance('task-agent')).id, {}, 'k')),
+    ).toBe('GuaranteeUnavailable');
     h.define('helper', completes(), {
       profile: { id: 'specialist', version: '1.0.0' },
     });
     expect(
-      (await h.delegate(h.instance('helper').id, {}, 'k2')).durability,
+      (await h.delegate((await h.instance('helper')).id, {}, 'k2')).durability,
     ).toBe('none');
   });
 
   it('enforces delegation depth and fan-out limits', async () => {
     const h = harness({ limits: { maxDepth: 1, maxFanOut: 2 } });
     h.define('echo', completes());
-    const inst = h.instance('echo');
+    const inst = await h.instance('echo');
     const root = await h.delegate(inst.id, {}, 'root');
     const child = await h.delegate(inst.id, {}, 'c1', alice, {
       parentTaskId: root.taskId,
@@ -115,7 +115,7 @@ describe('identity and visibility (AC-04, AC-09 service part)', () => {
   it('unauthenticated, cross-tenant, expired grant and policy denial fail before any state is read', async () => {
     const h = harness();
     h.define('echo', completes());
-    const inst = h.instance('echo');
+    const inst = await h.instance('echo');
     expect(
       await code(
         h.delegate(inst.id, {}, 'k', { id: '', type: 'user', tenantId: '' }),
@@ -145,7 +145,7 @@ describe('identity and visibility (AC-04, AC-09 service part)', () => {
   it('an unauthorized caller on a terminal task gets NotFound, not InvalidState (AC-04)', async () => {
     const h = harness();
     h.define('echo', completes());
-    const handle = await h.delegate(h.instance('echo').id, {}, 'k');
+    const handle = await h.delegate((await h.instance('echo')).id, {}, 'k');
     await h.runtime.runUntilIdle();
     expect(await code(h.tasks.cancel(handle.taskId, alice))).toBe(
       'InvalidState',
@@ -160,7 +160,7 @@ describe('cancel and results', () => {
   it('cancelling a queued task is T10 and aborts the queued execution (E7)', async () => {
     const h = harness();
     h.define('echo', completes());
-    const handle = await h.delegate(h.instance('echo').id, {}, 'k');
+    const handle = await h.delegate((await h.instance('echo')).id, {}, 'k');
     expect(
       (await h.tasks.cancel(handle.taskId, alice, 'user changed mind')).status,
     ).toBe('cancelled');
@@ -179,7 +179,7 @@ describe('cancel and results', () => {
   it('every transition is revisioned and emits one outbox event (R-04)', async () => {
     const h = harness();
     h.define('echo', completes());
-    const handle = await h.delegate(h.instance('echo').id, {}, 'k');
+    const handle = await h.delegate((await h.instance('echo')).id, {}, 'k');
     await h.runtime.runUntilIdle();
     const events = await h.store.transaction((tx) =>
       tx.find<{ revision: number; payload: { status: string } }>('outbox', {
@@ -214,8 +214,8 @@ describe('instances (AC-15 runtime part)', () => {
         };
       },
     });
-    const a = h.instance('worker');
-    const b = h.instance('worker');
+    const a = await h.instance('worker');
+    const b = await h.instance('worker');
     const ta = await h.delegate(a.id, { n: 1 }, 'a');
     const tb = await h.delegate(b.id, { n: 2 }, 'b');
     await h.runtime.tick();

@@ -6,6 +6,7 @@
 import {
   AgentropyError,
   EXECUTION_MACHINE,
+  nextOccurrence,
   assertTransition,
   enforcePolicy,
   isAgentropyError,
@@ -39,7 +40,9 @@ export interface WakeupRecord {
   timeoutAt?: string;
   onTimeout: 'resume' | 'fail';
   status: 'armed' | 'fired' | 'revoked';
-  /** Earliest time-based trigger (timer or timeout), for the polling scheduler. */
+  /** Due time per condition (timer/schedule), aligned with `conditions`; null for non-time conditions. */
+  conditionDue: (string | null)[];
+  /** Earliest time-based trigger (timer, schedule or timeout), for the polling scheduler. */
   dueAt: string | null;
   /** Set by whoever fires it; delivered to the next activation. */
   reason?: WakeReason;
@@ -233,6 +236,19 @@ export class AgentRuntime {
         invocation,
         this.context(t, exec, controller),
       );
+      // Validate a wake-up request before it reaches the transition transaction (invalid → non-retryable failure).
+      if (disposition.kind === 'waiting') {
+        if (!disposition.wakeup?.anyOf?.length) {
+          throw new AgentropyError(
+            'SchemaViolation',
+            'A waiting disposition needs at least one wake-up condition',
+            { details: { reason: 'wakeup' } },
+          );
+        }
+        for (const c of disposition.wakeup.anyOf)
+          if (c.kind === 'schedule')
+            nextOccurrence(c.cron, c.timezone, this.now());
+      }
     } catch (err) {
       disposition = {
         kind: 'threw',
@@ -347,8 +363,16 @@ export class AgentRuntime {
             status: 'revoked',
           });
         }
+        // Per-condition due times: timers fire at `at`, schedules at their next occurrence (re-registered each activation).
+        const conditionDue = d.wakeup.anyOf.map((c) =>
+          c.kind === 'timer'
+            ? c.at
+            : c.kind === 'schedule'
+              ? nextOccurrence(c.cron, c.timezone, this.now())
+              : null,
+        );
         const times = [
-          ...d.wakeup.anyOf.flatMap((c) => (c.kind === 'timer' ? [c.at] : [])),
+          ...conditionDue.filter((x): x is string => x !== null),
           ...(d.wakeup.timeoutAt ? [d.wakeup.timeoutAt] : []),
         ].sort();
         const id = this.o.tasks.newId('wakeup');
@@ -356,6 +380,7 @@ export class AgentRuntime {
           id,
           taskId: t.taskId,
           conditions: d.wakeup.anyOf,
+          conditionDue,
           ...(d.wakeup.timeoutAt ? { timeoutAt: d.wakeup.timeoutAt } : {}),
           onTimeout: d.wakeup.onTimeout ?? 'resume',
           status: 'armed',

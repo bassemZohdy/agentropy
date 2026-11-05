@@ -28,7 +28,7 @@ describe('lease loss and fencing (AC-06, R-08)', () => {
         return { kind: 'completed', output: { attempt: inv.attempt } };
       },
     });
-    const t = await h.delegate(h.instance('flaky').id, {}, 'k');
+    const t = await h.delegate((await h.instance('flaky')).id, {}, 'k');
     await h.runtime.tick(); // worker 1 leases attempt 1 and "crashes" (never returns in time)
     expect(await status(h, t.taskId)).toBe('running');
 
@@ -59,7 +59,7 @@ describe('version pinning (AC-10 runtime part, R-23)', () => {
   it('a task accepted on v1 runs the v1 handler after v2 registers; a removed v1 handler fails IncompatibleVersion', async () => {
     const h = harness();
     h.define('expense', completes({ version: 1 }));
-    const inst = h.instance('expense');
+    const inst = await h.instance('expense');
     const pinned = await h.delegate(inst.id, {}, 'a');
     const orphan = await h.delegate(inst.id, {}, 'b');
     h.define('expense', completes({ version: 2 }), {}, '2.0.0');
@@ -87,7 +87,7 @@ describe('cancellation (AC-11, R-07)', () => {
     h.define('stubborn', {
       handle: async () => (await gate, { kind: 'completed', output: 'late' }),
     });
-    const t = await h.delegate(h.instance('stubborn').id, {}, 'k');
+    const t = await h.delegate((await h.instance('stubborn')).id, {}, 'k');
     await h.runtime.tick();
     expect(
       (await h.tasks.cancel(t.taskId, alice)).cancelRequestedAt,
@@ -114,7 +114,7 @@ describe('cancellation (AC-11, R-07)', () => {
           ),
         ),
     });
-    const t = await h.delegate(h.instance('polite').id, {}, 'k');
+    const t = await h.delegate((await h.instance('polite')).id, {}, 'k');
     await h.runtime.tick();
     await h.tasks.cancel(t.taskId, alice);
     await h.runtime.idle();
@@ -132,7 +132,7 @@ describe('dispositions and retries (runtime contract T4/T6/T7/T8)', () => {
           ? Promise.reject(new Error('transient'))
           : { kind: 'completed', output: inv.attempt },
     });
-    const t = await h.delegate(h.instance('retry').id, {}, 'k');
+    const t = await h.delegate((await h.instance('retry')).id, {}, 'k');
     await h.runtime.runUntilIdle();
     expect(await status(h, t.taskId)).toBe('assigned'); // attempt 2 waits for its backoff
     h.clock.advance(1_000);
@@ -157,7 +157,7 @@ describe('dispositions and retries (runtime contract T4/T6/T7/T8)', () => {
         message: 'over budget',
       }),
     });
-    const t = await h.delegate(h.instance('fails').id, {}, 'k');
+    const t = await h.delegate((await h.instance('fails')).id, {}, 'k');
     await h.runtime.runUntilIdle();
     expect(await code(h.tasks.getResult(t.taskId, alice))).toBe('TaskFailed');
     expect((await h.tasks.getTask(t.taskId, alice)).outcome).toEqual({
@@ -171,7 +171,7 @@ describe('dispositions and retries (runtime contract T4/T6/T7/T8)', () => {
     h.define('bad-output', completes({ wrong: true }), {
       outputSchema: { type: 'object', required: ['reply'] },
     });
-    const t = await h.delegate(h.instance('bad-output').id, {}, 'k');
+    const t = await h.delegate((await h.instance('bad-output')).id, {}, 'k');
     await h.runtime.runUntilIdle();
     expect((await h.tasks.getTask(t.taskId, alice)).outcome?.code).toBe(
       'SchemaViolation',
@@ -187,7 +187,7 @@ describe('dispositions and retries (runtime contract T4/T6/T7/T8)', () => {
         checkpoint: { seen: 1 },
       }),
     });
-    const t = await h.delegate(h.instance('waits').id, {}, 'k');
+    const t = await h.delegate((await h.instance('waits')).id, {}, 'k');
     await h.runtime.runUntilIdle();
     const snap = await h.tasks.getTask(t.taskId, alice);
     expect(snap).toMatchObject({
@@ -215,7 +215,7 @@ describe('dispositions and retries (runtime contract T4/T6/T7/T8)', () => {
     h.define('slow', {
       handle: async () => (await gate, { kind: 'completed', output: null }),
     });
-    const inst = h.instance('slow');
+    const inst = await h.instance('slow');
     for (let i = 0; i < 5; i++) await h.delegate(inst.id, {}, `k${i}`);
     await h.runtime.tick();
     await h.runtime.tick();
@@ -253,7 +253,7 @@ describe('CapabilityAccess (AC-16 invocation part, step keys)', () => {
         return { kind: 'completed', output: null };
       }),
     );
-    await h.delegate(h.instance('caller').id, {}, 'k');
+    await h.delegate((await h.instance('caller')).id, {}, 'k');
     await h.runtime.runUntilIdle();
     h.clock.advance(1_000);
     await h.runtime.runUntilIdle();
@@ -284,7 +284,7 @@ describe('CapabilityAccess (AC-16 invocation part, step keys)', () => {
       }),
     );
     h.pdp.denied.add('notification:notify');
-    const t = await h.delegate(h.instance('notifier').id, {}, 'k');
+    const t = await h.delegate((await h.instance('notifier')).id, {}, 'k');
     await h.runtime.runUntilIdle();
     expect((await h.tasks.getTask(t.taskId, alice)).outcome?.code).toBe(
       'PermissionDenied',

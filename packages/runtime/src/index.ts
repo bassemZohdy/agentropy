@@ -8,3 +8,4 @@ export * from './skills.js';
 export * from './communication.js';
 export * from './runtime.js';
 export * from './task-service.js';
+export * from './wakeups.js';

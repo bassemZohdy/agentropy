@@ -76,7 +76,7 @@ async function run(provider: 'native-ts' | 'pure-fn', name: string) {
       },
     },
   );
-  const t = await h.delegate(h.instance('agent').id, { n: 21 }, 'k');
+  const t = await h.delegate((await h.instance('agent')).id, { n: 21 }, 'k');
   for (let i = 0; i < 3; i++) {
     await h.runtime.runUntilIdle();
     h.clock.advance(5_000);
@@ -99,7 +99,7 @@ async function run(provider: 'native-ts' | 'pure-fn', name: string) {
     revision: snap.revision,
     outcome: snap.outcome,
     execs,
-    checkpoint: cp?.value,
+    checkpoint: (cp?.value as { data?: unknown } | undefined)?.data,
     result,
   };
 }

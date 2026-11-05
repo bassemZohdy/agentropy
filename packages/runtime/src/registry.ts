@@ -1,6 +1,7 @@
 /** Definition registry, instance directory and discovery (M1-03, R-01, R-06, AC-15). In-memory for M1. */
 import {
   AgentropyError,
+  MemoryStore,
   INSTANCE_MACHINE,
   assertTransition,
   digestOf,
@@ -11,6 +12,7 @@ import {
   type AgentInstance,
   type AgentProfile,
   type PolicyDecisionPoint,
+  type Store,
   type TrustedPrincipal,
   type VersionedRef,
 } from '@agentropy/core';
@@ -151,87 +153,136 @@ export interface CreateInstanceRequest {
   idempotencyKey: string;
 }
 
-/** Logical agent identities, owner- and tenant-scoped (Agent v1; runtime contract §3). */
+interface InstanceIdempotency {
+  tenantId: string;
+  instanceId: string;
+  fingerprint: string;
+}
+
+/**
+ * Logical agent identities, owner- and tenant-scoped (Agent v1; runtime contract §3). Every change is
+ * committed to the Store before it is acknowledged, so instances survive a restart (R-08).
+ */
 export class InstanceDirectory {
-  private readonly instances = new Map<string, AgentInstance>();
-  private readonly byIdempotency = new Map<
-    string,
-    { instanceId: string; fingerprint: string }
-  >();
   private seq = 0;
 
   constructor(
     private readonly definitions: DefinitionRegistry,
-    private readonly newId: () => string = () => `inst-${++this.seq}`,
+    private readonly store: Store = new MemoryStore(),
+    private readonly newId: () => string = () =>
+      `inst-${Date.now().toString(36)}-${++this.seq}`,
   ) {}
 
-  create(req: CreateInstanceRequest, caller: TrustedPrincipal): AgentInstance {
-    const key = `${caller.tenantId}|${caller.id}|${req.idempotencyKey}`;
+  async create(
+    req: CreateInstanceRequest,
+    caller: TrustedPrincipal,
+  ): Promise<AgentInstance> {
+    const key = `instance:${caller.tenantId}|${caller.id}|${req.idempotencyKey}`;
     const fingerprint = digestOf({
       definition: req.definition,
       ownerId: req.ownerId,
     });
-    const prior = this.byIdempotency.get(key);
-    if (prior) {
-      if (prior.fingerprint !== fingerprint)
-        throw new AgentropyError(
-          'IdempotencyConflict',
-          'Idempotency key reused with a different request',
-        );
-      return structuredClone(this.instances.get(prior.instanceId)!);
-    }
     this.definitions.require(req.definition);
-    assertTransition(INSTANCE_MACHINE, null, 'available');
-    const instance: AgentInstance = {
-      id: this.newId(),
-      definition: { ...req.definition },
-      tenantId: caller.tenantId,
-      ownerId: req.ownerId,
-      state: 'available',
-      revision: 1,
-    };
-    this.instances.set(instance.id, instance);
-    this.byIdempotency.set(key, { instanceId: instance.id, fingerprint });
-    return structuredClone(instance);
+    return this.store.transaction(async (tx) => {
+      const prior = await tx.get<InstanceIdempotency>('idempotency', key);
+      if (prior) {
+        if (prior.value.fingerprint !== fingerprint)
+          throw new AgentropyError(
+            'IdempotencyConflict',
+            'Idempotency key reused with a different request',
+          );
+        return (await tx.get<AgentInstance>(
+          'instances',
+          prior.value.instanceId,
+        ))!.value;
+      }
+      assertTransition(INSTANCE_MACHINE, null, 'available');
+      const instance: AgentInstance = {
+        id: this.newId(),
+        definition: { ...req.definition },
+        tenantId: caller.tenantId,
+        ownerId: req.ownerId,
+        state: 'available',
+        revision: 1,
+      };
+      await tx.insert('instances', instance.id, instance);
+      await tx.insert<InstanceIdempotency>('idempotency', key, {
+        tenantId: caller.tenantId,
+        instanceId: instance.id,
+        fingerprint,
+      });
+      return instance;
+    });
   }
 
   /** Tenant-scoped lookup: another tenant's instance is indistinguishable from a missing one. */
-  get(instanceId: string, caller: TrustedPrincipal): AgentInstance {
-    const inst = this.instances.get(instanceId);
-    if (!inst || inst.tenantId !== caller.tenantId)
+  async get(
+    instanceId: string,
+    caller: TrustedPrincipal,
+  ): Promise<AgentInstance> {
+    const doc = await this.store.transaction((tx) =>
+      tx.get<AgentInstance>('instances', instanceId),
+    );
+    if (!doc || doc.value.tenantId !== caller.tenantId)
       throw new AgentropyError('NotFound', 'Instance not found', {
         details: { kind: 'instance' },
       });
-    return structuredClone(inst);
+    return doc.value;
   }
 
   /** Tenant of an instance, for distinguishing cross-tenant targets (AC-09) from missing ones. */
-  tenantOf(instanceId: string): string | undefined {
-    return this.instances.get(instanceId)?.tenantId;
+  async tenantOf(instanceId: string): Promise<string | undefined> {
+    return (
+      await this.store.transaction((tx) =>
+        tx.get<AgentInstance>('instances', instanceId),
+      )
+    )?.value.tenantId;
   }
 
-  list(caller: TrustedPrincipal, ownerId = caller.id): AgentInstance[] {
-    return [...this.instances.values()]
-      .filter((i) => i.tenantId === caller.tenantId && i.ownerId === ownerId)
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map((i) => structuredClone(i));
+  /** Internal (trusted) read used by the runtime, e.g. to defer wake-ups of suspended instances. */
+  async stateOf(
+    instanceId: string,
+  ): Promise<AgentInstance['state'] | undefined> {
+    return (
+      await this.store.transaction((tx) =>
+        tx.get<AgentInstance>('instances', instanceId),
+      )
+    )?.value.state;
   }
 
-  suspend(instanceId: string, caller: TrustedPrincipal): AgentInstance {
+  async list(
+    caller: TrustedPrincipal,
+    ownerId = caller.id,
+  ): Promise<AgentInstance[]> {
+    const docs = await this.store.transaction((tx) =>
+      tx.find<AgentInstance>('instances', {
+        where: { tenantId: caller.tenantId, ownerId },
+      }),
+    );
+    return docs.map((d) => d.value).sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  suspend(
+    instanceId: string,
+    caller: TrustedPrincipal,
+  ): Promise<AgentInstance> {
     return this.move(instanceId, caller, 'suspended');
   }
 
-  resume(instanceId: string, caller: TrustedPrincipal): AgentInstance {
+  resume(instanceId: string, caller: TrustedPrincipal): Promise<AgentInstance> {
     return this.move(instanceId, caller, 'available');
   }
 
   /** Without force, retiring fails InvalidState while non-terminal tasks exist (checked by the caller-supplied guard). */
-  retire(
+  async retire(
     instanceId: string,
     caller: TrustedPrincipal,
-    opts: { force?: boolean; hasActiveTasks?: () => boolean } = {},
-  ): AgentInstance {
-    if (!opts.force && opts.hasActiveTasks?.())
+    opts: {
+      force?: boolean;
+      hasActiveTasks?: () => boolean | Promise<boolean>;
+    } = {},
+  ): Promise<AgentInstance> {
+    if (!opts.force && (await opts.hasActiveTasks?.()))
       throw new AgentropyError(
         'InvalidState',
         'Instance has non-terminal tasks',
@@ -244,21 +295,29 @@ export class InstanceDirectory {
     instanceId: string,
     caller: TrustedPrincipal,
     to: AgentInstance['state'],
-  ): AgentInstance {
-    const inst = this.instances.get(instanceId);
-    // Non-owners (other than trusted services) and other tenants get NotFound, never a state-revealing error (R-13).
-    if (
-      !inst ||
-      inst.tenantId !== caller.tenantId ||
-      (inst.ownerId !== caller.id && caller.type !== 'service')
-    ) {
-      throw new AgentropyError('NotFound', 'Instance not found', {
-        details: { kind: 'instance' },
-      });
-    }
-    assertTransition(INSTANCE_MACHINE, inst.state, to);
-    inst.state = to;
-    inst.revision += 1;
-    return structuredClone(inst);
+  ): Promise<AgentInstance> {
+    return this.store.transaction(async (tx) => {
+      const doc = await tx.get<AgentInstance>('instances', instanceId);
+      const inst = doc?.value;
+      // Non-owners (other than trusted services) and other tenants get NotFound, never a state-revealing error (R-13).
+      if (
+        !doc ||
+        !inst ||
+        inst.tenantId !== caller.tenantId ||
+        (inst.ownerId !== caller.id && caller.type !== 'service')
+      ) {
+        throw new AgentropyError('NotFound', 'Instance not found', {
+          details: { kind: 'instance' },
+        });
+      }
+      assertTransition(INSTANCE_MACHINE, inst.state, to);
+      return (
+        await tx.update<AgentInstance>('instances', instanceId, doc.revision, {
+          ...inst,
+          state: to,
+          revision: inst.revision + 1,
+        })
+      ).value;
+    });
   }
 }
