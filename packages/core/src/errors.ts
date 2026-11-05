@@ -162,3 +162,61 @@ export function toAgentropyError(
     cause: value,
   });
 }
+
+// --- Wire-level values (merged from feat/core-error-contract) ---------------------------------------------
+
+/** Catalog alias kept for the original error-contract branch API. */
+export const ERROR_DEFINITIONS = ERROR_CATALOG;
+
+/** Plain serialized error value, as carried across transports. Same shape as `AgentropyErrorShape`. */
+export type AgentropyErrorValue = AgentropyErrorShape;
+
+/** Never include untrusted input or provider errors in a public error message. */
+export function agentropyError(
+  code: ErrorCode,
+  message: string,
+  options: { correlationId?: string; details?: Record<string, unknown> } = {},
+): AgentropyErrorValue {
+  const metadata = ERROR_CATALOG[code];
+  const result: AgentropyErrorValue = {
+    code,
+    category: metadata.category,
+    retryable: metadata.retryable,
+    message,
+  };
+  if (options.correlationId !== undefined)
+    result.correlationId = options.correlationId;
+  if (options.details !== undefined) result.details = options.details;
+  return result;
+}
+
+/** Validates an error value received from a transport: known code, catalog-consistent category and retryability. */
+export function isAgentropyErrorValue(
+  value: unknown,
+): value is AgentropyErrorValue {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return false;
+  const record = value as Record<string, unknown>;
+  if (typeof record.code !== 'string' || !isErrorCode(record.code))
+    return false;
+  const metadata = ERROR_CATALOG[record.code];
+  if (
+    record.category !== metadata.category ||
+    record.retryable !== metadata.retryable
+  )
+    return false;
+  if (typeof record.message !== 'string') return false;
+  if (
+    record.correlationId !== undefined &&
+    typeof record.correlationId !== 'string'
+  )
+    return false;
+  if (
+    record.details !== undefined &&
+    (record.details === null ||
+      typeof record.details !== 'object' ||
+      Array.isArray(record.details))
+  )
+    return false;
+  return true;
+}
