@@ -2,9 +2,6 @@
 
 ## 🌳 Task Tree
 
-- [ ] **FEAT-015** · P0 · mid · Skill registry and loader for the standard Agent Skills format (S-02, S-03, S-04)
-  - Done when: standard fixture and negative cases pass; `pnpm exec vitest run packages/runtime/test/skills.test.ts`
-  - Links: Ref: docs/contracts/skill-v1.md · Depends: FEAT-012 · Lane: contracts
 - [ ] **FEAT-016** · P0 · high · Store port and node:sqlite adapter with one transaction boundary (M1-06)
   - Done when: transactional store conformance passes; `pnpm exec vitest run packages/store-sqlite/test`
   - Links: Ref: docs/adr/0017-first-persistence-and-activation.md · Depends: FEAT-011 · Lane: runtime
