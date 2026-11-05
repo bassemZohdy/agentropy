@@ -37,3 +37,9 @@ Trace from user request through delegation, agent instance, task, attempts, prov
 ## Deployment stance
 
 Begin with a local deployment and interfaces that permit later Kubernetes/OpenShift and self-hosted/air-gapped operation. HA/DR topology, retention targets and capacity SLOs require measured design and separate signoff; no undocumented production readiness claim.
+
+## Parallel execution isolation — added design acceptance criteria (2026-11-05)
+
+An execution lease limits concurrency but is **not** itself a process, filesystem, network or credential sandbox. Separate logical per-task state isolation (M1) from stronger worker/workspace isolation (later provider-dependent milestones). Providers declare supported isolation levels and fail explicitly when a requested guarantee is unavailable.
+
+Required tests: concurrent tasks from distinct users/tenants cannot access each other's checkpoints, workspace paths, secrets, tool sessions or inbox; leases and budgets enforce limits under simultaneous dispatch; cancellation/lease expiry prevents stale commits; crash/retry never reuses a previous task's privileged context. Test distinct agent instances sharing a definition and concurrent tool invocations. For external workers, add filesystem/network/credential sandbox conformance and document isolation limitations before production claims.
