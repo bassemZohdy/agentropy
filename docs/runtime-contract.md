@@ -1,6 +1,6 @@
 # Agent task lifecycle, durability and version compatibility
 
-**Status:** proposed contract design, **revision 3 (2026-11-05)**. Revision 3 (FEAT-022.2) adds the T6 gate-deferral case and records the implemented ADR-0024 gate. Revision 2 replaces the prose state sketches with explicit transition tables, adopts the *one execution per activation* model ([ADR-0018](adr/0018-execution-per-activation.md)), and fixes the retry ambiguity. This document is the **single authoritative source** for lifecycle states and edges; other documents link here instead of restating them.
+**Status:** proposed contract design, **revision 3 (2026-11-05)**. Revision 3 (FEAT-022) adds the T6 gate-deferral case, records the implemented ADR-0024 gate and the checkpoint size bound. Revision 2 replaces the prose state sketches with explicit transition tables, adopts the *one execution per activation* model ([ADR-0018](adr/0018-execution-per-activation.md)), and fixes the retry ambiguity. This document is the **single authoritative source** for lifecycle states and edges; other documents link here instead of restating them.
 
 Adapted from langgraph-flows' fixed FlowRun transition rules, async-first run semantics and version-pinned durable execution. It does **not** copy the Flow type system.
 
@@ -52,6 +52,8 @@ stateDiagram-v2
 | T9 | `created`, `assigned`, `waiting` | `failed` | Task deadline passed; wake-up `timeoutAt` passed with `onTimeout: "fail"`; awaited human action expired with `onExpiry: "fail-task"` | Queued execution aborted (E7); registrations revoked |
 | T10 | `created`, `assigned`, `waiting` | `cancelled` | `cancel`, or instance retired with `force` | Queued execution aborted (E7); registrations and event subscriptions revoked |
 | T11 | `running` | `cancelled` | `cancel` | `cancelRequestedAt` set and `AbortSignal` fired first; transition applies when the execution ends **or** `cancelGracePeriod` (runtime setting, default 30 s) expires; the execution is then fenced as `lost` (E8) |
+
+**Bounded state (R-37):** a `waiting` disposition whose serialized checkpoint exceeds the runtime's `maxCheckpointBytes` (default 64 KiB) is refused as `SchemaViolation` (`reason: checkpointTooLarge`) and the task fails; execution history keeps the last `keepExecutions` (default 20) finished executions per task (AC-20).
 
 **Counters:** `activation` is 1 for the first execution and increments on each wake-up (T5); `attempt` starts at 1 per activation and increments on each T6. A retry is not a new activation.
 

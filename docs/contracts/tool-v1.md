@@ -1,4 +1,4 @@
-# Agentropy Tool Contract v1 — revision 1
+# Agentropy Tool Contract v1 — revision 2
 
 **Status:** Accepted for M1 implementation (2026-11-05) of the protocol-neutral core and a direct adapter. MCP, UTCP and REST/OpenAPI adapters are later work; no adapter is claimed beyond the executable tests in `packages/*/test`.
 **Decision:** [ADR-0026](../adr/0026-protocol-agnostic-tool-integration.md). **Security:** [Security v1](security-v1.md), [ADR-0021](../adr/0021-delegated-authorization.md). **Errors:** [Errors v1](errors-v1.md).
@@ -8,6 +8,7 @@
 | Rev | Date | Change |
 |---|---|---|
 | 1 | 2026-11-05 | Canonical `ToolDescriptor`, tool lifecycle, `ToolRegistry`, `ToolExecutor`, `ToolProvider` SPI, resolution and invocation order |
+| 2 | 2026-11-05 | Invocation step 8 enforced (FEAT-022.3, AC-07): an `external` tool that is not declared `at-least-once` fails `InvalidConfiguration` before audit or dispatch when its provider lacks `idempotencyKeys` |
 
 ## Concepts
 

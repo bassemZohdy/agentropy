@@ -73,7 +73,7 @@ No gate is marked closed merely because a proposal was written.
 
 ## Status 2026-11-05
 
-Live queue: [TODO.md](../../TODO.md). Verified work: `CHANGELOG.md` `[Unreleased]`. Acceptance evidence: [acceptance-matrix.json](acceptance-matrix.json) (20 of 31 criteria verified by drained roots).
+Live queue: [TODO.md](../../TODO.md). Verified work: `CHANGELOG.md` `[Unreleased]`. Acceptance evidence: [acceptance-matrix.json](acceptance-matrix.json) (30 of 31 criteria verified by drained roots; AC-01 waits for TASK-023).
 
 | Wave 1 step                                                                             | Lane               | Roots                                    | Status                                                                |
 | --------------------------------------------------------------------------------------- | ------------------ | ---------------------------------------- | --------------------------------------------------------------------- |
@@ -82,10 +82,10 @@ Live queue: [TODO.md](../../TODO.md). Verified work: `CHANGELOG.md` `[Unreleased
 | 3. SQLite store, task service, CAS, leases, retries, checkpoints, wake-up registrations | runtime            | FEAT-016, FEAT-017, FEAT-018             | Done                                                                  |
 | 4. Effect journal, outbox/inbox, audit intent on sensitive effects                      | runtime, security  | FEAT-019, FEAT-022.2                     | Done — audit intents commit with each protected change                |
 | 5. Router/direct provider, delegation, conversation/briefing, human approvals           | collaboration      | FEAT-021, FEAT-019, FEAT-020             | Done                                                                  |
-| 6. J1, J2, AC-01…AC-20, SEC-01/02/03/04/07                                              | testkit            | FEAT-022.2–.4, TASK-023                  | Partly done — SEC-01/02/03/04 and AC-09 pass (FEAT-022.2)             |
+| 6. J1, J2, AC-01…AC-20, SEC-01/02/03/04/07                                              | testkit            | FEAT-022 (done), TASK-023                | Partly done — all AC/SEC suites pass except AC-01 (J1/J2 examples)    |
 | 7. M1 exit gate and retrospective                                                       | contracts          | TASK-024                                 | Open                                                                  |
 
-Also delivered outside the original wave list: tool registry/executor (FEAT-014), Agent Skills loader (FEAT-015). Blocked: TASK-025 (DCO run on real pull requests, owner action). Not started: TASK-026, FEAT-027 (M2), FEAT-028 (M3). Next in order: FEAT-022.3/.4 → TASK-023 → TASK-024. M1 exit criteria are **not** met.
+Also delivered outside the original wave list: tool registry/executor (FEAT-014), Agent Skills loader (FEAT-015). Blocked: TASK-025 (DCO run on real pull requests, owner action). Not started: TASK-026, FEAT-027 (M2), FEAT-028 (M3). Next in order: TASK-023 → TASK-024. M1 exit criteria are **not** met.
 
 Feature branches `feat/core-error-contract`, `feat/testkit-fake-clock`, `feat/testkit-fake-model` and `feat/testkit-fault-injector` were merged into `main` by TASK-029 under a one-off, owner-approved DCO exception (see [legacy PR review](../review/2026-11-05-legacy-pr-integration.md#owner-decision--2026-11-05-supersedes-the-pr-outcomes-above)); the DCO gate is unchanged for future PRs. The branches remain on the remote until the owner deletes them.
 

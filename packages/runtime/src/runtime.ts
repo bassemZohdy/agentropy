@@ -66,6 +66,8 @@ export interface RuntimeOptions {
   gateRetry?: { initialMs: number; maxMs: number; maxAttempts: number };
   /** A policy decision slower than this is treated as unavailable (default 5 s). */
   pdpTimeoutMs?: number;
+  /** Largest serialized checkpoint a waiting disposition may store (R-37; default 64 KiB). */
+  maxCheckpointBytes?: number;
 }
 
 type GateReason = DispatchGate['reason'];
@@ -112,6 +114,7 @@ export class AgentRuntime {
       keepExecutions: 20,
       gateRetry: { initialMs: 1_000, maxMs: 300_000, maxAttempts: 8 },
       pdpTimeoutMs: 5_000,
+      maxCheckpointBytes: 64 * 1024,
       ...options,
     };
     this.o.tasks.onCancelRequested((taskId) => {
@@ -451,6 +454,22 @@ export class AgentRuntime {
         for (const c of disposition.wakeup.anyOf)
           if (c.kind === 'schedule')
             nextOccurrence(c.cron, c.timezone, this.now());
+        // Long-lived tasks cycle through activations; their checkpoint must stay bounded (R-37, AC-20).
+        const size = Buffer.byteLength(
+          JSON.stringify(disposition.checkpoint ?? null),
+        );
+        if (size > this.o.maxCheckpointBytes)
+          throw new AgentropyError(
+            'SchemaViolation',
+            `Checkpoint of ${size} bytes exceeds the ${this.o.maxCheckpointBytes}-byte limit`,
+            {
+              details: {
+                reason: 'checkpointTooLarge',
+                size,
+                limit: this.o.maxCheckpointBytes,
+              },
+            },
+          );
         // A human action's dueAt is its only timeout (human-actions.md "Expiry (single mechanism)").
         if (
           disposition.wakeup.timeoutAt &&

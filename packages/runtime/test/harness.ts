@@ -102,6 +102,8 @@ export interface HarnessOptions {
   limits?: { maxDepth?: number; maxFanOut?: number };
   /** Use the real built-in delegation/event/scheduling handlers instead of the recording fake. */
   builtin?: boolean;
+  /** Runtime overrides (e.g. checkpoint limit, execution history). */
+  runtime?: { maxCheckpointBytes?: number; keepExecutions?: number };
   /** Fault hook passed to the outbox relay. */
   faults?: FaultHook;
 }
@@ -178,6 +180,7 @@ export function harness(o: HarnessOptions = {}) {
     poolSize: o.poolSize ?? 4,
     leaseMs: 1_000,
     cancelGraceMs: o.cancelGraceMs ?? 20,
+    ...o.runtime,
     relay: {
       drain: async () => (await relay.drain()) + (await forwarder.drain()),
     },

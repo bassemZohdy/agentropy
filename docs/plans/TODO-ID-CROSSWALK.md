@@ -222,5 +222,6 @@ Legacy items whose destination root is now drained to `CHANGELOG.md` with passin
 | `M1-08` | FEAT-018 | UTC-only schedules |
 | `M1-07` | FEAT-019 | Outbox relay, TaskEvent stream, inbox projection, turns and briefing; envelope validation in the direct provider |
 | `M1-09` | FEAT-020 | Human actions; role eligibility delegated to the policy point |
+| `M1-10`, `A-04` | FEAT-022 | Offline fakes, ADR-0024 gate, security, recovery, effect and isolation suites; AC-01 follows with TASK-023 |
 
-Partly delivered, root still open: `M1-10` / `A-04` (FEAT-022 — fakes done in FEAT-022.1). All other open legacy IDs remain open.
+All other open legacy IDs remain open.

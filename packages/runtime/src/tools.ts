@@ -347,7 +347,30 @@ export class DefaultToolExecutor implements ToolExecutor {
       );
     // 6. Input schema.
     validateAgainst(d.inputSchema, input, `${d.id} input`);
-    // 7. Audit intent before dispatch.
+    // 7a. Binding and provider; a provider that cannot honor idempotency keys may only serve an external tool
+    // that explicitly declares at-least-once semantics (Tool v1 step 8, R-34, AC-07).
+    const binding = record.bindings.find((b) => b.bindingId === pin.bindingId);
+    if (!binding)
+      throw new AgentropyError(
+        'IncompatibleVersion',
+        `Binding ${pin.bindingId} no longer exists`,
+        { details: { kind: 'tool-binding' } },
+      );
+    const provider = this.o.providers.get(
+      binding.providerId,
+      binding.providerVersion,
+    );
+    if (
+      d.effect === 'external' &&
+      d.idempotency !== 'at-least-once' &&
+      !provider.features.idempotencyKeys
+    )
+      throw new AgentropyError(
+        'InvalidConfiguration',
+        `Provider ${provider.id} cannot honor idempotency keys; ${d.id} must declare idempotency "at-least-once"`,
+        { details: { kind: 'tool-binding', bindingId: binding.bindingId } },
+      );
+    // 7b. Audit intent before dispatch.
     await recordAudit(this.o.audit, {
       type: 'tool.invoke',
       tenantId: ctx.tenantId,
@@ -364,17 +387,6 @@ export class DefaultToolExecutor implements ToolExecutor {
       at: this.o.now(),
     });
     // 8. Dispatch.
-    const binding = record.bindings.find((b) => b.bindingId === pin.bindingId);
-    if (!binding)
-      throw new AgentropyError(
-        'IncompatibleVersion',
-        `Binding ${pin.bindingId} no longer exists`,
-        { details: { kind: 'tool-binding' } },
-      );
-    const provider = this.o.providers.get(
-      binding.providerId,
-      binding.providerVersion,
-    );
     const idempotencyKey =
       ctx.idempotencyKey ??
       (ctx.stepKey
