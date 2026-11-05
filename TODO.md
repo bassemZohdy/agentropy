@@ -2,10 +2,6 @@
 
 ## 🌳 Task Tree
 
-- [ ] **FEAT-016** · P0 · high · Store port and node:sqlite adapter with one transaction boundary (M1-06)
-  - Done when: transactional store conformance passes; `pnpm exec vitest run packages/store-sqlite/test`
-  - Links: Ref: docs/adr/0017-first-persistence-and-activation.md · Depends: FEAT-011 · Lane: runtime
-  - State: next: decompose
 - [ ] **FEAT-017** · P0 · high · TaskService/AgentService, runtime and bounded pool with leases (M1-04, M1-05, A-02)
   - Done when: lifecycle, idempotency, lease and two-implementation tests pass; `pnpm exec vitest run packages/runtime/test/task-service.test.ts`
   - Links: Ref: docs/runtime-contract.md · Depends: FEAT-013, FEAT-016 · Lane: runtime

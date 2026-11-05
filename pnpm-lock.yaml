@@ -65,7 +65,15 @@ importers:
         specifier: ^7.8.0
         version: 7.8.0
 
-  packages/store-sqlite: {}
+  packages/store-sqlite:
+    dependencies:
+      '@agentropy/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@agentropy/testkit':
+        specifier: workspace:*
+        version: link:../testkit
 
   packages/testkit:
     dependencies:

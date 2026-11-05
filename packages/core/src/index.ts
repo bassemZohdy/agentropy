@@ -14,3 +14,4 @@ export * from './tool.js';
 export * from './acceptance.js';
 export * from './catalog.js';
 export * from './resolver.js';
+export * from './store.js';
