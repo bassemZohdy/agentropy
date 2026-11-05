@@ -47,6 +47,7 @@ import {
   type WakeupRequest,
 } from '@agentropy/core';
 import { recordAuditIntent } from './audit.js';
+import { checkTaskQuota, type QuotaResolver } from './quotas.js';
 import type { FaultHook } from './outbox.js';
 import type { DefinitionRegistry, InstanceDirectory } from './registry.js';
 
@@ -176,6 +177,8 @@ export interface TaskServiceOptions {
   faults?: FaultHook;
   /** Spans and metrics (observability contract); defaults to no-op. */
   telemetry?: Telemetry;
+  /** Per-tenant quotas (M2-11), checked inside the accepting transaction. */
+  quotas?: QuotaResolver;
 }
 
 export const DEFAULT_RETRY: RetryPolicy = {
@@ -403,6 +406,12 @@ export class TaskService {
     };
     try {
       await this.o.store.transaction(async (tx) => {
+        await checkTaskQuota(
+          tx,
+          caller.tenantId,
+          this.o.quotas?.(caller.tenantId),
+          now,
+        );
         // Fence against a concurrent suspend, drain or retire between the checks above and this commit.
         const live = await tx.get<AgentInstance>('instances', instance.id);
         if (!live || live.value.state !== 'available' || live.value.draining)

@@ -96,6 +96,24 @@ if (legacy.size === 0) fail('archive: no legacy IDs parsed');
   if (itemIds.length === 0) fail('DESIGN-FOLLOWUPS.md: no follow-up items parsed');
 }
 
+// 3c: threat model evidence (FEAT-027.7)
+{
+  const tm = read('docs/security/threat-model.md');
+  const rows = [...tm.matchAll(/^\| (TM-\d+) \|[^\n]*\| ([^|\n]+) \|$/gm)];
+  if (rows.length === 0) fail('threat-model.md: no TM rows parsed');
+  for (const [, id, evidence] of rows) {
+    const path = /`([^`]+)`/.exec(evidence)?.[1];
+    if (path) {
+      if (!existsSync(path)) fail(`threat-model: ${id} evidence ${path} does not exist`);
+    } else {
+      const owner = /planned \(([A-Z]+-\d+(?:\.\d+)?)\)/.exec(evidence)?.[1];
+      if (!owner) fail(`threat-model: ${id} needs a test path or "planned (ROOT)"`);
+      else if (!rootExists(owner.split('.')[0]) && !rootExists(owner))
+        fail(`threat-model: ${id} names unknown owner ${owner}`);
+    }
+  }
+}
+
 // 4: contract revision headers
 for (const file of readdirSync('docs/contracts')) {
   const text = read(join('docs/contracts', file));

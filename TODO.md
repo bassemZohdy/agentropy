@@ -21,7 +21,7 @@
     - Done when: workflow and reasoning-provider suites pass offline with recorded fixtures; `pnpm exec vitest run packages/testkit/test/providers.test.ts`
   - [x] **FEAT-027.6** · mid · Observability: OpenTelemetry traces and metrics, correlation through delegation, redaction (M2-10)
     - Done when: telemetry suite passes; `pnpm exec vitest run packages/testkit/test/telemetry.test.ts`
-  - [ ] **FEAT-027.7** · high · Tenant isolation and quotas, and the full threat model for identity flows (M2-09, M2-11)
+  - [x] **FEAT-027.7** · high · Tenant isolation and quotas, and the full threat model for identity flows (M2-09, M2-11)
     - Done when: tenancy and quota suite passes and the threat model is recorded; `pnpm exec vitest run packages/testkit/test/tenancy.test.ts`
   - [ ] **FEAT-027.8** · high · A2A provider (outbound and inbound, remote task mapping, authorization) and a custom broker/RPC provider sample (C-03, C-04)
     - Done when: A2A and custom-provider conformance passes offline; `pnpm exec vitest run packages/testkit/test/a2a.test.ts`

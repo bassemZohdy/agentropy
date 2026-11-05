@@ -54,6 +54,7 @@ import {
 import { OutboxRelay, TaskEventStream, type FaultHook } from './outbox.js';
 import { type InboxPreferences, type PriorityPolicy } from './priority.js';
 import { resolveLimits, type RuntimeLimits } from './limits.js';
+import type { QuotaResolver } from './quotas.js';
 import { CachingPolicyDecisionPoint } from './policy-cache.js';
 import { reasoningOperationHandlers } from './reasoning.js';
 import {
@@ -109,6 +110,8 @@ export interface LocalAppOptions {
   faults?: FaultHook;
   /** Spans and metrics (e.g. `openTelemetry({ api, tracer, meter })`); no-op by default. */
   telemetry?: Telemetry;
+  /** Per-tenant quotas (M2-11): active tasks, accept rate, live instances. */
+  quotas?: QuotaResolver;
   /** Relay leader lease, for several processes sharing one store (M2-06). */
   relay?: { relayId: string; leaseMs?: number };
   /** Unconsumed events kept per subscription before back-pressure drops (default 1000). */
@@ -286,6 +289,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     definitions,
     store,
     () => `inst-${randomUUID()}`,
+    o.quotas,
   );
   const handlers = new InMemoryHandlerRegistry();
   const implementations = new InMemoryImplementationProviderRegistry();
@@ -305,6 +309,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     limits: { maxDepth: limits.maxDepth, maxFanOut: limits.maxFanOut },
     ...(o.faults ? { faults: o.faults } : {}),
     ...(o.telemetry ? { telemetry: o.telemetry } : {}),
+    ...(o.quotas ? { quotas: o.quotas } : {}),
     acceptance: {
       contracts: CAPABILITY_CATALOG,
       profiles: o.profiles ?? BUILTIN_PROFILES,

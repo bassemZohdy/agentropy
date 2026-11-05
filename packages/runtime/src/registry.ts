@@ -19,6 +19,7 @@ import {
   type VersionedRef,
 } from '@agentropy/core';
 import semver from 'semver';
+import { checkInstanceQuota, type QuotaResolver } from './quotas.js';
 
 export interface DiscoveryQuery {
   id?: string;
@@ -173,6 +174,7 @@ export class InstanceDirectory {
     private readonly store: Store = new MemoryStore(),
     private readonly newId: () => string = () =>
       `inst-${Date.now().toString(36)}-${++this.seq}`,
+    private readonly quotas?: QuotaResolver,
   ) {}
 
   async create(
@@ -198,6 +200,11 @@ export class InstanceDirectory {
           prior.value.instanceId,
         ))!.value;
       }
+      await checkInstanceQuota(
+        tx,
+        caller.tenantId,
+        this.quotas?.(caller.tenantId),
+      );
       assertTransition(INSTANCE_MACHINE, null, 'available');
       const instance: AgentInstance = {
         id: this.newId(),
