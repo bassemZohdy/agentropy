@@ -128,3 +128,12 @@ The following clarifications reuse ADR-0021 and existing R-IDs; they do not chan
 - [ ] N-02 (P1 execution isolation / runtime + testkit) Specify logical task/tenant isolation versus provider sandbox guarantees; add tests for simultaneous task execution, workspace/credential boundaries, lease expiry and retry contamination. **Done when:** isolation levels, explicit unsupported errors, and milestone-specific runnable conformance are approved; no false production sandbox claim.
 - [ ] N-03 (P2 exploratory / reasoning) Evaluate task-aware model routing under R-35 with cost, latency, quality, residency and policy constraints, keeping fallback vendor-neutral. **Done when:** offline benchmark matrix, security floors, fallback semantics and weighted tradeoffs are documented; no M1 implementation dependency.
 - [ ] N-04 (readiness / docs) Trace N-01…N-03 into requirements, architecture, ADR, acceptance and todo-skills migration crosswalk before scheduling. **Done when:** G0-02/G0-07 review explicitly accepts scope and no existing tasks are silently marked complete.
+
+## 2026-11-05 — Protocol-agnostic Tool Integration (ADR-0026)
+
+- [ ] T-01 (P0 design) Specify canonical ToolDescriptor, ToolRegistry, ToolExecutor and ToolProvider SPI; separate logical tool identity/version, agent Capability and physical provider binding. **Done when:** two provider bindings expose one logical tool without changing Agent contracts.
+- [ ] T-02 (P0 security) Reconcile registration, verified provenance, approved activation, per-invocation PEP/PDP, delegated authorization, credentials and audit for MCP, UTCP, REST and custom adapters with ADR-0021 and N-01. **Done when:** negative security test matrix is approved.
+- [ ] T-03 (P1 conformance) Define schema/error mapping, provider feature negotiation, timeout/cancel/streaming, unknown outcomes, idempotency and safe fallback. **Done when:** offline tests exercise two adapters and failure scenarios; milestone approval pending.
+- [ ] T-04 (P1 evaluation) Weighted comparison of MCP, UTCP and direct APIs per use case covering governance, latency, complexity, ecosystem and TypeScript/offline fit. **Done when:** evidence and tradeoffs are recorded; no mandatory protocol winner declared.
+
+All T tasks are open design/implementation follow-ups and do not change current readiness gates or claim implementation completion.
