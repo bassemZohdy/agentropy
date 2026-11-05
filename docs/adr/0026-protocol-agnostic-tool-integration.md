@@ -48,3 +48,15 @@ Adding new tool protocols requires a provider adapter rather than changing Agent
 - [ADR-0021](0021-delegated-authorization.md)
 - [Requirements](../requirements.md)
 - [Roadmap](../../TODO.md)
+
+## Agent Skills standard alignment (accepted 2026-11-05)
+
+Agentropy treats **Skills, Capabilities and Tools as separate concepts** within the same Agent extensibility architecture; this ADR records their boundaries without conflating their contracts:
+
+- **Agent Skill** follows the established [Agent Skills open specification](https://agentskills.io/specification). A Skill is a portable directory with a required `SKILL.md` containing standard frontmatter and instructions; optional supporting scripts, references and assets follow that specification. Do not invent an incompatible Agentropy-specific Skill file format. Pin or record the specification version validated by compatibility tests.
+- A **SkillRegistry** discovers, verifies and versions Skills; a **SkillLoader** makes metadata available for discovery and loads instructions/supporting files on demand (progressive disclosure). Registry identity/version and trust metadata are platform concerns and must not silently rewrite `SKILL.md`.
+- **AgentDefinition** selects Skill references separately from Capability selections. Capability is a platform behavior or guarantee, while Tool is a callable external/internal operation. Skill instructions may describe workflows and reference executable scripts, but possession of a Skill grants **no** authority to invoke a Tool, execute a script, or expand capabilities.
+- Required capabilities, tool dependencies and authorization are resolved against explicit platform metadata/policy, not inferred as trustworthy permissions from arbitrary Skill instructions. Installing, updating, loading or executing untrusted Skill content is governed by provenance validation, tenant isolation, explicit activation approval, sandbox limitations, scoped credentials and PEP/PDP checks per ADR-0021. Skill files are untrusted input.
+- Keep Skill loading distinct from executing a Tool or a script. Scripts run only through approved execution interfaces with declared isolation and side-effect guarantees; unsupported sandbox guarantees fail explicitly.
+
+**Acceptance follow-up:** standard Skill fixture imports without conversion, metadata-first discovery, lazy supporting-file loading, immutable pinned version per task, missing-resource/unsupported-feature errors, duplicate/version conflict rejection, and negative tests for malicious instructions and unauthorized script/tool invocation. SDK or concrete runtime selection remains deferred. These are design decisions; no implementation is claimed.
