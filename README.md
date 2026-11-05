@@ -4,7 +4,7 @@
 
 Agentropy models agents as reusable definitions with configurable capability profiles, independent logical identities and lifecycles, and pluggable execution backends. It supports conversational, task-oriented, monitoring, and coordinating agents, with visible delegation and a unified user experience.
 
-> **Project stage:** M1 walking skeleton in progress. Architecture readiness was signed off on 2026-11-05; only what is listed in [CHANGELOG.md](CHANGELOG.md) under a drained root is implemented and tested. This repository does not yet contain a working agent runtime.
+> **Project stage:** M1 walking skeleton in progress. Architecture readiness was signed off on 2026-11-05; only what is listed in [CHANGELOG.md](CHANGELOG.md) under a drained root is implemented and tested. M1 exit criteria are not met yet.
 
 ## Why Agentropy?
 
@@ -105,6 +105,6 @@ Keep the core contracts small; prefer composition over inheritance and provider 
 
 ## Status and contributions
 
-Architecture readiness gates are closed ([signoff](docs/review/2026-11-05-readiness-signoff.md)) and the backlog runs on [todo-skills](https://github.com/bassemZohdy/todo-skills): `TODO.md` is the live task tree, `CHANGELOG.md` records verified roots. Implemented functionality is exactly what drained roots in the changelog describe; **the agent runtime (task service, persistence, wake-ups, inbox) is not implemented yet**. The project is [Apache-2.0 licensed](LICENSE) and uses [DCO](CONTRIBUTING.md); live DCO PR verification is still pending (TASK-025). No API stability or production readiness claims are made.
+Architecture readiness gates are closed ([signoff](docs/review/2026-11-05-readiness-signoff.md)) and the backlog runs on [todo-skills](https://github.com/bassemZohdy/todo-skills): `TODO.md` is the live task tree, `CHANGELOG.md` records verified roots. Implemented functionality is exactly what drained roots in the changelog describe: contract types and schemas, the acceptance resolver, registries, tools, skills, the SQLite store, the task service and runtime, communication routing and wake-ups. **The inbox/outbox relay, conversation turns, human actions, the full AC/SEC suite and the J1/J2 examples are not implemented yet**, so the M1 walking skeleton is not complete. The project is [Apache-2.0 licensed](LICENSE) and uses [DCO](CONTRIBUTING.md); live DCO PR verification is still pending (TASK-025). No API stability or production readiness claims are made.
 
 Tests: `pnpm check`
