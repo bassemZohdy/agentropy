@@ -2,9 +2,6 @@
 
 ## 🌳 Task Tree
 
-- [ ] **FEAT-014** · P0 · high · Tool registry and executor with PEP, audit and two direct adapters (T-01, T-02, T-03, N-01)
-  - Done when: tool conformance and negative security matrix pass; `pnpm exec vitest run packages/runtime/test/tools.test.ts`
-  - Links: Ref: docs/contracts/tool-v1.md · Depends: FEAT-012 · Lane: security
 - [ ] **FEAT-015** · P0 · mid · Skill registry and loader for the standard Agent Skills format (S-02, S-03, S-04)
   - Done when: standard fixture and negative cases pass; `pnpm exec vitest run packages/runtime/test/skills.test.ts`
   - Links: Ref: docs/contracts/skill-v1.md · Depends: FEAT-012 · Lane: contracts
