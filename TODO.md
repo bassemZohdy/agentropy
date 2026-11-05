@@ -137,3 +137,12 @@ The following clarifications reuse ADR-0021 and existing R-IDs; they do not chan
 - [ ] T-04 (P1 evaluation) Weighted comparison of MCP, UTCP and direct APIs per use case covering governance, latency, complexity, ecosystem and TypeScript/offline fit. **Done when:** evidence and tradeoffs are recorded; no mandatory protocol winner declared.
 
 All T tasks are open design/implementation follow-ups and do not change current readiness gates or claim implementation completion.
+
+## 2026-11-05 — Standard Agent Skills (extension of ADR-0026)
+
+- [ ] S-01 (P0 contract design) Update versioned AgentDefinition schema with independently selected/pinned Skill references and document Capability/Tool/Skill boundaries. **Done when:** contracts and migration compatibility reviewed; no implicit authority expansion.
+- [ ] S-02 (P1 integration) Specify Agent Skills-compatible SkillRegistry/SkillLoader with `SKILL.md`, optional scripts/references/assets, verified provenance and metadata-first lazy loading. **Done when:** official-format fixture passes import/discovery/loading conformance without conversion.
+- [ ] S-03 (P0 security design) Map Skill registration, activation, update and script/tool invocation to ADR-0021's PEP/PDP, audit, credentials and tenant isolation. **Done when:** malicious-Skill and unauthorized execution negative test plan approved.
+- [ ] S-04 (P1 compatibility) Define version pinning, invalid/missing dependency errors, sandbox/unsupported guarantees, restart and conformance tests. **Done when:** tests and milestone allocation reviewed in readiness gates.
+
+These are open follow-ups. No Agent Skills loader or runtime implementation is claimed.
