@@ -100,3 +100,14 @@ Agents may invoke other agents, tools, workflow providers and external systems o
 ## Related
 
 [ADR-0009](0009-authorization-and-governance.md), [ADR-0019](0019-operational-and-communication-decisions.md), [ADR-0020](0020-opentelemetry-observability.md), [Requirements](../requirements.md).
+
+## Clarification: third-party tool/MCP provider activation (2026-11-05)
+
+This clarification applies the existing identity, PEP/PDP, audit, and delegated-scope decisions; it does not select a specific MCP runtime or introduce a new ADR.
+
+- **Discovery is not authorization:** discovering an MCP server, tool schema, plugin manifest, or capability entry must not implicitly install, enable, trust, or authorize its execution.
+- **Registration versus activation:** require verified publisher/source provenance and an explicit, policy-authorized activation event. Enablement, upgrades, changed permissions, startup hooks, and agent configuration mutations are protected administrative actions; reject silent auto-activation and privilege expansion.
+- **Use-time enforcement:** every protected tool invocation passes a framework PEP with authenticated user/agent/tenant, task-scoped authority, tool identity/version, operation, effect class and current policy. An installation consent alone does not grant unrestricted invocation.
+- **Isolation:** externally supplied tool outputs/manifests are untrusted input, never authoritative policy instructions. Credential resolution is just-in-time with scoped references. Apply configured sandbox/network/filesystem boundaries to executable plugins; unsupported isolation guarantees must fail explicitly.
+- **Lifecycle and audit:** record redacted register/approve/enable/update/disable/revoke and invocation allow/deny events with actor, tenant, tool version, policy version, decision reason and correlation. On revocation, block new dispatch; retain truthful status for already-dispatched effects and reconcile uncertain outcomes.
+- **Conformance:** negative tests for malicious manifest fields, spoofed actor/tenant, upgrade scope expansion, hook installation without approval, expired/revoked grants, PDP outage, and internal/A2A/custom parity. No claim of implementation is made.
