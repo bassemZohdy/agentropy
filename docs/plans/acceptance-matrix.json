@@ -28,8 +28,8 @@
     },
     {
       "id": "AC-06",
-      "root": "FEAT-022",
-      "test": "packages/testkit/test/recovery.test.ts"
+      "root": "FEAT-017",
+      "test": "packages/runtime/test/runtime.test.ts"
     },
     {
       "id": "AC-07",
@@ -49,12 +49,12 @@
     {
       "id": "AC-10",
       "root": "FEAT-017",
-      "test": "packages/runtime/test/task-service.test.ts"
+      "test": "packages/runtime/test/runtime.test.ts"
     },
     {
       "id": "AC-11",
       "root": "FEAT-017",
-      "test": "packages/runtime/test/task-service.test.ts"
+      "test": "packages/runtime/test/runtime.test.ts"
     },
     {
       "id": "AC-12",

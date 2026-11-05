@@ -2,6 +2,8 @@
 import {
   AgentropyError,
   type Agent,
+  type AgentDisposition,
+  type WakeReason,
   type AgentImplementationProvider,
   type AgentImplementationRef,
   type HandlerRegistry,
@@ -137,5 +139,84 @@ export class InMemoryImplementationProviderRegistry implements ImplementationPro
         { details: { kind: 'implementation-provider' } },
       );
     return p;
+  }
+}
+
+/** A deterministic step function: no context, no effects — the shape of a workflow-backed or rule-based agent. */
+export type PureStep = (state: {
+  input: unknown;
+  checkpoint?: unknown;
+  wakeReason?: WakeReason;
+  attempt: number;
+  activation: number;
+}) => AgentDisposition<unknown> | Promise<AgentDisposition<unknown>>;
+
+/**
+ * Second implementation provider (A-02): artifacts are pure step functions registered by `id@version`.
+ * It declares no cooperative cancellation or progress reporting, so the runtime relies on grace-period fencing.
+ */
+export class PureFunctionImplementationProvider implements AgentImplementationProvider {
+  readonly id = 'pure-fn';
+  readonly version = '1.0.0';
+  readonly features: ImplementationFeatures = {
+    checkpointResume: true,
+    cooperativeCancellation: false,
+    progressReporting: false,
+    isolation: 'in-process',
+    remoteAuthority: false,
+  };
+  private readonly steps = new Map<string, PureStep>();
+
+  register(artifact: VersionedRef, step: PureStep): void {
+    if (
+      this.steps.has(key(artifact)) &&
+      this.steps.get(key(artifact)) !== step
+    ) {
+      throw new AgentropyError(
+        'InvalidConfiguration',
+        `Artifact ${key(artifact)} already registered`,
+        { details: { reason: 'immutable' } },
+      );
+    }
+    this.steps.set(key(artifact), step);
+  }
+
+  async resolve(ref: AgentImplementationRef): Promise<ImplementationBinding> {
+    if (!this.steps.has(key(ref.artifact))) {
+      throw new AgentropyError(
+        'NotFound',
+        `No step function for ${key(ref.artifact)}`,
+        { details: { kind: 'implementation-artifact' } },
+      );
+    }
+    return {
+      providerId: this.id,
+      providerVersion: this.version,
+      artifact: { ...ref.artifact },
+      features: { ...this.features },
+    };
+  }
+
+  createAgent(binding: ImplementationBinding): Agent {
+    return {
+      handle: async (inv) => {
+        const step = this.steps.get(key(binding.artifact));
+        if (!step)
+          throw new AgentropyError(
+            'IncompatibleVersion',
+            `Step function ${key(binding.artifact)} is gone`,
+            { details: { kind: 'implementation-artifact' } },
+          );
+        return step({
+          input: inv.input,
+          attempt: inv.attempt,
+          activation: inv.activation,
+          ...(inv.checkpoint !== undefined
+            ? { checkpoint: inv.checkpoint }
+            : {}),
+          ...(inv.wakeReason ? { wakeReason: inv.wakeReason } : {}),
+        });
+      },
+    };
   }
 }

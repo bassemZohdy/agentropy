@@ -205,6 +205,11 @@ export class InstanceDirectory {
     return structuredClone(inst);
   }
 
+  /** Tenant of an instance, for distinguishing cross-tenant targets (AC-09) from missing ones. */
+  tenantOf(instanceId: string): string | undefined {
+    return this.instances.get(instanceId)?.tenantId;
+  }
+
   list(caller: TrustedPrincipal, ownerId = caller.id): AgentInstance[] {
     return [...this.instances.values()]
       .filter((i) => i.tenantId === caller.tenantId && i.ownerId === ownerId)

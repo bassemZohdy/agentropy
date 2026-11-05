@@ -3,3 +3,4 @@ export const packageName = '@agentropy/testkit' as const;
 
 export * from './communication.js';
 export * from './store.js';
+export * from './fakes.js';
