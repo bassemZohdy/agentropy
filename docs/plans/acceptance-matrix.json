@@ -1,0 +1,166 @@
+{
+  "$comment": "Executable acceptance matrix. Each id must appear verbatim in its test file once its root is drained to CHANGELOG.md. Verified by scripts/check-readiness.mjs.",
+  "criteria": [
+    {
+      "id": "AC-01",
+      "root": "TASK-023",
+      "test": "packages/testkit/test/journeys.test.ts"
+    },
+    {
+      "id": "AC-02",
+      "root": "FEAT-019",
+      "test": "packages/runtime/test/outbox-inbox.test.ts"
+    },
+    {
+      "id": "AC-03",
+      "root": "FEAT-017",
+      "test": "packages/runtime/test/task-service.test.ts"
+    },
+    {
+      "id": "AC-04",
+      "root": "FEAT-011",
+      "test": "packages/core/test/lifecycle.test.ts"
+    },
+    {
+      "id": "AC-05",
+      "root": "FEAT-022",
+      "test": "packages/testkit/test/recovery.test.ts"
+    },
+    {
+      "id": "AC-06",
+      "root": "FEAT-022",
+      "test": "packages/testkit/test/recovery.test.ts"
+    },
+    {
+      "id": "AC-07",
+      "root": "FEAT-022",
+      "test": "packages/testkit/test/effects.test.ts"
+    },
+    {
+      "id": "AC-08",
+      "root": "FEAT-020",
+      "test": "packages/runtime/test/human-actions.test.ts"
+    },
+    {
+      "id": "AC-09",
+      "root": "FEAT-022",
+      "test": "packages/testkit/test/security.test.ts"
+    },
+    {
+      "id": "AC-10",
+      "root": "FEAT-017",
+      "test": "packages/runtime/test/task-service.test.ts"
+    },
+    {
+      "id": "AC-11",
+      "root": "FEAT-017",
+      "test": "packages/runtime/test/task-service.test.ts"
+    },
+    {
+      "id": "AC-12",
+      "root": "FEAT-018",
+      "test": "packages/runtime/test/wakeups.test.ts"
+    },
+    {
+      "id": "AC-13",
+      "root": "FEAT-022",
+      "test": "packages/testkit/test/recovery.test.ts"
+    },
+    {
+      "id": "AC-14",
+      "root": "FEAT-022",
+      "test": "packages/testkit/test/isolation.test.ts"
+    },
+    {
+      "id": "AC-15",
+      "root": "FEAT-013",
+      "test": "packages/runtime/test/registry.test.ts"
+    },
+    {
+      "id": "AC-16",
+      "root": "FEAT-012",
+      "test": "packages/core/test/resolver.test.ts"
+    },
+    {
+      "id": "AC-17",
+      "root": "FEAT-019",
+      "test": "packages/runtime/test/outbox-inbox.test.ts"
+    },
+    {
+      "id": "AC-18",
+      "root": "FEAT-021",
+      "test": "packages/runtime/test/router.test.ts"
+    },
+    {
+      "id": "AC-19",
+      "root": "FEAT-019",
+      "test": "packages/runtime/test/outbox-inbox.test.ts"
+    },
+    {
+      "id": "AC-20",
+      "root": "FEAT-022",
+      "test": "packages/testkit/test/recovery.test.ts"
+    },
+    {
+      "id": "SEC-01",
+      "root": "FEAT-022",
+      "test": "packages/testkit/test/security.test.ts"
+    },
+    {
+      "id": "SEC-02",
+      "root": "FEAT-022",
+      "test": "packages/testkit/test/security.test.ts"
+    },
+    {
+      "id": "SEC-03",
+      "root": "FEAT-022",
+      "test": "packages/testkit/test/security.test.ts"
+    },
+    {
+      "id": "SEC-04",
+      "root": "FEAT-022",
+      "test": "packages/testkit/test/security.test.ts"
+    },
+    {
+      "id": "SEC-07",
+      "root": "FEAT-020",
+      "test": "packages/runtime/test/human-actions.test.ts"
+    },
+    {
+      "id": "CT-ERRORS",
+      "root": "FEAT-011",
+      "test": "packages/core/test/errors.test.ts",
+      "description": "Errors v1 catalog completeness and redaction"
+    },
+    {
+      "id": "CT-SCHEMAS",
+      "root": "FEAT-011",
+      "test": "packages/core/test/schemas.test.ts",
+      "description": "Agent v1 rev 7 schemas: mandatory/optional fields, selections, tool/skill metadata"
+    },
+    {
+      "id": "CT-ACCEPTANCE",
+      "root": "FEAT-012",
+      "test": "packages/core/test/acceptance.test.ts",
+      "description": "AcceptanceSnapshot: implementation, tool and skill resolution, omitted optional selections, durability negotiation"
+    },
+    {
+      "id": "CT-IMPLEMENTATION",
+      "root": "FEAT-013",
+      "test": "packages/runtime/test/implementation.test.ts",
+      "description": "Agent Implementation v1 conformance checks"
+    },
+    {
+      "id": "CT-TOOL",
+      "root": "FEAT-014",
+      "test": "packages/runtime/test/tools.test.ts",
+      "description": "Tool v1 conformance checks incl. negative security matrix"
+    },
+    {
+      "id": "CT-SKILL",
+      "root": "FEAT-015",
+      "test": "packages/runtime/test/skills.test.ts",
+      "description": "Skill v1 conformance checks"
+    }
+  ]
+}

@@ -98,3 +98,108 @@
 5. Confirm real test commands, branch setup and todo-skills lint before claiming successful migration.
 
 No code or migrated backlog has been created by this snapshot.
+
+## Migration destinations (2026-11-05)
+
+The legacy TODO was migrated to the todo-skills format by **TASK-010** on 2026-11-05 and archived verbatim in [archive/TODO-legacy-2026-11-05.md](archive/TODO-legacy-2026-11-05.md). This table supersedes the snapshot above for destinations; it covers **all 96** legacy IDs (the 80 snapshot rows plus N-01…N-04, T-01…T-04, S-01…S-04 and A-01…A-04 added on 2026-11-05). Status is preserved exactly: every `complete` item maps to `archive`, and no `open` item is marked complete by migration. `scripts/check-readiness.mjs` verifies this table against the archive, `TODO.md` and `CHANGELOG.md` in CI.
+
+A destination root is the todo-skills root that delivers (or, for TASK-026, resolves or explicitly defers) the legacy item. A legacy item is complete only when its destination root is drained to `CHANGELOG.md` with passing `Done when` commands.
+
+| Legacy ID | Legacy status | Destination |
+|---|---|---|
+| `M0-01` | complete | archive |
+| `M0-02` | complete | archive |
+| `M0-03` | complete | archive |
+| `M0-04` | complete | archive |
+| `M0-05` | complete | archive |
+| `M0-06` | complete | archive |
+| `M0-07` | complete | archive |
+| `X-01` | complete | archive |
+| `X-02` | complete | archive |
+| `X-03` | complete | archive |
+| `X-04` | complete | archive |
+| `C-01` | complete | archive |
+| `M0-08` | complete | archive |
+| `D-01` | open | FEAT-012 |
+| `D-02` | complete | archive |
+| `D-03` | open | TASK-026 |
+| `D-04` | open | TASK-026 |
+| `D-05` | open | TASK-026 |
+| `D-06` | complete | archive |
+| `D-07` | open | TASK-026 |
+| `D-08` | open | TASK-026 |
+| `D-09` | open | TASK-026 |
+| `D-10` | open | TASK-010 |
+| `D-11` | open | TASK-026 |
+| `D-12` | open | TASK-026 |
+| `D-13` | open | TASK-026 |
+| `D-14` | open | TASK-026 |
+| `D-15` | open | TASK-026 |
+| `D-16` | open | TASK-026 |
+| `D-17` | open | TASK-026 |
+| `D-18` | open | TASK-026 |
+| `D-19` | open | TASK-026 |
+| `D-20` | open | TASK-026 |
+| `D-21` | open | TASK-026 |
+| `D-22` | open | TASK-026 |
+| `D-23` | complete | archive |
+| `D-24` | open | TASK-026 |
+| `D-25` | complete | archive |
+| `D-26` | open | TASK-010 |
+| `D-27` | open | TASK-010 |
+| `D-28` | complete | archive |
+| `D-29` | open | TASK-025 |
+| `M1-01` | open | FEAT-011 |
+| `M1-02` | open | FEAT-012 |
+| `M1-03` | open | FEAT-013 |
+| `M1-04` | open | FEAT-017 |
+| `M1-05` | open | FEAT-017 |
+| `M1-06` | open | FEAT-016 |
+| `M1-07` | open | FEAT-019 |
+| `M1-08` | open | FEAT-018 |
+| `M1-09` | open | FEAT-020 |
+| `M1-10` | open | FEAT-022 |
+| `M1-11` | open | FEAT-021 |
+| `M1-12` | open | TASK-023 |
+| `M1-13` | open | TASK-024 |
+| `M2-01` | open | FEAT-027 |
+| `M2-02` | open | FEAT-027 |
+| `M2-03` | open | FEAT-027 |
+| `M2-04` | open | FEAT-027 |
+| `M2-05` | open | FEAT-027 |
+| `M2-06` | open | FEAT-027 |
+| `M2-07` | open | FEAT-027 |
+| `M2-08` | open | FEAT-027 |
+| `M2-09` | open | FEAT-027 |
+| `C-03` | open | FEAT-027 |
+| `C-04` | open | FEAT-027 |
+| `M2-10` | open | FEAT-027 |
+| `M2-11` | open | FEAT-027 |
+| `M3-01` | open | FEAT-028 |
+| `M3-02` | open | FEAT-028 |
+| `M3-03` | open | FEAT-028 |
+| `M3-04` | open | FEAT-028 |
+| `M3-05` | open | FEAT-028 |
+| `M3-06` | open | FEAT-028 |
+| `M3-07` | open | FEAT-028 |
+| `M3-08` | open | FEAT-028 |
+| `M3-09` | open | FEAT-028 |
+| `M3-10` | open | FEAT-028 |
+| `X-10` | open | FEAT-028 |
+| `C-05` | open | FEAT-028 |
+| `N-01` | open | FEAT-014 |
+| `N-02` | open | TASK-026 |
+| `N-03` | open | TASK-026 |
+| `N-04` | open | TASK-010 |
+| `T-01` | open | FEAT-014 |
+| `T-02` | open | FEAT-014 |
+| `T-03` | open | FEAT-014 |
+| `T-04` | open | TASK-026 |
+| `S-01` | open | FEAT-011 |
+| `S-02` | open | FEAT-015 |
+| `S-03` | open | FEAT-015 |
+| `S-04` | open | FEAT-015 |
+| `A-01` | open | FEAT-011 |
+| `A-02` | open | FEAT-017 |
+| `A-03` | open | FEAT-012 |
+| `A-04` | open | FEAT-022 |

@@ -1,6 +1,7 @@
 # Agentropy TODO migration mapping for todo-skills
 
 - Status: Staged mapping, not applied to TODO.md
+- **Superseded 2026-11-05:** migration applied by TASK-010; see [TODO.md](../../TODO.md), the [crosswalk](TODO-ID-CROSSWALK.md#migration-destinations-2026-11-05) and the [readiness signoff](../review/2026-11-05-readiness-signoff.md). Kept as history; provisional IDs here (TASK-001…FEAT-009) were never assigned, so live IDs start at 010.
 - Date: 2026-11-04
 - Source: legacy [TODO.md](../../TODO.md)
 - Target standard: [todo-skills](https://github.com/bassemZohdy/todo-skills), `skills/todo/SKILL.md` and `skills/todo-plan/SKILL.md`.

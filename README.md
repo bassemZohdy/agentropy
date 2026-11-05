@@ -4,7 +4,7 @@
 
 Agentropy models agents as reusable definitions with configurable capability profiles, independent logical identities and lifecycles, and pluggable execution backends. It supports conversational, task-oriented, monitoring, and coordinating agents, with visible delegation and a unified user experience.
 
-> **Project stage:** Architecture and design baseline. This repository does not yet contain a working framework. Designs and proposed interfaces are subject to validation through implementation.
+> **Project stage:** M1 walking skeleton in progress. Architecture readiness was signed off on 2026-11-05; only what is listed in [CHANGELOG.md](CHANGELOG.md) under a drained root is implemented and tested. This repository does not yet contain a working agent runtime.
 
 ## Why Agentropy?
 
@@ -81,6 +81,10 @@ Profiles are templates, not a rigid inheritance hierarchy. Required capabilities
 - [Core Capability Contract v1](docs/contracts/capability-v1.md)
 - [Pluggable Communication Contract v1](docs/contracts/communication-v1.md)
 - [Error Contract v1](docs/contracts/errors-v1.md)
+- [Agent Implementation Contract v1](docs/contracts/agent-implementation-v1.md)
+- [Tool Contract v1](docs/contracts/tool-v1.md)
+- [Skill Contract v1](docs/contracts/skill-v1.md)
+- [Security Contract v1 (M1 PEP/PDP/audit)](docs/contracts/security-v1.md)
 - [Domain model](docs/domain-model.md)
 - [Capabilities and profiles](docs/capabilities.md)
 - [Registry, pool and runtime](docs/registry-runtime.md)
@@ -88,7 +92,7 @@ Profiles are templates, not a rigid inheritance hierarchy. Required capabilities
 - [Security, reliability and operability](docs/operations.md)
 - [Architecture decision records](docs/adr/README.md)
 - [Design review 2026-11-04](docs/review/2026-11-04-design-review.md)
-- [Roadmap and implementation tasks](TODO.md)
+- [Active backlog (todo-skills)](TODO.md) · [acceptance matrix](docs/plans/acceptance-matrix.json) · [readiness signoff](docs/review/2026-11-05-readiness-signoff.md)
 - [Change log](CHANGELOG.md)
 
 ## Cross-project design reuse
@@ -101,4 +105,6 @@ Keep the core contracts small; prefer composition over inheritance and provider 
 
 ## Status and contributions
 
-Architecture baseline with a **working TypeScript workspace scaffold only**: `pnpm build`, `pnpm lint`, `pnpm test` (one smoke test), and `pnpm format:check` have passed [GitHub CI](https://github.com/bassemZohdy/agentropy/actions/workflows/ci.yml). The `core`, `runtime`, `store-sqlite`, and `testkit` packages are placeholders; **Agentropy runtime functionality has not yet been implemented**. The project is [Apache-2.0 licensed](LICENSE) and uses [DCO](CONTRIBUTING.md). Next: [architecture readiness signoff](docs/review/2026-11-04-architecture-readiness.md), [todo-skills first wave](docs/plans/FIRST-WAVE.md), and the [M1 walking skeleton](docs/poc-scope.md). Dependency lockfile generation and DCO PR verification remain open. No API stability or production readiness claims are made.
+Architecture readiness gates are closed ([signoff](docs/review/2026-11-05-readiness-signoff.md)) and the backlog runs on [todo-skills](https://github.com/bassemZohdy/todo-skills): `TODO.md` is the live task tree, `CHANGELOG.md` records verified roots. Implemented functionality is exactly what drained roots in the changelog describe; **the agent runtime (task service, persistence, wake-ups, inbox) is not implemented yet**. The project is [Apache-2.0 licensed](LICENSE) and uses [DCO](CONTRIBUTING.md); live DCO PR verification is still pending (TASK-025). No API stability or production readiness claims are made.
+
+Tests: `pnpm check`

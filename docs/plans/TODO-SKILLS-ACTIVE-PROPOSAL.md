@@ -1,6 +1,7 @@
 # Proposed todo-skills active backlog — first implementation slice
 
 - Status: **Review candidate, not activated** (2026-11-04)
+- **Superseded 2026-11-05:** migration applied by TASK-010; see [TODO.md](../../TODO.md), the [crosswalk](TODO-ID-CROSSWALK.md#migration-destinations-2026-11-05) and the [readiness signoff](../review/2026-11-05-readiness-signoff.md). Kept as history; provisional IDs here (TASK-001…FEAT-009) were never assigned, so live IDs start at 010.
 - Original 80-item roadmap stays in [TODO.md](../../TODO.md); complete [ID crosswalk](TODO-ID-CROSSWALK.md) preserves the 17 done and 63 open items from its snapshot.
 - These proposed IDs belong to a **future** todo-skills task tree, not to the existing legacy task namespace. Confirm migration and check current IDs before assigning them.
 - Specification: [todo-skills v0.2](https://github.com/bassemZohdy/todo-skills), [project plan](PROJECT.md), [first-wave breakdown](FIRST-WAVE.md).

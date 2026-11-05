@@ -1,6 +1,13 @@
-# Agentropy Error Contract v1 — Design baseline
+# Agentropy Error Contract v1 — revision 2
 
-**Status:** Proposed (2026-11-04). Consolidates the error names previously spread across the [runtime contract](../runtime-contract.md), [Capability v1](capability-v1.md) and [Communication v1](communication-v1.md). Those documents now reference this catalog.
+**Status:** Accepted for M1 implementation (2026-11-05; revision 1 was Proposed on 2026-11-04, ADR-0025 codes accepted on 2026-11-04). The catalog is implemented as data in `packages/core/src/errors.ts` and tested for completeness against this table.
+
+| Rev | Date | Change |
+|---|---|---|
+| 1 | 2026-11-04 | Initial catalog; ADR-0025 codes added |
+| 2 | 2026-11-05 | Accepted for M1; contract error mapping for capability, tool, skill, implementation and route resolution; no new codes |
+
+ Consolidates the error names previously spread across the [runtime contract](../runtime-contract.md), [Capability v1](capability-v1.md) and [Communication v1](communication-v1.md). Those documents now reference this catalog.
 
 ## Shape
 
@@ -63,6 +70,27 @@ Rules:
 | `AuditCommitUnavailable` | internal | no | Mandatory security audit intent could not be durably committed; protected state change must not report committed success |
 
 \* `StaleRevision` is retryable only after re-reading current state.
+
+## Contract error mapping (revision 2)
+
+No new codes are needed for the revision-7 Agent contract; cases map onto the catalog with a `details.reason` or `details.kind`:
+
+| Situation | Code | `details` |
+|---|---|---|
+| Unknown capability ID in a selection | `CapabilityUnavailable` | `{ reason: "unknown", id }` |
+| Required capability removed; dependency cycle/conflict; contradictory duplicate | `InvalidConfiguration` | `{ reason, id }` |
+| Ambiguous provider or tool binding | `CapabilityUnavailable` | `{ reason: "ambiguous", id }` |
+| Missing `stepKey` on an `external` operation | `SchemaViolation` | `{ reason: "missingStepKey" }` |
+| Tool/skill selection has no active version in range | `CapabilityUnavailable` | `{ kind: "tool" \| "skill", id }` |
+| Skill dependency not satisfied | `CapabilityUnavailable` | `{ kind: "skill", reason: "dependency", id }` |
+| Unknown implementation provider or artifact | `NotFound` | `{ kind: "implementation-provider" \| "implementation-artifact" }` |
+| Unverified tool/skill/artifact activation or use | `PermissionDenied` | `{ reason: "unverified" }` |
+| Suspended/revoked tool or revoked skill | `PermissionDenied` | `{ status }` |
+| Pinned content changed or artifact removed | `IncompatibleVersion` | `{ kind }` |
+| Durable profile on an implementation without checkpoint resume | `GuaranteeUnavailable` | `{ feature: "checkpointResume" }` |
+| Remote-authority implementation in M1; skill script execution | `UnsupportedOperation` | `{ feature }` |
+| Re-registration of same `id@version` with different content | `InvalidConfiguration` | `{ reason: "immutable" }` |
+| Skill resource path escaping the skill root | `PermissionDenied` | `{ reason: "path" }` |
 
 ## Migration from earlier names
 

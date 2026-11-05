@@ -1,6 +1,6 @@
-# Agentropy Communication Contract v1 — Architecture baseline
+# Agentropy Communication Contract v1 — revision 4
 
-**Status:** Agreed architecture direction; interface design proposed for implementation validation. **No implementation exists yet.**  
+**Status:** Accepted for M1 implementation of the router and direct provider (2026-11-05). A2A and custom providers are M2 (C-03/C-04). Behavior is claimed only where executable tests exist.  
 **Decision:** [ADR-0015](../adr/0015-pluggable-agent-communication.md). **Errors:** [Errors v1](errors-v1.md).
 
 ## Revision history
@@ -10,6 +10,7 @@
 | 1 | 2026-11-04 | Initial baseline |
 | 2 | 2026-11-04 | Design review: AgentCommunication is an **outbound SPI of the TaskService**, not a handler API; every operation carries a `CallContext` (caller principal); duplicate `target` parameter removed from `delegate`; inbound path defined; remote task projection fields named |
 | 3 | 2026-11-04 | Map ADR-0019 five logical families to existing v1 SPI and document extensions, declared guarantees and transport-neutral tracing |
+| 4 | 2026-11-05 | Readiness closure: `CommunicationFeatures.durability` uses the canonical durability levels (`provider-dependent` counts as `none` for guarantee checks); `extensions` declaration formalized; `RouteRequirements` passed to `selectRoute`; `AgentRef` ↔ `VersionedRef` mapping stated; `AgentEvent` documented as a projection of `TaskEvent` |
 
 ## Position in the call stack
 
@@ -72,9 +73,17 @@ export interface CommunicationFeatures {
   operations: readonly CommunicationOperation[];
   streaming: boolean;
   pushNotifications: boolean;
-  durability: "none" | "provider-dependent" | "durable-acceptance";
+  /** Canonical levels (runtime contract); "provider-dependent" satisfies only a "none" requirement. */
+  durability: "none" | "provider-dependent" | "durable-acceptance" | "durable-execution";
   protocol: string;
   protocolVersion: string;
+  extensions?: readonly { id: string; version: string }[];   // optional, versioned, explicitly negotiated
+}
+
+export interface RouteRequirements {
+  operations?: readonly CommunicationOperation[];          // all must be supported
+  durability?: "none" | "durable-acceptance" | "durable-execution";
+  extensions?: readonly string[];                           // mandatory extension IDs
 }
 
 /** Outbound SPI implemented by each provider. */
@@ -92,7 +101,7 @@ export interface AgentCommunicationProvider {
 /** Used only by the TaskService. Selects and pins a route, then delegates to the provider. */
 export interface CommunicationRouter {
   register(provider: AgentCommunicationProvider): void;
-  selectRoute(target: AgentRef, operation: CommunicationOperation, ctx: CallContext): Promise<RouteBinding>;
+  selectRoute(target: AgentRef, operation: CommunicationOperation, ctx: CallContext, requirements?: RouteRequirements): Promise<RouteBinding>;
   provider(route: RouteBinding): AgentCommunicationProvider;   // NoCompatibleRoute if unregistered
 }
 
@@ -108,6 +117,8 @@ export interface RemoteTaskState {
 export interface MessageReceipt { messageId: string; accepted: boolean; }
 export interface AgentEvent { eventId: string; taskId: string; type: string; revision?: number; payload: unknown; }
 ```
+
+`AgentRef.definitionId` + `version` correspond to Agent v1's `VersionedRef`; `tenantId` comes from the verified caller, and `endpoint` only from the registry. `AgentEvent` is the transport projection of the messaging contract's `TaskEvent` (same `eventId`, `taskId`, `revision`). Route selection fails `GuaranteeUnavailable` when no provider meets `requirements.durability`, and `UnsupportedOperation` when a required operation or extension is not declared.
 
 Callers never see `RemoteTaskRef`: the public `TaskHandle`/`TaskSnapshot` always carry the **local** task ID, with `authority: "remote"` marking a projection. The TaskService keeps the `RouteBinding` and `RemoteTaskRef` on the task record.
 

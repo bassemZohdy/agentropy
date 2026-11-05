@@ -32,6 +32,8 @@ ADRs capture architectural direction separately from implementation status. **Ac
 | [0023](0023-license-and-contributions.md) | Apache-2.0 license and DCO policy | Accepted |
 | [0024](0024-pre-dispatch-authorization-gate.md) | Durable pre-dispatch eligibility gate without new task states | Accepted (design) |
 | [0025](0025-security-infrastructure-errors.md) | Explicit PDP-unavailable and audit-commit failure error outcomes | Accepted (design) |
+| [0026](0026-protocol-agnostic-tool-integration.md) | Protocol-agnostic tools and standard Agent Skills | Accepted (architecture direction) |
+| [0027](0027-m1-setup-choices.md) | M1 setup choices: validator, SemVer, YAML, SQLite driver, package placement | Accepted |
 
 Use numbered Markdown files and record context, decision, consequences and open questions. Amend the ADR or supersede it with a new one when substantial direction changes.
 

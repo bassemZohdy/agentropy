@@ -76,8 +76,8 @@ A2A provider · Postgres · real LLM providers · MCP tools · workflow engines 
 
 ```
 packages/
-  core/        # types, schemas, errors, transition tables — no I/O
-  runtime/     # TaskService, runtime, pool, resolver, scheduler, router, direct provider
+  core/        # types, schemas, errors, transition tables, capability catalog, pure resolver — no I/O
+  runtime/     # registries, TaskService, runtime, pool, scheduler, router, direct provider, tool executor, skill loader
   store-sqlite/
   testkit/     # fake clock/model, failure injection, conformance suites (reusable by provider authors)
 examples/

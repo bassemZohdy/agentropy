@@ -2,6 +2,7 @@
 
 - Date: 2026-11-05
 - Status: **Documentation review completed; implementation readiness not signed off**
+- **Follow-up 2026-11-05:** gates closed and drift fixed in the [readiness signoff](2026-11-05-readiness-signoff.md).
 - Scope: Follow-up to [2026-11-04 architecture readiness](2026-11-04-architecture-readiness.md), with GitHub main documentation inspected. This is **not** a successful runtime or CI test result.
 
 ## Verified documentation baseline

@@ -1,16 +1,17 @@
-# Agentropy Capability Contract v1.0 — Design baseline (revision 2)
+# Agentropy Capability Contract v1.0 — revision 6
 
-**Status:** Architecture contract for initial implementation; no provider or runtime is implemented yet. **Errors:** [Errors v1](errors-v1.md).
+**Status:** Accepted for M1 implementation (2026-11-05). The catalog, profiles and resolver live in `packages/core`; behavior is claimed only where an executable test exists. **Errors:** [Errors v1](errors-v1.md).
 
 ## Revision history
 
 | Rev | Date | Change |
 |---|---|---|
 | 1 | 2026-11-04 | Initial baseline |
-| 3 | 2026-11-04 | Re-review: `reasoning`/`tool-use` usable in POC with fake providers; operation I/O for `delegate`, `notify`, `requestAction`, `subscribe`, `briefing`; durable event subscriptions |
 | 2 | 2026-11-04 | Design review: canonical capability ID catalog; guarantees modelled once (as `kind: "guarantee"` selections with levels); operation `effect` classification and step keys; `task-execution` and `messaging` removed as capabilities; profile table reconciled with [capabilities](../capabilities.md) |
+| 3 | 2026-11-04 | Re-review: `reasoning`/`tool-use` usable in POC with fake providers; operation I/O for `delegate`, `notify`, `requestAction`, `subscribe`, `briefing`; durable event subscriptions |
 | 4 | 2026-11-04 | Align TaskAgent required `durable-execution` guarantee with accepted ADR-0019; no downgrade to `durable-acceptance` |
 | 5 | 2026-11-04 | Document effective config hierarchy, non-weakening security floors and acceptance-time snapshots |
+| 6 | 2026-11-05 | Readiness closure: title/revision corrected (header said revision 2); `generic` profile added (was in Agent v1's `AgentProfileId` but missing here); `tool-use` operation I/O bound to [Tool v1](tool-v1.md); missing step key mapped to `SchemaViolation`; unknown capability ID mapped to `CapabilityUnavailable`; tool/skill/implementation resolution steps appended |
 
 ## Classification
 
@@ -152,6 +153,8 @@ export interface CapabilityAccess {
 | `conversation.briefing` | `{ sessionId, limit? }` | `{ entries: InboxEntry[] }` (marks them `presented`) |
 | `conversation.reply` | `{ sessionId, text }` | `{ messageId }` |
 | `session-context.get` / `put` | `{ sessionId, key }` / `{ sessionId, key, value }` | `{ value? }` / `{}` |
+| `tool-use.listTools` | `{}` | `{ tools: ToolDescriptor[] }` — only the task's pinned tools ([Tool v1](tool-v1.md)) |
+| `tool-use.call` | `{ toolId: string; input: unknown }` (step key required when the tool's `effect` is `external`) | `{ output: unknown }` via `ToolExecutor` |
 
 **Provider execution:** `CapabilityAccess` is runtime-created per Execution and exposes only resolved, authorized bindings. Secrets are resolved at trusted boundaries and never appear in config snapshots.
 
@@ -168,6 +171,7 @@ Durability is expressed exactly once: as a `kind: "guarantee"` selection with a 
 | monitoring | `event-handling`, `durability: durable-execution` | `scheduling`, `notification` | `delegation`, `reasoning` |
 | coordinator | `delegation`, `durability: durable-execution` | `notification` | `conversation`, `workflow`, `reasoning` |
 | specialist | — | `tool-use` | `reasoning`, `memory`, `conversation`, `durability` |
+| generic | — | — | any catalog capability; for deterministic/custom agents with no profile behavior |
 
 Rationale: TaskAgent must preserve resumable execution state even without scheduling (accepted in ADR-0019). Coordinators and monitoring profiles also require `durable-execution` because they wait across activations; scheduling remains optional for task agents. A lightweight ephemeral helper uses a specialist/custom profile, not a downgraded task profile. `inbound-message`/`progress-reporting` are platform obligations.
 
@@ -191,6 +195,9 @@ Effective ordinary configuration is resolved **framework → agent profile → a
 6. Intersect requested permissions with principal/tenant policy; reject escalation.
 7. Persist an immutable `EffectiveCapabilitySnapshot` and reference it from the task at acceptance.
 8. At each invocation: operation exists, binding present, authority still valid, `stepKey` present for `external` effects, guarantee still holds. Fail explicitly otherwise.
+9. After step 5, resolve the implementation ([Agent Implementation v1](agent-implementation-v1.md)), then tool selections ([Tool v1](tool-v1.md)), then skill selections and their declared dependencies ([Skill v1](skill-v1.md)); record omitted optional selections. The combined result is the task's `AcceptanceSnapshot` ([Agent v1](agent-v1.md#acceptance-snapshot-revision-7)).
+
+**Typed failures:** unknown capability ID → `CapabilityUnavailable` (`reason: "unknown"`); removing a required capability, contradictory duplicates, dependency cycle or conflict → `InvalidConfiguration`; no satisfying contract version or no provider → `CapabilityUnavailable`; ambiguous provider → `CapabilityUnavailable` (`reason: "ambiguous"`); config schema violation → `InvalidConfiguration`; weaker guarantee level → `GuaranteeUnavailable`; invocation of a capability absent from the snapshot → `CapabilityNotDeclared`; unknown operation → `UnsupportedOperation`; missing `stepKey` on an external operation → `SchemaViolation` (`reason: "missingStepKey"`).
 
 ## Compatibility rules
 

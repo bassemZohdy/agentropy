@@ -1,6 +1,6 @@
 # Agentropy — Execution Planning Baseline (todo-skills approach)
 
-> Status: **Staged plan — NOT implementation authorization**. 2026-11-04.
+> Status: **Active plan.** 2026-11-04; readiness gates closed and backlog migrated to todo-skills on 2026-11-05 ([signoff](../review/2026-11-05-readiness-signoff.md)). The live queue is [TODO.md](../../TODO.md).
 > Method: adapted from [todo-skills](https://github.com/bassemZohdy/todo-skills) v0.2.0 (`/todo-plan`, `/todo-init`, `/todo-add`, `/todo-continue`). Actual skill execution requires an agent with the installed skills, a Git checkout and a test runner. The present artifact is a plan, not a claim that those skill commands ran.
 
 ## Goal
@@ -44,12 +44,12 @@ ADR-0025 security failure codes and the ADR-0024 minimal gate shape are accepted
 | Gate | Required evidence | Status |
 |---|---|---|
 | G0-01 Architecture consistency | Durability, communication/config and ADR-0024 gate shape and ADR-0025 errors are aligned; runnable race/recovery tests remain M1 | CLOSED (design only) |
-| G0-02 Requirements completeness | Communication/config/security requirements and accepted error taxonomy aligned; runnable conformance and final document signoff remain open | PARTIAL |
-| G0-03 ADR review | Individual ADR-0008…0018 dispositions recorded; proposals with unresolved implementation mechanisms remain proposed | PARTIAL |
-| G0-04 Technology/tooling | Node.js 24, pnpm 10.34.9, strict TypeScript and four package shells verified by scaffold CI; frozen lockfile and DCO PR verification still pending | PARTIAL (scaffold verified) |
+| G0-02 Requirements completeness | Requirements traced to the executable [acceptance matrix](acceptance-matrix.json) | CLOSED (design, 2026-11-05) |
+| G0-03 ADR review | Individual ADR dispositions recorded; ADR-0027 setup choices accepted; proposals stay proposed | CLOSED (2026-11-05) |
+| G0-04 Technology/tooling | Scaffold CI, frozen lockfile (D-28), ADR-0027; DCO PR run tracked separately as TASK-025 | CLOSED for implementation (2026-11-05) |
 | G0-05 Test scope | [M1 security scope accepted](M1-SECURITY-ACCEPTANCE-DECISION.md): SEC-01/02/03/04/07 required; SEC-05/06 full coverage deferred | CLOSED (design only) |
-| G0-06 Todo skills migration readiness | Lossless ID/priority mapping, runnable test command from a real scaffold, `Done when` per leaf, `TODO.md` <=120 lines and lint pass | OPEN |
-| G0-07 Final design signoff | Requirements, architecture, ADRs, contract schemas, documentation indexes and implementation backlog reviewed together | OPEN |
+| G0-06 Todo skills migration readiness | 96/96 IDs mapped in the [crosswalk](TODO-ID-CROSSWALK.md#migration-destinations-2026-11-05); `TODO.md` passes todo-skills lint | CLOSED (2026-11-05) |
+| G0-07 Final design signoff | [Readiness signoff](../review/2026-11-05-readiness-signoff.md) | CLOSED (2026-11-05) |
 
 No gate is marked closed merely because a proposal was written.
 
@@ -107,3 +107,4 @@ See [M0-DECISION-REVIEW](M0-DECISION-REVIEW.md) for the accepted M1 decisions an
 ## Revisions
 
 - 2026-11-04: Initial staged execution plan based on existing architecture, TODO and todo-skills constraints. No implementation or TODO format migration.
+- 2026-11-05: Gates closed, legacy TODO archived and migrated (TASK-010). Lanes unchanged; roots FEAT-011…FEAT-028 in TODO.md. Historical sections above are kept as written.

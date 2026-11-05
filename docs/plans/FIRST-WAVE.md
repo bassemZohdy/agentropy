@@ -1,6 +1,7 @@
 # Agentropy — first execution wave for todo-skills
 
 - Status: **Staged, not yet a live todo-skills task tree**
+- **Superseded 2026-11-05:** migration applied by TASK-010; see [TODO.md](../../TODO.md), the [crosswalk](TODO-ID-CROSSWALK.md#migration-destinations-2026-11-05) and the [readiness signoff](../review/2026-11-05-readiness-signoff.md). Kept as history; provisional IDs here (TASK-001…FEAT-009) were never assigned, so live IDs start at 010.
 - Date: 2026-11-04
 - Method: [todo-skills](https://github.com/bassemZohdy/todo-skills) v0.2 task decomposition, branch-per-task, test-first, exact `Done when` and regression commands
 - Source of truth remains [legacy TODO](../../TODO.md) until [lossless migration](TODO-SKILLS-MIGRATION.md) is explicitly activated.

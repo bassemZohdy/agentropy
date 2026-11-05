@@ -2,7 +2,13 @@
 
 This project follows a human-readable changelog. Release versions will be introduced when implementation starts.
 
-## Unreleased — 2026-11-04
+## [Unreleased]
+
+### Changed
+
+- **TASK-010** (docs): Close architecture readiness: reconcile contracts, sign off gates, migrate the backlog (D-10, D-26, D-27, N-04). Ref: docs/review/2026-11-05-readiness-signoff.md. Validated: `node scripts/check-readiness.mjs`. Docs: updated README.md, docs/contracts/agent-v1.md, docs/contracts/capability-v1.md, docs/contracts/communication-v1.md, docs/contracts/errors-v1.md, docs/contracts/agent-implementation-v1.md, docs/contracts/tool-v1.md, docs/contracts/skill-v1.md, docs/contracts/security-v1.md, docs/adr/0027-m1-setup-choices.md, docs/adr/README.md, docs/runtime-contract.md, docs/poc-scope.md, docs/plans/PROJECT.md, docs/review/2026-11-05-readiness-signoff.md. Includes: TASK-010.1, TASK-010.2.
+
+## Unreleased — 2026-11-04 (pre-todo-skills history)
 
 ### Added — M0 workspace scaffold (2026-11-04)
 

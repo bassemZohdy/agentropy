@@ -1,6 +1,6 @@
-# Agentropy Agent Contract v1.0 — Design baseline (revision 6)
+# Agentropy Agent Contract v1.0 — revision 7
 
-**Status:** Architecture contract for initial implementation; not yet implemented or API-stable.
+**Status:** Accepted for M1 implementation (2026-11-05); not API-stable. Implemented types live in `packages/core`; behavior is claimed only where an executable test exists.
 **Scope:** Core logical Agent, AgentDefinition, AgentInstance, DelegatedTask and Execution. Transport/runtime are independent.
 **Lifecycle states and edges:** [runtime contract](../runtime-contract.md) is authoritative. **Errors:** [Errors v1](errors-v1.md).
 
@@ -8,9 +8,12 @@
 
 | Rev | Date | Change |
 |---|---|---|
-| 6 | 2026-11-05 | Define mandatory/optional AgentDefinition properties, versioned implementation binding, distinct tool/skill selections and execution provider boundary; design only |\n| 1 | 2026-11-04 | Initial baseline |
-| 3 | 2026-11-04 | Re-review: conversation turn model; handler registry; retry policy; `DelegateInput`; child-task/human-action/event wake semantics with inline payload; `TaskHandle.status` uses task states; instance and human-action operations on `AgentService`; record types; effect-journal commit timing |
+| 1 | 2026-11-04 | Initial baseline |
 | 2 | 2026-11-04 | Design review: instance states aligned with lifecycle; one execution per activation; `WakeupRequest` extended (timer, child tasks, any-of, timeout); idempotent step keys for side effects; `AgentService` gains `getResult`, `provideHumanInput`, idempotency lookup; explicit call layering ([review](../review/2026-11-04-design-review.md)) |
+| 3 | 2026-11-04 | Re-review: conversation turn model; handler registry; retry policy; `DelegateInput`; child-task/human-action/event wake semantics with inline payload; `TaskHandle.status` uses task states; instance and human-action operations on `AgentService`; record types; effect-journal commit timing |
+| 4–5 | — | Not used (numbering gap preserved; no changes were recorded under these numbers) |
+| 6 | 2026-11-05 | Define mandatory/optional AgentDefinition properties, versioned implementation binding, distinct tool/skill selections and execution provider boundary; design only |
+| 7 | 2026-11-05 | Readiness closure: `AcceptanceSnapshot`; `Agent.definition` removed (handlers bind by implementation artifact); `HandlerRegistry` keyed by artifact and owned by the `native-ts` provider; `ToolSelection.bindingId`; read-only `AgentContext.skills`; implementation SPI moved to [Agent Implementation v1](agent-implementation-v1.md); tool and skill rules moved to [Tool v1](tool-v1.md) and [Skill v1](skill-v1.md) |
 
 ## Decisions
 
@@ -64,13 +67,14 @@ export interface AgentImplementationRef {
 export interface SkillSelection {
   id: string;                      // trusted registry identity, not an arbitrary filesystem path
   versionRange: string;            // resolve and pin exact version at task acceptance
-  required?: boolean;
+  required?: boolean;              // default true
 }
 
 export interface ToolSelection {
   id: string;                      // canonical logical ToolRegistry identity (not a URL)
   versionRange: string;            // resolve and pin exact version and permitted binding
-  required?: boolean;
+  required?: boolean;              // default true
+  bindingId?: string;              // explicit physical binding; otherwise the tool's default binding
 }
 
 export interface AgentDefinition {
@@ -125,6 +129,7 @@ export interface AgentContext {
   readonly signal: AbortSignal;           // fired on cancel or lease loss
   readonly capabilities: CapabilityAccess;
   readonly progress: ProgressReporter;
+  readonly skills: SkillAccess;           // read-only, pinned skills only; empty when none selected (Skill v1)
 }
 
 export type AgentDisposition<O> =
@@ -133,7 +138,6 @@ export type AgentDisposition<O> =
   | { kind: "failed"; code: string; retryable: boolean; message: string };
 
 export interface Agent<I = unknown, O = unknown> {
-  readonly definition: VersionedRef;
   handle(invocation: AgentInvocation<I>, context: AgentContext):
     Promise<AgentDisposition<O>>;
 }
@@ -272,15 +276,27 @@ export interface WakeupRegistration {
   revision: number;
 }
 
-/** Binds handler code to definition versions. Definitions live in the registry; code lives here. */
+/** Native TypeScript artifact store used by the `native-ts` implementation provider (Agent Implementation v1). */
 export interface HandlerRegistry {
-  register(definition: VersionedRef, handler: Agent): void;
-  unregister(definition: VersionedRef): void;      // in-flight tasks pinned to it then fail IncompatibleVersion
-  get(definition: VersionedRef): Agent | undefined;
+  register(artifact: VersionedRef, handler: Agent): void;   // re-registering a different handler → InvalidConfiguration
+  unregister(artifact: VersionedRef): void;      // in-flight tasks pinned to it then fail IncompatibleVersion
+  get(artifact: VersionedRef): Agent | undefined;
+}
+
+/** Immutable, redacted pins recorded at task acceptance (T1). */
+export interface AcceptanceSnapshot extends EffectiveCapabilitySnapshot {
+  definition: VersionedRef;
+  profile: VersionedRef;
+  implementation: ImplementationBinding;          // Agent Implementation v1
+  durability: "none" | "durable-acceptance" | "durable-execution";
+  tools: ToolPin[];                               // Tool v1
+  skills: SkillPin[];                             // Skill v1
+  omitted: { kind: "capability" | "tool" | "skill"; id: string; code: string }[];
 }
 
 // Defined elsewhere:
-//   CapabilitySelection, RuntimeRequirements, CapabilityAccess -> capability-v1.md
+//   CapabilitySelection, RuntimeRequirements, CapabilityAccess, EffectiveCapabilitySnapshot -> capability-v1.md
+//   ImplementationBinding -> agent-implementation-v1.md; ToolPin -> tool-v1.md; SkillPin, SkillAccess -> skill-v1.md
 //   HumanDecision, HumanActionRequest, InboxEntry -> human-actions.md; TaskEvent -> messaging-contract.md
 //   JsonSchema = JSON Schema 2020-12 document
 ```
@@ -302,9 +318,13 @@ Import paths are documentation references, not compiled modules.
 | Implementation | Native TS, LangGraph.js, workflow adapter, or remote proxy | Implementation provider supplies compatible lifecycle mapping |
 | Runtime | Owns Task/Execution state, leasing, persistence and enforcement | Verifies guarantees; cannot infer them from an adapter name |
 
-**Implementation SPI (conceptual, not a compiled contract):** An `AgentImplementationProvider` advertises an immutable ID/version, supported input/output and lifecycle features (resume/checkpoint, cancellation, streaming, isolation, remote authority), validates trusted implementation artifacts, and creates an execution adapter returning `AgentDisposition` or an explicit unsupported error. A native TypeScript handler is one adapter. LangGraph.js and workflow engines are adapters, not mandatory dependencies. A remote A2A agent is normally delegated to through `TaskService → CommunicationRouter`; a remote-proxy implementation is only valid where it preserves this local-task/remote-task authority boundary, idempotency and authorization. Provider selection and artifact revision are pinned at task acceptance; no silent provider swap mid-task.
+**Implementation SPI:** normative in [Agent Implementation v1](agent-implementation-v1.md). A native TypeScript handler is one adapter (`native-ts`, backed by `HandlerRegistry`); LangGraph.js, workflow engines and remote proxies are optional adapters. A remote A2A agent is normally delegated to through `TaskService → CommunicationRouter`; remote-authority proxies are rejected in M1. Provider and artifact revision are pinned at task acceptance; no silent provider swap mid-task.
 
-**Resolution order:** validate immutable definition/profile/policy and schema → resolve implementation and its declared features → merge profile-required/default and optional capability selections per [Capability v1](capability-v1.md) → resolve Skill and Tool references to trusted exact versions/bindings → validate declared Skill dependencies against available capabilities/tools *without granting them* → intersect tool visibility and all invocations with current tenant/user/delegated policy → validate runtime guarantees and pin redacted effective bindings at acceptance. Reject missing required dependencies, incompatible versions, unsupported features and insufficient guarantees explicitly. Skill content or remote tool manifests are untrusted and cannot modify policy.
+**Resolution order** (implemented as one pure function over registries; first failure wins): validate immutable definition/profile/policy and schema → resolve implementation and its declared features → merge profile-required/default and optional capability selections per [Capability v1](capability-v1.md) → resolve Skill and Tool references to trusted exact versions/bindings → validate declared Skill dependencies against available capabilities/tools *without granting them* → intersect tool visibility and all invocations with current tenant/user/delegated policy → validate runtime guarantees and pin redacted effective bindings at acceptance. Reject missing required dependencies, incompatible versions, unsupported features and insufficient guarantees explicitly; optional tool/skill failures are omitted and recorded in `AcceptanceSnapshot.omitted`. Skill content or remote tool manifests are untrusted and cannot modify policy. Error mapping is listed in [Errors v1](errors-v1.md#contract-error-mapping-revision-2).
+
+### Acceptance snapshot (revision 7)
+
+`AcceptanceSnapshot` is the single record pinned on a task at T1. It contains no credentials and no Skill/tool payload content; it supersedes the earlier separate lists of pinned items in the [runtime contract](../runtime-contract.md#version-pinning-and-upgrade). Each activation runs against it; authority is re-evaluated at every protected operation regardless of the snapshot.
 
 **Conformance gate:** Native deterministic and second implementation adapter must pass the same logical task lifecycle tests; custom/generic profile must run with no optional model/tool/skill; required profile guarantees cannot be removed; Skills must not auto-grant tool authority; tool route changes must preserve policy, effects and pinning; remote agent acceptance/status/cancel must remain mapped through TaskService. Implementation SDKs, provider feature taxonomy and artifact distribution are deferred design details, not claims of runtime support.
 
@@ -349,4 +369,4 @@ Distinct identity tests; profile resolution; acceptance + idempotency + unknown 
 
 ## Agent Skills selection (revision 6)
 
-`AgentDefinition.skills?: SkillSelection[]` is now part of the conceptual contract above. It references standard [Agent Skills](https://agentskills.io/specification) artifacts independently of Capabilities and Tools. `SkillRegistry` and `SkillLoader` remain planned, not implemented; metadata-first discovery, pinned versions and lazy resources are required for conformance. Skill scripts can execute only through an explicitly authorized execution interface with demonstrated isolation guarantees. See [ADR-0026](../adr/0026-protocol-agnostic-tool-integration.md).
+`AgentDefinition.skills?: SkillSelection[]` references standard [Agent Skills](https://agentskills.io/specification) artifacts independently of Capabilities and Tools. `SkillRegistry`, `SkillLoader` and `SkillAccess` are normative in [Skill v1](skill-v1.md); script execution is unsupported in v1. See [ADR-0026](../adr/0026-protocol-agnostic-tool-integration.md).
