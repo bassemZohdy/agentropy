@@ -47,13 +47,13 @@ Checked by `node scripts/check-readiness.mjs`: every item above has exactly one 
 | `D-14` | closed | packages/testkit/test/telemetry.test.ts | — |
 | `D-15` | open | — | TASK-026.3 |
 | `D-16` | closed | packages/testkit/test/security.test.ts | — |
-| `D-17` | open | — | TASK-026.3 |
+| `D-17` | closed | packages/testkit/test/authorization.test.ts | — |
 | `D-18` | partial | packages/testkit/test/security.test.ts | TASK-026.3 |
 | `D-19` | partial | packages/testkit/test/security.test.ts | TASK-026.3 |
 | `D-20` | open | — | TASK-026.3 |
-| `D-21` | partial | packages/testkit/test/security.test.ts | TASK-026.3 |
+| `D-21` | partial | packages/testkit/test/authorization.test.ts | FEAT-028 |
 | `D-22` | deferred | — | FEAT-028 |
-| `D-24` | open | — | TASK-026.3 |
+| `D-24` | deferred | — | FEAT-028 |
 | `N-02` | closed | packages/testkit/test/operations.test.ts | — |
 | `N-03` | deferred | — | FEAT-028 |
 | `T-04` | closed | docs/review/2026-11-05-tool-protocol-evaluation.md | — |
@@ -68,5 +68,8 @@ Notes on the M1 evidence:
 - **D-21** — mandatory audit intent commits with each protected change and is forwarded at least once (SEC-03); an independent AuditService SPI and tamper evidence remain (D-22 is M3).
 - **D-04 / D-11** — FEAT-027.3 adds the relay leader lease (failover between relays on one store), retry of retryable provider outages on the same idempotency key, and deduplicated delayed callbacks through the activation ingress ([messaging contract](../messaging-contract.md) rev 4). Provider failover to an alternative binding remains (D-04).
 - **D-04 / D-05 / N-02 / T-04** — closed by TASK-026.5: opt-in read-only tool failover (`fallbackBindings`), never for tools with effects; validated `RuntimeLimits` with documented defaults exposed as `app.limits`; the `isolation` guarantee (local runtime = `logical`, stronger levels refused with `GuaranteeUnavailable`; process and sandbox providers are M3); [tool protocol evaluation](../review/2026-11-05-tool-protocol-evaluation.md).
+- **D-17** — SEC-06: credentials resolve just in time per invocation through `CredentialProvider` (opaque, tenant-scoped refs); a missing, expired or revoked credential fails `AuthorityExpired` (`kind: credential`), which holds the task behind the ADR-0024 gate without deleting it or persisting the secret; authorized `reauthorize` resumes, and journaled or keyed steps are not repeated ([Security v1](../contracts/security-v1.md) rev 3).
+- **D-21** — per-tenant hash chain on audit intents, `AuditService.query`/`verify` with independent `audit:read`/`audit:verify` permissions and no cross-tenant disclosure (SEC-05 M2 part). Retention, legal hold and archive integrity remain (M3, with D-22).
+- **D-24** — break-glass, operational quarantine, dual control, a canonical audit schema and data residency are explicitly *not* adopted as policy; they are deferred to M3 production hardening and need an accepted ADR before implementation.
 - **D-12 / D-13 / D-14** — closed by [Observability v1](../contracts/observability-v1.md) (TASK-026.4) and its OpenTelemetry-backed suite (FEAT-027.6).
 - **N-02** — logical tenant/app-context isolation is tested (AC-14); workspace/credential boundaries and provider sandboxes are not claimed.

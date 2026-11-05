@@ -33,7 +33,7 @@ import {
   type DelegationRequest,
   type VersionedRef,
 } from '@agentropy/core';
-import { AuditForwarder } from './audit.js';
+import { AuditForwarder, AuditService } from './audit.js';
 import {
   HumanActionService,
   humanActionOperationHandlers,
@@ -120,6 +120,8 @@ export interface LocalApp {
   readonly inbox: InboxService;
   readonly human: HumanActionService;
   readonly relay: OutboxRelay;
+  /** Tenant-scoped audit read and hash-chain verification (needs `audit:read` / `audit:verify`). */
+  readonly auditLog: AuditService;
   /** The effective, validated limits this app runs with. */
   readonly limits: RuntimeLimits;
 
@@ -410,6 +412,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     inbox,
     human,
     relay,
+    auditLog: new AuditService({ store, pdp: o.pdp }),
     limits,
     define(definition, handler) {
       const def = validateAgentDefinition(definition);
