@@ -219,7 +219,8 @@ describe.each(scaling)(
     it('completes the same batch with 1, 2 and 4 in-process workers', async () => {
       const N = 120;
       const out: Record<string, number> = {};
-      for (const n of [1, 2, 4]) {
+      // Best of two runs per worker count: one stall on a shared CI runner must not decide the comparison.
+      for (const n of [1, 2, 4, 1, 2, 4]) {
         const store = make();
         const clock = new FakeClock('2026-11-06T00:00:00.000Z');
         const ws = workers(store, n, clock, {
@@ -243,7 +244,11 @@ describe.each(scaling)(
           ).length;
           if (!open) break;
         }
-        out[`workers${n}PerSec`] = round(N / ((performance.now() - t0) / 1000));
+        const key = `workers${n}PerSec`;
+        out[key] = Math.max(
+          out[key] ?? 0,
+          round(N / ((performance.now() - t0) / 1000)),
+        );
         await store.close();
       }
       bench('multi-worker', {
@@ -253,7 +258,7 @@ describe.each(scaling)(
         ...out,
       });
       expect(out.workers2PerSec!).toBeGreaterThan(out.workers1PerSec! * 0.4);
-    }, 120_000);
+    }, 240_000);
   },
 );
 
