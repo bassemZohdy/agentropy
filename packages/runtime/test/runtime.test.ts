@@ -1,9 +1,9 @@
 // Runtime and pool (FEAT-017.2): AC-06 lease loss + fencing, AC-10 version pinning, AC-11 cancel grace,
 // retries with backoff, disposition mapping, T4 persistence and the CapabilityAccess surface.
-import type { Agent } from '@agentropy/core';
+import type { Agent, Store } from '@agentropy/core';
 import { describe, expect, it, vi } from 'vitest';
 import { AgentRuntime } from '../src/runtime.js';
-import { alice, code, completes, harness } from './harness.js';
+import { alice, code, completes, harness, sqliteTempStore } from './harness.js';
 
 const status = async (h: ReturnType<typeof harness>, taskId: string) =>
   (await h.tasks.getTask(taskId, alice)).status;
@@ -294,5 +294,87 @@ describe('CapabilityAccess (AC-16 invocation part, step keys)', () => {
       'PermissionDenied',
     );
     expect(h.cap.calls).toEqual([]);
+  });
+});
+
+describe('failures stay inside the pool (FEAT-037.2)', () => {
+  it('a disposition that cannot be written is reported, not thrown; the lease expiry then recovers the task', async () => {
+    const inner = sqliteTempStore();
+    let broken = false;
+    const store: Store = {
+      durability: inner.durability,
+      close: () => inner.close(),
+      transaction: (fn) =>
+        broken
+          ? Promise.reject(new Error('store down'))
+          : inner.transaction(fn),
+    };
+    const reported: string[] = [];
+    const h = harness({
+      store,
+      runtime: { onError: (e) => reported.push(e.code) },
+    });
+    h.define('writer', {
+      handle: async (inv) => {
+        if (inv.attempt === 1) broken = true; // the store goes away before the result is written
+        return { kind: 'completed', output: { attempt: inv.attempt } };
+      },
+    });
+    const t = await h.delegate((await h.instance('writer')).id, {}, 'k');
+    await h.runtime.tick();
+    await h.runtime.idle(); // would reject (an unhandled rejection) before FEAT-037.2
+    expect(reported).toEqual(['Internal']);
+    expect(h.runtime.activeCount).toBe(0);
+
+    broken = false;
+    expect(await status(h, t.taskId)).toBe('running'); // the lease has not expired yet
+    h.clock.advanceBy(1_001);
+    await h.runtime.runUntilIdle();
+    expect(await h.tasks.getResult(t.taskId, alice)).toEqual({ attempt: 2 });
+  });
+
+  it('an activation past maxActivationMs is aborted with Timeout and, if it ignores the signal, fenced and retried', async () => {
+    const h = harness({
+      cancelGraceMs: 20,
+      runtime: { maxActivationMs: 30 },
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const reasons: string[] = [];
+    h.define('hung', {
+      handle: async (inv, ctx) => {
+        if (inv.attempt > 1)
+          return { kind: 'completed', output: { attempt: inv.attempt } };
+        ctx.signal.addEventListener('abort', () =>
+          reasons.push((ctx.signal.reason as { code: string }).code),
+        );
+        await gate; // ignores the signal
+        return { kind: 'completed', output: 'late' };
+      },
+    });
+    const t = await h.delegate((await h.instance('hung')).id, {}, 'k');
+    await h.runtime.tick();
+    await vi.waitFor(async () =>
+      expect(await status(h, t.taskId)).toBe('assigned'),
+    );
+    expect(reasons).toEqual(['Timeout']);
+    expect(h.runtime.activeCount).toBe(0);
+    await h.runtime.runUntilIdle();
+    expect(await h.tasks.getResult(t.taskId, alice)).toEqual({ attempt: 2 });
+    expect(await executions(h, t.taskId)).toEqual([
+      ['lost', 1, 1],
+      ['succeeded', 1, 2],
+    ]);
+    release(); // the late first attempt is fenced and changes nothing
+    await h.runtime.idle();
+    expect(await h.tasks.getResult(t.taskId, alice)).toEqual({ attempt: 2 });
+  });
+
+  it('limits validate maxActivationMs', async () => {
+    const { resolveLimits } = await import('../src/limits.js');
+    expect(resolveLimits().maxActivationMs).toBe(600_000);
+    expect(() => resolveLimits({ maxActivationMs: 10 })).toThrow(
+      /maxActivationMs/,
+    );
   });
 });

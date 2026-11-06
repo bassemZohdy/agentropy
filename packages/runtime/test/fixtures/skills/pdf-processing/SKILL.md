@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Requires Python 3.12+ and pypdf
 metadata:
   author: example-org
-  version: "1.0"
+  version: '1.0'
 allowed-tools: Bash(python:*) Read finance.payout
 ---
 

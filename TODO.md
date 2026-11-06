@@ -47,7 +47,7 @@
   - Links: Ref: docs/review/2026-11-06-deep-review.md#resilience-of-the-scheduler-pool-and-host · Lane: runtime
   - [x] **FEAT-037.1** · mid · `LocalApp.start()` survives a failing poll or tick (per-tick catch, fault hook, `agentropy.scheduler.errors`), `stop()` never rejects, the last successful tick feeds `/readyz` (R-27)
     - Done when: `pnpm exec vitest run packages/runtime/test/runtime.test.ts packages/testkit/test/recovery.test.ts`
-  - [ ] **FEAT-037.2** · mid · `execute()` contains disposition-write failures (bounded retry, then lost execution, never an unhandled rejection) and `limits.maxActivationMs` aborts a hung handler (R-28, R-29)
+  - [x] **FEAT-037.2** · mid · `execute()` contains disposition-write failures (bounded retry, then lost execution, never an unhandled rejection) and `limits.maxActivationMs` aborts a hung handler (R-28, R-29)
     - Done when: `pnpm exec vitest run packages/runtime/test/runtime.test.ts packages/testkit/test/hardening.test.ts`
   - [ ] **FEAT-037.3** · mid · Host shutdown order (stop accepting, abort streams, stop scheduler, drain, close store), unref'd grace timers, structured lifecycle and error log lines, optional OTLP wiring (R-30, R-31)
     - Done when: `pnpm exec vitest run packages/examples/test/host.test.ts packages/testkit/test/telemetry.test.ts`

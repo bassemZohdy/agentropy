@@ -63,6 +63,8 @@ stateDiagram-v2
 
 **Bounded state (R-37):** a `waiting` disposition whose serialized checkpoint exceeds the runtime's `maxCheckpointBytes` (default 64 KiB) is refused as `SchemaViolation` (`reason: checkpointTooLarge`) and the task fails; execution history keeps the last `keepExecutions` (default 20) finished executions per task (AC-20).
 
+**Failures stay inside the pool (FEAT-037.2):** an activation that runs longer than `maxActivationMs` (default 10 minutes) has its `AbortSignal` fire with `Timeout`; a handler that has not returned within `cancelGraceMs` is fenced like a lost lease (E8, then T6 retry or T8 by the task's retry policy) and its late result is discarded. A disposition that cannot be written (store outage) is retried three times, then reported (`onError`, `agentropy.scheduler.errors`) and left to lease expiry, which recovers the execution once the store is back; background cancel and timeout fences are contained the same way, so one failing execution never ends the process.
+
 **Counters:** `activation` is 1 for the first execution and increments on each wake-up (T5); `attempt` starts at 1 per activation and increments on each T6. A retry is not a new activation.
 
 **Retry policy:** `AgentDefinition.retryPolicy` (`maxAttempts`, default 3; `backoff` exponential from 1 s, max 5 min), overridable downward per delegation. A thrown exception is treated as `retryable: true`; a returned `failed` disposition decides for itself.

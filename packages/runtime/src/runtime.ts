@@ -69,6 +69,14 @@ export interface RuntimeOptions {
   poolSize?: number;
   leaseMs?: number;
   cancelGraceMs?: number;
+  /** Longest one activation may run before it is aborted and fenced (default 10 min, FEAT-037.2). */
+  maxActivationMs?: number;
+  /**
+   * Called with every failure the pool contains instead of letting it escape as an unhandled rejection: a
+   * disposition that could not be written, a cancel or timeout fence that failed. Counted as
+   * `agentropy.scheduler.errors` either way.
+   */
+  onError?: (error: AgentropyError) => void;
   /** Bounded execution history kept per task (R-37); older terminal executions are pruned. */
   keepExecutions?: number;
   skills?: (task: TaskRecord) => SkillAccess;
@@ -162,14 +170,17 @@ export class AgentRuntime {
       taskId: string;
     }
   >();
-  private readonly o: Required<Omit<RuntimeOptions, 'skills' | 'relay'>> &
-    Pick<RuntimeOptions, 'skills' | 'relay'>;
+  private readonly o: Required<
+    Omit<RuntimeOptions, 'skills' | 'relay' | 'onError'>
+  > &
+    Pick<RuntimeOptions, 'skills' | 'relay' | 'onError'>;
 
   constructor(options: RuntimeOptions) {
     this.o = {
       poolSize: 4,
       leaseMs: 60_000,
       cancelGraceMs: 30_000,
+      maxActivationMs: 600_000,
       keepExecutions: 20,
       gateRetry: { initialMs: 1_000, maxMs: 300_000, maxAttempts: 8 },
       pdpTimeoutMs: 5_000,
@@ -179,8 +190,29 @@ export class AgentRuntime {
     };
     this.o.tasks.onCancelRequested((taskId) => {
       for (const [execId, r] of this.running)
-        if (r.taskId === taskId) void this.cancelRunning(execId, r.controller);
+        if (r.taskId === taskId)
+          this.guard(this.cancelRunning(execId, r.controller));
     });
+  }
+
+  /**
+   * Contains a background promise (cancel or timeout fence): its failure is counted and reported, never an
+   * unhandled rejection that would end the process and every other execution with it (FEAT-037.2).
+   */
+  private guard(work: Promise<unknown>): void {
+    work.catch((err: unknown) => this.report(err));
+  }
+
+  private report(err: unknown): void {
+    const error = toAgentropyError(err);
+    this.o.tasks.telemetry.count(METRICS.schedulerErrors, 1, {
+      'agentropy.error.code': error.code,
+    });
+    try {
+      this.o.onError?.(error);
+    } catch {
+      // A failing error hook must not break the pool either.
+    }
   }
 
   private get store() {
@@ -245,9 +277,18 @@ export class AgentRuntime {
         controller,
         taskId: leased.task.id,
       });
-      void this.execute(leased.exec, leased.task, controller).finally(() =>
-        this.forget(e.id),
+      // An activation that outlives maxActivationMs is aborted, then fenced if it ignores the signal.
+      const limit = setTimeout(
+        () => this.guard(this.timeoutRunning(e.id, controller)),
+        this.o.maxActivationMs,
       );
+      limit.unref();
+      void this.execute(leased.exec, leased.task, controller)
+        .catch((err: unknown) => this.report(err))
+        .finally(() => {
+          clearTimeout(limit);
+          this.forget(e.id);
+        });
       started++;
     }
     return started;
@@ -292,7 +333,7 @@ export class AgentRuntime {
     for (const id of cancelled) {
       const r = this.running.get(id);
       if (r && !r.controller.signal.aborted)
-        void this.cancelRunning(id, r.controller);
+        this.guard(this.cancelRunning(id, r.controller));
     }
     return renewed;
   }
@@ -703,12 +744,31 @@ export class AgentRuntime {
       'agentropy.agent.id': t.snapshot.definition.id,
       'agentropy.disposition': disposition.kind,
     });
-    await this.applyDisposition(exec, disposition, codecVersion).catch(
-      (err) => {
-        // A fenced (stale-epoch) write is expected after lease loss or cancel grace expiry: the result is discarded.
-        if (!isAgentropyError(err, 'StaleRevision')) throw err;
-      },
-    );
+    await this.settle(exec, disposition, codecVersion);
+  }
+
+  /**
+   * Writes the disposition, retrying a store failure a few times. A fenced (stale-epoch) write is expected after lease
+   * loss, cancel grace expiry or a timeout fence: the result is discarded. If the store stays down the failure is
+   * reported and the execution is left to lease expiry, which recovers it (E8, then retry or failure) once the
+   * store is back; the pool and its other executions carry on (FEAT-037.2).
+   */
+  private async settle(
+    exec: StoredDocument<StoredExecution>,
+    d: AgentDisposition<unknown> | { kind: 'threw'; error: AgentropyError },
+    codecVersion: number,
+  ): Promise<void> {
+    const attempts = 3;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.applyDisposition(exec, d, codecVersion);
+        return;
+      } catch (err) {
+        if (isAgentropyError(err, 'StaleRevision')) return;
+        if (attempt >= attempts) return this.report(err);
+        await new Promise((r) => setTimeout(r, 50 * attempt));
+      }
+    }
   }
 
   private async resumeState(
@@ -991,6 +1051,33 @@ export class AgentRuntime {
       }
       return recovered;
     });
+  }
+
+  /**
+   * maxActivationMs elapsed (FEAT-037.2): abort the handler with `Timeout`; if it has not returned after the grace
+   * period, fence it as a lost lease — its lease is set to expire now and the next recovery applies E8 and the
+   * task's retry policy (T6, or T8 when attempts are exhausted). Its late result is discarded by the fence.
+   */
+  private async timeoutRunning(
+    executionId: string,
+    controller: AbortController,
+  ): Promise<void> {
+    if (controller.signal.aborted) return;
+    controller.abort(
+      new AgentropyError('Timeout', 'Activation exceeded maxActivationMs'),
+    );
+    await new Promise((r) => setTimeout(r, this.o.cancelGraceMs));
+    if (!this.running.has(executionId)) return;
+    await this.store.transaction(async (tx) => {
+      const e = await tx.get<StoredExecution>('executions', executionId);
+      if (e?.value.state === 'running')
+        await tx.update<StoredExecution>('executions', e.id, e.revision, {
+          ...e.value,
+          leaseExpiresAt: this.now(),
+        });
+    });
+    this.forget(executionId);
+    await this.recoverExpiredLeases();
   }
 
   /** Cooperative cancel: fire AbortSignal; if the handler has not returned after the grace period, fence it (E8 + T11). */

@@ -3,6 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  AgentropyError,
   BUILTIN_PROFILES,
   CAPABILITY_CATALOG,
   MemoryStore,
@@ -103,7 +104,12 @@ export interface HarnessOptions {
   /** Use the real built-in delegation/event/scheduling handlers instead of the recording fake. */
   builtin?: boolean;
   /** Runtime overrides (e.g. checkpoint limit, execution history). */
-  runtime?: { maxCheckpointBytes?: number; keepExecutions?: number };
+  runtime?: {
+    maxCheckpointBytes?: number;
+    keepExecutions?: number;
+    maxActivationMs?: number;
+    onError?: (error: AgentropyError) => void;
+  };
   /** Fault hook passed to the outbox relay. */
   faults?: FaultHook;
 }

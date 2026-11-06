@@ -11,6 +11,12 @@ export interface RuntimeLimits {
   leaseMs: number;
   /** Time a cancelled handler gets to stop before its lease is fenced. */
   cancelGraceMs: number;
+  /**
+   * Longest one activation may run (FEAT-037.2). Past it the handler's signal aborts with `Timeout`; a handler that
+   * does not stop within `cancelGraceMs` is fenced like a lost lease (retry or fail by the task's retry policy).
+   * Long work waits (`waiting`) instead of running long.
+   */
+  maxActivationMs: number;
   /** Finished execution records kept per task. */
   keepExecutions: number;
   /** Largest serialized checkpoint. */
@@ -30,6 +36,7 @@ export const DEFAULT_LIMITS: RuntimeLimits = {
   poolSize: 4,
   leaseMs: 60_000,
   cancelGraceMs: 30_000,
+  maxActivationMs: 600_000,
   keepExecutions: 20,
   maxCheckpointBytes: 64 * 1024,
   pdpTimeoutMs: 5_000,
@@ -47,6 +54,7 @@ const BOUNDS: Record<
   poolSize: [1, 1_024],
   leaseMs: [100, 3_600_000],
   cancelGraceMs: [0, 3_600_000],
+  maxActivationMs: [100, 86_400_000],
   keepExecutions: [1, 10_000],
   maxCheckpointBytes: [256, 16 * 1024 * 1024],
   pdpTimeoutMs: [1, 300_000],

@@ -510,6 +510,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     poolSize: limits.poolSize,
     leaseMs: limits.leaseMs,
     cancelGraceMs: limits.cancelGraceMs,
+    maxActivationMs: limits.maxActivationMs,
     keepExecutions: limits.keepExecutions,
     maxCheckpointBytes: limits.maxCheckpointBytes,
     pdpTimeoutMs: limits.pdpTimeoutMs,
