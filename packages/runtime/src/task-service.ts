@@ -90,6 +90,10 @@ export interface StoredExecution extends ExecutionRecord {
   /** Earliest time the pool may lease it (retry backoff). */
   runAt: string;
   leaseExpiresAt?: string;
+  /** Tenant of the task, for fair dispatch and per-tenant concurrency across workers (M3-02). */
+  tenantId?: string;
+  /** Worker that holds (or last held) the lease. */
+  workerId?: string;
 }
 
 export interface IdempotencyRecord {
@@ -985,9 +989,12 @@ export class TaskService {
   ): Promise<string> {
     assertTransition(EXECUTION_MACHINE, null, 'queued', 'E1');
     const executionId = this.newId('execution');
+    const tenantId = (await tx.get<TaskRecord>('tasks', taskId))?.value
+      .tenantId;
     await tx.insert<StoredExecution>('executions', executionId, {
       executionId,
       taskId,
+      ...(tenantId ? { tenantId } : {}),
       activation,
       attempt,
       trigger,

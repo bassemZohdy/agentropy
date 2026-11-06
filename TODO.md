@@ -11,8 +11,7 @@
   - Links: Ref: docs/plans/M2-M3-PLAN.md#m3 · Depends: FEAT-027 · Lane: ops
   - [x] **FEAT-028.1** · high · PostgreSQL store adapter on a driver-neutral client port, passing the shared Store conformance suite offline (M3-07)
     - Done when: Postgres store suite passes on embedded PGlite; `pnpm exec vitest run packages/store-postgres/test`
-  - [ ] **FEAT-028.2** · high · Multi-worker pool: several runtimes on one store with lease fencing, no double dispatch, fairness and back-pressure (M3-02)
-    - State: next: audit transaction callbacks for re-run safety (ADR-0028 rule)
+  - [x] **FEAT-028.2** · high · Multi-worker pool: several runtimes on one store with lease fencing, no double dispatch, fairness and back-pressure (M3-02)
     - Done when: multi-worker suite passes on SQLite file and PGlite stores; `pnpm exec vitest run packages/testkit/test/multi-worker.test.ts`
   - [ ] **FEAT-028.3** · high · Upgrades: store schema migrations, checkpoint codec versions, audited instance version migration and rollback (M3-03, D-07)
     - Done when: upgrade suite passes; `pnpm exec vitest run packages/testkit/test/upgrades.test.ts`

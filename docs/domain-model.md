@@ -10,7 +10,7 @@
 | AgentProfile | `id`, `version`, required/defaults/optional | Reusable capability template | Forever |
 | AgentInstance | `id`, `definition`, `tenantId`, `ownerId`, `state`, `revision` | Logical, owner-scoped agent identity, independent of any process | Until retired; history kept |
 | DelegatedTask | `taskId`, `parentTaskId`, `retryOf`, `agentInstanceId`, `principal`, input, `status`, `revision`, `deadline`, `budget`, version snapshot, `authority`, route binding (remote) | Bounded obligation; also the unit for long-lived responsibilities | Until terminal; retained per policy |
-| Execution | `executionId`, `taskId`, `activation`, `attempt`, `trigger`, `state`, `leaseEpoch`, timestamps | One run of the handler (one attempt of one activation) | Seconds–minutes; always terminates |
+| Execution | `executionId`, `taskId`, `activation`, `attempt`, `trigger`, `state`, `leaseEpoch`, `workerId`, timestamps | One run of the handler (one attempt of one activation) | Seconds–minutes; always terminates |
 | Checkpoint | `taskId`, `revision`, codec, payload ref | Handler state between activations | Latest kept; older pruned per policy |
 | WakeupRegistration | `id`, `taskId`, conditions, `timeoutAt`, `status` (`armed`/`fired`/`revoked`) | Durable wake-up intent; the scheduler/event layer reads only this | Until fired or revoked |
 | EventSubscription + mailbox | `subscription`, `taskId`, source, filter; pending events in arrival order | Buffers matching events between activations so none are lost | Until task terminal or unsubscribed |

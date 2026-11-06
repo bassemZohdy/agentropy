@@ -1,4 +1,4 @@
-# Agentropy Security Contract v1 — revision 5 (PEP/PDP, audit, credentials)
+# Agentropy Security Contract v1 — revision 6 (PEP/PDP, audit, credentials)
 
 **Status:** Accepted for M1 implementation (2026-11-05). Implements the M1 subset of [ADR-0021](../adr/0021-delegated-authorization.md), [ADR-0024](../adr/0024-pre-dispatch-authorization-gate.md) and [ADR-0025](../adr/0025-security-infrastructure-errors.md). Policy engines, identity providers, credential backends and audit storage remain deferred (D-17…D-22). **Errors:** [Errors v1](errors-v1.md).
 
@@ -11,6 +11,7 @@
 | 3 | 2026-11-05 | TASK-026.3 (D-17, D-21): credential failure semantics (`AuthorityExpired`, `kind: credential`) and just-in-time resolution; per-tenant audit hash chain; `AuditService` read/verify with `audit:read` / `audit:verify` |
 | 4 | 2026-11-05 | TASK-026.3 (D-15, D-18, D-19, D-20): grant narrowing for child tasks, one PEP for every ingress path, policy decision cache rules, revocation checkpoint for running work |
 | 5 | 2026-11-05 | FEAT-027.7: identity-flow [threat model](../security/threat-model.md) (STRIDE per flow, each mitigation tied to a test, checked by the readiness script) and per-tenant quotas (`QuotaExceeded`) |
+| 6 | 2026-11-06 | FEAT-028.2: `maxConcurrentExecutions` tenant quota, enforced across every worker sharing the store |
 
 ## TypeScript contract (normative)
 
@@ -92,5 +93,5 @@ Verified by `packages/testkit/test/authorization.test.ts` (SEC-06, SEC-05 M2 par
 - **PEP parity (D-18).** `AgentService.delegate`, the activation ingress and the built-in `delegation.delegate` operation run the same checks in the same order (authenticate, grant, tenant/visibility, `delegation:delegate` policy). The A2A provider must reuse them (FEAT-027.8).
 - **Decision cache (D-19).** `CachingPolicyDecisionPoint` caches `allow` (optionally `deny`) per tenant, principal, principal type, grant, action and resource for at most `ttlMs` (default 30 s); requests with `context` are not cached; failures and malformed decisions are never cached; a changed `policyVersion` or `invalidate({ tenantId, principalId, grantRef })` drops entries immediately. Grant status is never cached.
 - **Revocation checkpoint (D-20).** `revokeAuthority(grantRef)` (trusted services) aborts running executions under that grant with `AuthorityExpired` (status `revoked`), invalidates cached decisions and audits the revocation with the grant's digest only. Queued work is held by the dispatch gate. Committed effects are not rolled back; `listEffects(taskId)` returns the journal for an authorized compensation decided by the application.
-- **Tenant quotas (M2-11).** `createLocalApp({ quotas: (tenantId) => ({ maxActiveTasks?, maxAcceptsPerMinute?, maxInstances? }) })`. Checked inside the accepting (or instance-creating) transaction, after idempotent replays are answered; a refusal is `QuotaExceeded` (retryable) with only the quota name and limit in its details, and never affects another tenant.
+- **Tenant quotas (M2-11).** `createLocalApp({ quotas: (tenantId) => ({ maxActiveTasks?, maxAcceptsPerMinute?, maxInstances?, maxConcurrentExecutions? }) })`. Checked inside the accepting (or instance-creating) transaction, after idempotent replays are answered; a refusal is `QuotaExceeded` (retryable) with only the quota name and limit in its details, and never affects another tenant. `maxConcurrentExecutions` (M3-02) is not a refusal: it is counted inside each lease transaction over the running executions of every worker sharing the store, and excess work stays queued.
 - **Threat model.** [docs/security/threat-model.md](../security/threat-model.md) lists STRIDE threats per identity flow with the mitigating test; planned rows name their owning backlog item.

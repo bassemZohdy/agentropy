@@ -12,6 +12,8 @@ export interface TenantQuota {
   maxAcceptsPerMinute?: number;
   /** Agent instances that are not retired. */
   maxInstances?: number;
+  /** Executions running at once across every worker sharing the store (M3-02); excess work waits queued. */
+  maxConcurrentExecutions?: number;
 }
 
 export type QuotaResolver = (tenantId: string) => TenantQuota | undefined;

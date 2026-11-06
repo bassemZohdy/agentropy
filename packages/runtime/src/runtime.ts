@@ -27,6 +27,7 @@ import {
   type WakeReason,
   type WakeupRequest,
 } from '@agentropy/core';
+import { randomUUID } from 'node:crypto';
 import type { InMemoryImplementationProviderRegistry } from './implementation.js';
 import {
   DEFAULT_RETRY,
@@ -73,6 +74,8 @@ export interface RuntimeOptions {
   pdpTimeoutMs?: number;
   /** Largest serialized checkpoint a waiting disposition may store (R-37; default 64 KiB). */
   maxCheckpointBytes?: number;
+  /** Identity of this worker among those sharing the store (M3-02); recorded on every lease. */
+  workerId?: string;
 }
 
 type GateReason = DispatchGate['reason'];
@@ -94,6 +97,26 @@ const EMPTY_SKILLS: SkillAccess = {
       new AgentropyError('CapabilityNotDeclared', `Skill ${id} is not pinned`),
     ),
 };
+
+/**
+ * Fair dispatch order (M3-02): round-robin across tenants, oldest first within each tenant, so one tenant's backlog
+ * cannot starve another's on a shared pool.
+ */
+export function fairOrder<T extends { value: { tenantId?: string } }>(
+  due: T[],
+): T[] {
+  const queues = new Map<string, T[]>();
+  for (const e of due) {
+    const k = e.value.tenantId ?? '';
+    const q = queues.get(k);
+    if (q) q.push(e);
+    else queues.set(k, [e]);
+  }
+  const out: T[] = [];
+  for (let i = 0; out.length < due.length; i++)
+    for (const q of queues.values()) if (i < q.length) out.push(q[i]!);
+  return out;
+}
 
 const addMs = (iso: string, ms: number) =>
   new Date(Date.parse(iso) + ms).toISOString();
@@ -120,6 +143,7 @@ export class AgentRuntime {
       gateRetry: { initialMs: 1_000, maxMs: 300_000, maxAttempts: 8 },
       pdpTimeoutMs: 5_000,
       maxCheckpointBytes: 64 * 1024,
+      workerId: `worker-${randomUUID()}`,
       ...options,
     };
     this.o.tasks.onCancelRequested((taskId) => {
@@ -142,13 +166,33 @@ export class AgentRuntime {
     await this.o.relay?.drain();
     const free = this.o.poolSize - this.running.size;
     if (free <= 0) return 0;
-    const due = await this.store.transaction((tx) =>
-      tx.find<StoredExecution>('executions', { where: { state: 'queued' } }),
+    const now = this.now();
+    const due = fairOrder(
+      (
+        await this.store.transaction((tx) =>
+          tx.find<StoredExecution>('executions', {
+            where: { state: 'queued' },
+          }),
+        )
+      ).filter((e) => e.value.runAt <= now && !this.running.has(e.id)),
     );
+    // Cheap pre-check so tenants at their concurrency limit are not re-admitted every tick; lease() re-checks.
+    const busy = new Map<string, number>();
+    if (this.o.tasks.o.quotas)
+      for (const r of await this.store.transaction((tx) =>
+        tx.find<StoredExecution>('executions', { where: { state: 'running' } }),
+      ))
+        if (r.value.tenantId)
+          busy.set(r.value.tenantId, (busy.get(r.value.tenantId) ?? 0) + 1);
     let started = 0;
     for (const e of due) {
       if (started >= free) break;
-      if (e.value.runAt > this.now() || this.running.has(e.id)) continue;
+      const tenant = e.value.tenantId;
+      const cap =
+        tenant !== undefined
+          ? this.o.tasks.o.quotas?.(tenant)?.maxConcurrentExecutions
+          : undefined;
+      if (cap !== undefined && (busy.get(tenant!) ?? 0) >= cap) continue;
       let leased: Awaited<ReturnType<typeof this.lease>>;
       try {
         const admission = await this.admit(e);
@@ -160,6 +204,7 @@ export class AgentRuntime {
         throw err;
       }
       if (!leased) continue;
+      if (tenant) busy.set(tenant, (busy.get(tenant) ?? 0) + 1);
       const controller = new AbortController();
       let release!: () => void;
       const done = new Promise<void>((r) => (release = r));
@@ -184,19 +229,46 @@ export class AgentRuntime {
   async renewLeases(): Promise<number> {
     if (!this.running.size) return 0;
     const ids = [...this.running.keys()];
-    return this.store.transaction(async (tx) => {
-      let renewed = 0;
+    const cancelled: string[] = [];
+    const fenced: string[] = [];
+    const renewed = await this.store.transaction(async (tx) => {
+      cancelled.length = fenced.length = 0;
+      let n = 0;
       for (const id of ids) {
         const e = await tx.get<StoredExecution>('executions', id);
-        if (!e || e.value.state !== 'running') continue;
+        if (!e || e.value.state !== 'running') {
+          // Another worker recovered this lease (we stalled past expiry): stop the handler, its result is fenced.
+          fenced.push(id);
+          continue;
+        }
         await tx.update<StoredExecution>('executions', id, e.revision, {
           ...e.value,
           leaseExpiresAt: addMs(this.now(), this.o.leaseMs),
         });
-        renewed++;
+        n++;
+        // A cancel accepted by another worker reaches this one through the store (M3-02).
+        const t = await tx.get<TaskRecord>('tasks', e.value.taskId);
+        if (t?.value.cancelRequestedAt) cancelled.push(id);
       }
-      return renewed;
+      return n;
     });
+    for (const id of fenced)
+      this.running
+        .get(id)
+        ?.controller.abort(
+          new AgentropyError('StaleRevision', 'Execution lease was lost'),
+        );
+    for (const id of cancelled) {
+      const r = this.running.get(id);
+      if (r && !r.controller.signal.aborted)
+        void this.cancelRunning(id, r.controller);
+    }
+    return renewed;
+  }
+
+  /** This worker's identity (M3-02). */
+  get workerId(): string {
+    return this.o.workerId;
   }
 
   /**
@@ -402,6 +474,25 @@ export class AgentRuntime {
     }
   }
 
+  /**
+   * Store-wide per-tenant concurrency (M3-02, `maxConcurrentExecutions`): counted inside the lease transaction over
+   * every worker's running executions, so workers sharing the store cannot overshoot together.
+   */
+  private async tenantAtCapacity(
+    tx: StoreTx,
+    tenantId: string | undefined,
+  ): Promise<boolean> {
+    if (!tenantId) return false;
+    const limit = this.o.tasks.o.quotas?.(tenantId)?.maxConcurrentExecutions;
+    if (limit === undefined) return false;
+    const running = (
+      await tx.find<StoredExecution>('executions', {
+        where: { state: 'running' },
+      })
+    ).filter((x) => x.value.tenantId === tenantId).length;
+    return running >= limit;
+  }
+
   /** E2+E3 with T3 in one transaction; the lease epoch fences every later write of this execution. */
   private async lease(
     executionId: string,
@@ -418,6 +509,7 @@ export class AgentRuntime {
       if (!e || e.value.state !== 'queued') return undefined;
       const t = (await tx.get<TaskRecord>('tasks', e.value.taskId))!;
       if (t.value.status !== 'assigned') return undefined;
+      if (await this.tenantAtCapacity(tx, t.value.tenantId)) return undefined;
       // Lease fence (ADR-0024): the admission decision is only valid for the task and gate revisions it saw.
       const gate = await tx.get<DispatchGate>('gates', t.id);
       if (
@@ -455,6 +547,8 @@ export class AgentRuntime {
           leaseEpoch: epoch,
           leaseExpiresAt: addMs(now, this.o.leaseMs),
           startedAt: now,
+          tenantId: t.value.tenantId,
+          workerId: this.o.workerId,
         },
       );
       const task = await this.o.tasks.transition(tx, t, 'running', 'T3', {
