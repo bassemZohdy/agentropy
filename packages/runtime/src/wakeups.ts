@@ -23,6 +23,7 @@ import {
 } from '@agentropy/core';
 import type { StoredHumanAction } from './human-actions.js';
 import type { InstanceDirectory } from './registry.js';
+import type { RemoteDelegationService, RemoteTaskRecord } from './remote.js';
 import type { WakeupRecord } from './runtime.js';
 import {
   toSnapshot,
@@ -396,8 +397,23 @@ export class WakeupService {
           };
         }
       } else if (c.kind === 'child-tasks') {
+        // Remote children (FEAT-027.9) are tracked by their local projection.
+        const remote = c.taskIds.some((id) => id.includes(':'))
+          ? await tx.find<RemoteTaskRecord>('remoteTasks', {})
+          : [];
         const children = await Promise.all(
-          c.taskIds.map((id) => tx.get<TaskRecord>('tasks', id)),
+          c.taskIds.map(async (id) => {
+            const local = await tx.get<TaskRecord>('tasks', id);
+            if (local) return local;
+            const r = remote.find((d) => d.value.taskId === id);
+            return r
+              ? ({
+                  ...r,
+                  id,
+                  value: r.value as unknown as TaskRecord,
+                } as StoredDocument<TaskRecord>)
+              : undefined;
+          }),
         );
         const done = children.filter(
           (d): d is StoredDocument<TaskRecord> =>
@@ -481,6 +497,7 @@ export class BuiltinCapabilityProvider implements CapabilityProvider {
 export function coreOperationHandlers(
   tasks: TaskService,
   wakeups: WakeupService,
+  remote?: RemoteDelegationService,
 ): Record<string, OperationHandler> {
   const agentPrincipal = async (
     ctx: CapabilityInvocationContext,
@@ -507,12 +524,50 @@ export function coreOperationHandlers(
       throw new AgentropyError('NotFound', 'Task not found');
     return doc;
   };
+  const remoteChild = async (
+    taskId: string,
+    ctx: CapabilityInvocationContext,
+  ): Promise<RemoteTaskRecord | undefined> => {
+    if (!remote || !taskId.includes(':')) return undefined;
+    try {
+      const r = await remote.get(taskId, await agentPrincipal(ctx));
+      return r.parentTaskId === ctx.taskId ? r : undefined;
+    } catch {
+      return undefined;
+    }
+  };
   return {
     delegate: async (input, ctx) => {
       const d = input as DelegateInput;
       const parent = await tasks.o.store.transaction((tx) =>
         tx.get<TaskRecord>('tasks', ctx.taskId),
       );
+      if (d.target?.remote) {
+        if (!remote)
+          throw new AgentropyError(
+            'NoCompatibleRoute',
+            'No communication router is configured for remote targets',
+          );
+        if (!ctx.idempotencyKey)
+          throw new AgentropyError(
+            'SchemaViolation',
+            'delegate requires a stepKey',
+            {
+              details: { reason: 'missingStepKey' },
+            },
+          );
+        return remote.delegate(
+          {
+            target: d.target,
+            input: d.input,
+            idempotencyKey: ctx.idempotencyKey,
+            correlationId: parent?.value.correlationId ?? ctx.taskId,
+            parentTaskId: ctx.taskId,
+            ...(d.deadline ? { deadline: d.deadline } : {}),
+          },
+          await agentPrincipal(ctx),
+        );
+      }
       return tasks.delegate(
         {
           target: d.target,
@@ -528,11 +583,16 @@ export function coreOperationHandlers(
       );
     },
     getTask: async (input, ctx): Promise<TaskSnapshot> => {
-      const doc = await ownChild((input as { taskId: string }).taskId, ctx);
+      const { taskId } = input as { taskId: string };
+      const r = remote ? await remoteChild(taskId, ctx) : undefined;
+      if (r) return remote!.snapshot(r);
+      const doc = await ownChild(taskId, ctx);
       return toSnapshot(doc.value, doc.revision);
     },
     cancel: async (input, ctx) => {
       const { taskId, reason } = input as { taskId: string; reason?: string };
+      const r = remote ? await remoteChild(taskId, ctx) : undefined;
+      if (r) return remote!.cancel(taskId, await agentPrincipal(ctx));
       await ownChild(taskId, ctx);
       return tasks.cancel(taskId, await agentPrincipal(ctx), reason);
     },

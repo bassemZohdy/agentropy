@@ -70,6 +70,8 @@ export function serveOnBroker(
   broker: InMemoryBroker,
   topic: string,
   target: DirectTarget,
+  /** The local instance this topic exposes (like the A2A server's `instanceId`). */
+  options: { instanceId?: string } = {},
 ): void {
   broker.serve(topic, async (payload, { principal }) => {
     try {
@@ -77,7 +79,12 @@ export function serveOnBroker(
       switch (req.op) {
         case 'delegate':
           return JSON.stringify({
-            ok: await target.delegate(req.request, principal),
+            ok: await target.delegate(
+              options.instanceId
+                ? { ...req.request, target: { instanceId: options.instanceId } }
+                : req.request,
+              principal,
+            ),
           });
         case 'send': {
           const m = validateAgentMessage(req.message);
@@ -153,11 +160,12 @@ export class BrokerCommunicationProvider implements AgentCommunicationProvider {
     return reply.ok as T;
   }
 
-  private state(s: TaskSnapshot): RemoteTaskState {
+  private state(s: TaskSnapshot & { output?: unknown }): RemoteTaskState {
     return {
       remoteState: s.status,
       normalized: s.status,
       observedAt: this.now(),
+      ...(s.output !== undefined ? { output: s.output } : {}),
     };
   }
 

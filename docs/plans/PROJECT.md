@@ -85,7 +85,7 @@ Live queue: [TODO.md](../../TODO.md). Verified work: `CHANGELOG.md` `[Unreleased
 | 6. J1, J2, AC-01…AC-20, SEC-01/02/03/04/07                                              | testkit            | FEAT-022, TASK-023                       | Done                                                                  |
 | 7. M1 exit gate and retrospective                                                       | contracts          | TASK-024                                 | Done — [retrospective](../review/2026-11-05-m1-retrospective.md)      |
 
-Also delivered outside the original wave list: tool registry/executor (FEAT-014), Agent Skills loader (FEAT-015). Blocked: TASK-025 (DCO run on real pull requests, owner action). Not started: TASK-026, FEAT-027 (M2), FEAT-028 (M3). M1 exit criteria are met for the single-process offline scope. Next: TASK-026 design follow-ups and FEAT-027 (M2).
+Also delivered outside the original wave list: tool registry/executor (FEAT-014), Agent Skills loader (FEAT-015). Blocked: TASK-025 (DCO run on real pull requests, owner action). TASK-026 (design follow-ups) and FEAT-027 (M2, nine subtasks) were drained on 2026-11-05/06; see CHANGELOG. Not started: FEAT-028 (M3). M1 and M2 exit criteria are met for the single-process runtime; multi-node operation is M3.
 
 Feature branches `feat/core-error-contract`, `feat/testkit-fake-clock`, `feat/testkit-fake-model` and `feat/testkit-fault-injector` were merged into `main` by TASK-029 under a one-off, owner-approved DCO exception (see [legacy PR review](../review/2026-11-05-legacy-pr-integration.md#owner-decision--2026-11-05-supersedes-the-pr-outcomes-above)); the DCO gate is unchanged for future PRs. The branches remain on the remote until the owner deletes them.
 

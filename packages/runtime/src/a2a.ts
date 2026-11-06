@@ -529,10 +529,20 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
   }
 
   private state(t: A2ATask): RemoteTaskState {
+    const parts = t.artifacts?.[0]?.parts;
+    let output: unknown;
+    if (t.status.state === 'TASK_STATE_COMPLETED' && parts?.length === 1) {
+      try {
+        output = decodeParts(parts);
+      } catch {
+        output = undefined; // an unreadable artifact is not a result
+      }
+    }
     return {
       remoteState: t.status.state,
       normalized: FROM_A2A[t.status.state] ?? 'unknown',
       observedAt: this.now(),
+      ...(output !== undefined ? { output } : {}),
     };
   }
 

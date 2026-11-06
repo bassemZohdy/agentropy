@@ -29,6 +29,7 @@ import {
   type TaskHandle,
   type TaskSnapshot,
   type Telemetry,
+  type CommunicationRouter,
   type ReasoningProvider,
   type WorkflowEngine,
   type ToolExecutor,
@@ -57,6 +58,7 @@ import { resolveLimits, type RuntimeLimits } from './limits.js';
 import type { QuotaResolver } from './quotas.js';
 import { CachingPolicyDecisionPoint } from './policy-cache.js';
 import { reasoningOperationHandlers } from './reasoning.js';
+import { RemoteDelegationService } from './remote.js';
 import {
   bridgeWorkflowCompletions,
   workflowOperationHandlers,
@@ -110,6 +112,8 @@ export interface LocalAppOptions {
   faults?: FaultHook;
   /** Spans and metrics (e.g. `openTelemetry({ api, tracer, meter })`); no-op by default. */
   telemetry?: Telemetry;
+  /** Router for remote delegation targets (`target.remote`), with A2A or custom providers registered (FEAT-027.9). */
+  communication?: { router: CommunicationRouter };
   /** Per-tenant quotas (M2-11): active tasks, accept rate, live instances. */
   quotas?: QuotaResolver;
   /** Relay leader lease, for several processes sharing one store (M2-06). */
@@ -338,6 +342,11 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
   });
   const human = new HumanActionService(tasks);
   wakeups.addSweep(() => human.sweep());
+  const remote = o.communication
+    ? new RemoteDelegationService({ tasks, router: o.communication.router })
+    : undefined;
+  // Remote projections refresh before wake-ups are evaluated, so a parent waiting on a remote child wakes promptly.
+  if (remote) wakeups.addSweep(() => remote.sync());
   const stream = new TaskEventStream(tasks);
   const relay = new OutboxRelay({
     store,
@@ -393,6 +402,17 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
           }),
       }
     : {};
+  function isRemote(taskId: string): boolean {
+    return !!remote && taskId.includes(':');
+  }
+  function remoteOrFail(): RemoteDelegationService {
+    if (!remote)
+      throw new AgentropyError(
+        'NoCompatibleRoute',
+        'No communication router is configured for remote targets',
+      );
+    return remote;
+  }
   async function hasActiveTasks(instanceId: string): Promise<boolean> {
     return (
       await store.transaction((tx) =>
@@ -409,7 +429,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
   }
 
   const builtin = new BuiltinCapabilityProvider({
-    ...coreOperationHandlers(tasks, wakeups),
+    ...coreOperationHandlers(tasks, wakeups, remote),
     ...inboxOperationHandlers(tasks, inbox),
     ...humanActionOperationHandlers(human),
     ...toolHandlers,
@@ -467,15 +487,34 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
       }
       definitions.register(def);
     },
-    delegate: (r, c, trace) => tasks.delegate(r, c, trace),
-    getTask: (id, c) => tasks.getTask(id, c),
+    delegate: async (r, c, trace) =>
+      r?.target?.remote
+        ? remoteOrFail().delegate(r, c)
+        : tasks.delegate(r, c, trace),
+    getTask: async (id, c) =>
+      isRemote(id)
+        ? remoteOrFail().snapshot(await remoteOrFail().get(id, c))
+        : tasks.getTask(id, c),
     listTasks: (q, c) => tasks.listTasks(q, c),
     listInstances: (c, ownerId) => instances.list(c, ownerId),
     drainInstance: (id, c) => instances.drain(id, c),
     shareInstance: (id, ids, c) => instances.share(id, ids, c),
     getTaskByIdempotencyKey: (k, c) => tasks.getTaskByIdempotencyKey(k, c),
-    getResult: (id, c) => tasks.getResult(id, c),
-    cancel: (id, c, reason) => tasks.cancel(id, c, reason),
+    getResult: async <O>(id: string, c: TrustedPrincipal): Promise<O> => {
+      if (!isRemote(id)) return tasks.getResult<O>(id, c);
+      const r = await remoteOrFail().get(id, c);
+      if (r.status === 'completed') return r.output as O;
+      if (r.status === 'failed')
+        throw new AgentropyError(
+          'TaskFailed',
+          r.outcome?.message ?? 'Remote task failed',
+        );
+      if (r.status === 'cancelled')
+        throw new AgentropyError('TaskCancelled', 'Remote task cancelled');
+      throw new AgentropyError('NotReady', 'Remote task has not finished');
+    },
+    cancel: (id, c, reason) =>
+      isRemote(id) ? remoteOrFail().cancel(id, c) : tasks.cancel(id, c, reason),
     subscribe: (id, c, from) => stream.subscribe(id, c, from),
     submitTurn: (t, c) => tasks.submitTurn(t, c),
     createInstance: (req, c) => instances.create(req, c),

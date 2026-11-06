@@ -95,6 +95,8 @@ export interface RemoteTaskState {
   remoteState: string;
   normalized: TaskSnapshot['status'] | 'unknown';
   observedAt: string;
+  /** Result reported by the remote side once completed (data, never instructions). */
+  output?: unknown;
 }
 
 export interface AgentCommunicationProvider {

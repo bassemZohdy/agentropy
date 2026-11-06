@@ -23,3 +23,4 @@ export * from './reasoning.js';
 export * from './workflow.js';
 export * from './quotas.js';
 export * from './a2a.js';
+export * from './remote.js';

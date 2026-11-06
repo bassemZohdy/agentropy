@@ -183,7 +183,12 @@ export interface HandlerRegistry {
 }
 
 export interface DelegationRequest<I = unknown> {
-  target: { definition?: VersionedRef; instanceId?: AgentInstanceId };
+  target: {
+    definition?: VersionedRef;
+    instanceId?: AgentInstanceId;
+    /** A remotely deployed agent reached through the CommunicationRouter (A2A or a custom provider). */
+    remote?: { endpoint: string; definitionId: string; version?: string };
+  };
   input: I;
   idempotencyKey: string;
   correlationId: string;

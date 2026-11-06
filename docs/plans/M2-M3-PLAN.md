@@ -20,7 +20,7 @@ Milestone 2 — Always-on, interoperability and control. Root: **FEAT-027**.
 - `C-03` A2A provider: outbound and inbound, remote task mapping, authorization (R-32, R-33).
 - `C-04` Custom-provider SPI sample (broker/RPC) without a mandatory broker dependency.
 
-Backlog mapping (2026-11-05): FEAT-027.1 = M2-05; FEAT-027.2 = M2-03, M2-04; FEAT-027.3 = M2-02, M2-06; FEAT-027.4 = M2-01; FEAT-027.5 = M2-07, M2-08; FEAT-027.6 = M2-10; FEAT-027.7 = M2-09, M2-11; FEAT-027.8 = C-03, C-04. Contract work for the same areas is TASK-026.2–.5 ([design follow-ups](DESIGN-FOLLOWUPS.md#resolution-ledger-2026-11-05-task-0261)).
+Backlog mapping (2026-11-05): FEAT-027.1 = M2-05; FEAT-027.2 = M2-03, M2-04; FEAT-027.3 = M2-02, M2-06; FEAT-027.4 = M2-01; FEAT-027.5 = M2-07, M2-08; FEAT-027.6 = M2-10; FEAT-027.7 = M2-09, M2-11; FEAT-027.8 = C-03, C-04; FEAT-027.9 = remote targets in delegation (C-03 completion). Contract work for the same areas is TASK-026.2–.5 ([design follow-ups](DESIGN-FOLLOWUPS.md#resolution-ledger-2026-11-05-task-0261)).
 
 ## M3
 

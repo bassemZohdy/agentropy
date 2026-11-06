@@ -1,4 +1,4 @@
-# Agentropy Agent Contract v1.0 — revision 9
+# Agentropy Agent Contract v1.0 — revision 10
 
 **Status:** Accepted for M1 implementation (2026-11-05); not API-stable. Implemented types live in `packages/core`; behavior is claimed only where an executable test exists.
 **Scope:** Core logical Agent, AgentDefinition, AgentInstance, DelegatedTask and Execution. Transport/runtime are independent.
@@ -16,6 +16,7 @@
 | 7 | 2026-11-05 | Readiness closure: `AcceptanceSnapshot`; `Agent.definition` removed (handlers bind by implementation artifact); `HandlerRegistry` keyed by artifact and owned by the `native-ts` provider; `ToolSelection.bindingId`; read-only `AgentContext.skills`; implementation SPI moved to [Agent Implementation v1](agent-implementation-v1.md); tool and skill rules moved to [Tool v1](tool-v1.md) and [Skill v1](skill-v1.md) |
 | 8 | 2026-11-05 | Implementation (FEAT-027.1, M1 retrospective): `AgentService` gains `listTasks`, `listInstances`, `drainInstance`, `getHumanAction` and `reauthorize`; `AgentInstance.draining` (not a lifecycle state); event ingress (`publishEvent`) is a trusted adapter operation, not part of `AgentService` |
 | 9 | 2026-11-05 | Governance (TASK-026.2, D-03/D-08): an instance accepts delegations only from its owner, principals in `AgentInstance.sharedWith`, agents whose own instance has the same (or a shared) owner, and trusted services — anyone else in the tenant gets `NotFound`; owner-only `shareInstance`; delegators see their own tasks, owners every task on their instance |
+| 10 | 2026-11-06 | FEAT-027.9: `DelegationRequest.target.remote = { endpoint, definitionId, version? }` routes through the CommunicationRouter; the caller gets a handle to a local projection (`authority: 'remote'`, durability `none`) refreshed from the authoritative remote task, visible like a local child; `child-tasks` wake-ups include remote children; grants never cross the boundary |
 
 ## Decisions
 
