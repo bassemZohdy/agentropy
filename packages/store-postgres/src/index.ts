@@ -7,8 +7,13 @@
  * Semantics, matching the SQLite adapter and the Store conformance suite:
  * - one `transaction` = one `BEGIN ISOLATION LEVEL SERIALIZABLE … COMMIT`; a serialization failure or deadlock
  *   re-runs the callback (bounded), so transaction callbacks must only touch the store;
- * - `seq` comes from a counter row updated inside the transaction, so seq order equals commit order and readers
- *   paging with `afterSeq` never skip a row that commits late;
+ * - `seq` is assigned at commit (FEAT-032.3, ADR-0028 revision 2): just before `COMMIT`, a transaction that inserted
+ *   rows takes a per-schema transaction advisory lock, draws one block from a PostgreSQL sequence and stamps its
+ *   rows. The lock is held until the commit completes, so seq order equals commit order and readers paging with
+ *   `afterSeq` never skip a row that commits late; neither the lock nor the sequence can cause a serialization
+ *   failure, so concurrent writers no longer conflict on a counter row. Inside its own transaction an inserted row
+ *   has a provisional seq above every committed one; the document `insert` returned carries the final seq once
+ *   the transaction has committed;
  * - indexed fields live in typed side columns (`n_<field>` numeric, `s_<field>` text in "C" collation) so equality,
  *   ranges and ordering behave exactly like the in-memory reference (nulls first, code-unit string order).
  */
@@ -31,7 +36,16 @@ import {
 export const packageName = '@agentropy/store-postgres' as const;
 
 /** Schema version this adapter writes; a newer database is refused with IncompatibleVersion. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+
+/** Provisional seq of rows inserted by a transaction that has not committed yet: above every committed seq. */
+const PROVISIONAL_SEQ = 2 ** 52;
+
+/** A row this transaction inserted; its document gets the final seq after COMMIT. */
+interface Inserted {
+  c: CollectionName;
+  doc: StoredDocument<unknown>;
+}
 
 export interface PgResult<R> {
   rows: R[];
@@ -68,6 +82,11 @@ export interface PostgresStoreOptions {
    * transactions that keep losing queue behind each other instead of colliding again. Default 2.
    */
   serializeRetriesAfter?: number;
+  /**
+   * With a pool, prefer index scans inside transactions (`SET LOCAL enable_seqscan = off`) so serializable
+   * transactions on small tables do not conflict through whole-table predicate locks. Default true.
+   */
+  preferIndexScans?: boolean;
   /** Close the pool/client when the store closes. Default false (the caller owns the connection). */
   ownsConnection?: boolean;
   /**
@@ -125,6 +144,36 @@ export class PostgresStore implements Store {
   private readonly mutex = new AsyncMutex();
   private ready?: Promise<void>;
   private closed = false;
+  /**
+   * Under SERIALIZABLE a sequential scan predicate-locks the whole table, so two writers that each scan a small
+   * table (where the planner prefers sequential scans even for primary-key lookups) conflict although they touch
+   * different rows. PostgreSQL's documentation for serializable workloads recommends steering the planner to index
+   * scans; pooled connections do so per transaction, in the same round trip as BEGIN. A single client serializes
+   * transactions itself and needs nothing.
+   */
+  private async beginTransaction(db: PgClient): Promise<void> {
+    const begin = 'BEGIN ISOLATION LEVEL SERIALIZABLE';
+    const prefer = 'SET LOCAL enable_seqscan = off';
+    if (!this.o.pool || this.o.preferIndexScans === false) {
+      await db.query(begin);
+      return;
+    }
+    // One round trip where the driver accepts several statements in a query (node-postgres does); otherwise two.
+    if (this.multiStatement !== false) {
+      try {
+        await db.query(`${begin}; ${prefer}`);
+        this.multiStatement = true;
+        return;
+      } catch (err) {
+        if (this.multiStatement === true) throw err;
+        this.multiStatement = false;
+      }
+    }
+    await db.query(begin);
+    await db.query(prefer);
+  }
+  private multiStatement?: boolean;
+
   private get retryLockKey() {
     return `agentropy-retry:${this.schema}`;
   }
@@ -173,6 +222,7 @@ export class PostgresStore implements Store {
             { details: { kind: 'store-schema' } },
           );
         if ((applied ?? 0) < 1) await this.createV1(db);
+        if ((applied ?? 0) < 2) await this.migrateV2(db);
         await this.evolve(db);
         await db.query('COMMIT');
       } catch (err) {
@@ -198,6 +248,55 @@ export class PostgresStore implements Store {
     ][])
       await this.createCollection(db, c, fields);
     await db.query(`INSERT INTO ${s}.schema_migrations (version) VALUES (1)`);
+  }
+
+  /**
+   * Schema 2 (FEAT-032.3): seq comes from a sequence that continues after the old counter row. Every worker must run
+   * a schema-2 adapter: a schema-1 worker still running would take seqs from the counter, below the sequence.
+   */
+  private async migrateV2(db: PgClient) {
+    const s = `"${this.schema}"`;
+    const last = (
+      await db.query<{ value: string | number }>(
+        `SELECT value FROM ${s}.meta WHERE key = 'seq'`,
+      )
+    ).rows[0]?.value;
+    await db.query(
+      `CREATE SEQUENCE ${s}.seq AS BIGINT START WITH ${Number(last ?? 0) + 1}`,
+    );
+    await db.query(`INSERT INTO ${s}.schema_migrations (version) VALUES (2)`);
+  }
+
+  /**
+   * Stamps the rows this transaction inserted with one block of seq values, in insertion order. The advisory lock
+   * is held until COMMIT, so blocks are drawn in commit order. One statement; returns the first value.
+   */
+  private async assignSeq(db: PgClient, inserted: Inserted[]): Promise<number> {
+    const byCollection = new Map<
+      CollectionName,
+      { ids: string[]; ks: number[] }
+    >();
+    inserted.forEach(({ c, doc }, i) => {
+      const e = byCollection.get(c) ?? { ids: [], ks: [] };
+      e.ids.push(doc.id);
+      e.ks.push(i);
+      byCollection.set(c, e);
+    });
+    const params: unknown[] = [inserted.length, `agentropy-seq:${this.schema}`];
+    const updates = [...byCollection.entries()].map(([c, e], j) => {
+      params.push(e.ids, e.ks);
+      return (
+        `u${j} AS (UPDATE ${this.t(c)} t SET seq = blk.first + v.k FROM blk, ` +
+        `unnest($${params.length - 1}::text[], $${params.length}::int[]) AS v(id, k) WHERE t.id = v.id)`
+      );
+    });
+    const seq = `'"${this.schema}".seq'`;
+    const res = await db.query<{ first: string | number }>(
+      `WITH blk AS (SELECT setval(${seq}, nextval(${seq}) + $1::bigint - 1) - $1::bigint + 1 AS first ` +
+        `FROM (SELECT pg_advisory_xact_lock(hashtext($2))) l), ${updates.join(', ')} SELECT first FROM blk`,
+      params,
+    );
+    return Number(res.rows[0]!.first);
   }
 
   /**
@@ -302,10 +401,17 @@ export class PostgresStore implements Store {
               this.retryLockKey,
             ]);
           try {
-            await db.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+            await this.beginTransaction(db);
             try {
-              const result = await fn(this.tx(db));
+              const inserted: Inserted[] = [];
+              const result = await fn(this.tx(db, inserted));
+              const first = inserted.length
+                ? await this.assignSeq(db, inserted)
+                : undefined;
               await db.query('COMMIT');
+              if (first !== undefined)
+                for (const [k, { doc }] of inserted.entries())
+                  doc.seq = first + k;
               return result;
             } catch (err) {
               await db.query('ROLLBACK').catch(() => undefined);
@@ -352,8 +458,7 @@ export class PostgresStore implements Store {
     }
   }
 
-  private tx(db: PgClient): StoreTx {
-    const s = `"${this.schema}"`;
+  private tx(db: PgClient, inserted: Inserted[]): StoreTx {
     const get = async <T>(c: CollectionName, id: string) => {
       const r = (
         await db.query<Row>(
@@ -381,21 +486,17 @@ export class PostgresStore implements Store {
       get,
       insert: async <T>(c: CollectionName, id: string, value: T) => {
         const { cols, params } = indexParams(c, value);
-        // One round trip (FEAT-032.2): the counter bump and the insert share a statement. A duplicate ID still
-        // consumes a seq value; seq stays unique and in commit order, only not gap-free.
+        // The final seq is assigned at commit (assignSeq); until then the row sorts after every committed row.
+        const seq = PROVISIONAL_SEQ + inserted.length;
         const all = ['id', 'revision', 'seq', 'value', ...cols];
-        let n = 0;
-        const values = all.map((col) =>
-          col === 'seq' ? '(SELECT value FROM next_seq)' : `$${++n}`,
+        const res = await db.query(
+          `INSERT INTO ${this.t(c)} (${all.join(', ')}) VALUES (${all.map((_, i) => `$${i + 1}`).join(', ')}) ON CONFLICT (id) DO NOTHING`,
+          [id, 1, seq, JSON.stringify(value), ...params],
         );
-        const res = await db.query<{ seq: string | number }>(
-          `WITH next_seq AS (UPDATE ${s}.meta SET value = value + 1 WHERE key = 'seq' RETURNING value) ` +
-            `INSERT INTO ${this.t(c)} (${all.join(', ')}) VALUES (${values.join(', ')}) ON CONFLICT (id) DO NOTHING RETURNING seq`,
-          [id, 1, JSON.stringify(value), ...params],
-        );
-        if (res.rows.length !== 1) throw staleRevision(c, id, 'exists');
-        const seq = Number(res.rows[0]!.seq);
-        return { id, revision: 1, seq, value: structuredClone(value) };
+        if (affected(res) !== 1) throw staleRevision(c, id, 'exists');
+        const doc = { id, revision: 1, seq, value: structuredClone(value) };
+        inserted.push({ c, doc });
+        return doc;
       },
       update: async <T>(
         c: CollectionName,

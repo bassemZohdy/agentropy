@@ -1,7 +1,7 @@
 // FEAT-031: the shared Store conformance suite and adapter checks on a real PostgreSQL server through
 // node-postgres. Opt-in: set AGENTROPY_PG_URL (e.g. postgres://postgres:pw@127.0.0.1:55432/agentropy); without it
 // the suite is skipped and the offline guard stays in force. Every store gets its own schema, dropped afterwards.
-import type { Store } from '@agentropy/core';
+import { NOOP_TELEMETRY, type Store } from '@agentropy/core';
 import {
   allowNetwork,
   defineStoreConformance,
@@ -84,6 +84,69 @@ live('PostgresStore on a server', () => {
     expect(r.effects.length).toBe(8);
     expect(new Set(r.effects.map((e) => e.seq)).size).toBe(8);
   }, 60_000);
+
+  it('a reader paging with afterSeq while writers insert concurrently never skips a row (FEAT-032.3)', async () => {
+    const s = open();
+    const W = 8;
+    const PER = 15;
+    let writing = true;
+    const writers = Promise.all(
+      Array.from({ length: W }, async (_, w) => {
+        for (let i = 0; i < PER; i++)
+          await s.transaction(async (tx) => {
+            await tx.insert('outbox', `w${w}-${i}-a`, { w, i });
+            // Hold the transaction open for a moment so commits interleave with other writers' allocations.
+            await new Promise((r) => setTimeout(r, Math.random() * 3));
+            await tx.insert('outbox', `w${w}-${i}-b`, { w, i });
+          });
+      }),
+    ).finally(() => (writing = false));
+    const seen: string[] = [];
+    let cursor = 0;
+    for (;;) {
+      const done = !writing;
+      const page = await s.transaction((tx) =>
+        tx.find('outbox', { afterSeq: cursor, orderBy: 'seq' }),
+      );
+      for (const d of page) seen.push(d.id);
+      cursor = page.at(-1)?.seq ?? cursor;
+      if (done && page.length === 0) break;
+    }
+    await writers;
+    expect(seen).toHaveLength(2 * W * PER);
+    expect(new Set(seen).size).toBe(2 * W * PER);
+    await s.close();
+  });
+
+  it('writers that insert concurrently do not conflict on the sequence (FEAT-032.3)', async () => {
+    const counted: string[] = [];
+    const telemetry = {
+      ...NOOP_TELEMETRY,
+      count: (name: string, _n: number, attrs?: Record<string, unknown>) =>
+        void counted.push(String(attrs?.['agentropy.store.outcome'])),
+    };
+    const schema = `conf_${process.pid}_${Date.now().toString(36)}_${n++}`;
+    created.push(schema);
+    const s = new PostgresStore({
+      pool: pool(),
+      schema,
+      ownsConnection: true,
+      telemetry,
+    });
+    await Promise.all(
+      Array.from({ length: 8 }, (_, w) =>
+        s.transaction(async (tx) => {
+          for (let i = 0; i < 5; i++)
+            await tx.insert('effects', `w${w}-${i}`, { w, i });
+        }),
+      ),
+    );
+    // Disjoint inserts used to collide on the counter row and be retried; now none are.
+    expect(counted).toEqual([]);
+    const rows = await s.transaction((tx) => tx.find('effects', {}));
+    expect(new Set(rows.map((r) => r.seq)).size).toBe(40);
+    await s.close();
+  });
 
   it('a hot row beyond the retry bound fails StaleRevision, never a lost or partial write', async () => {
     const r = await contend(40);

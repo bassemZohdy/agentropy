@@ -68,9 +68,22 @@ Same Docker Desktop setup, same day:
 - CI run 42175166339 (same runner type as the first CI run): acceptance throughput 111 → 156 tasks/s, acceptance p50 / p95 7.8 / 14 → 5.9 / 11 ms, accept-to-complete p50 27 → 32 ms (completion is unchanged and runner timing varies), 1 / 2 / 4 workers 47 / 43 / 35 tasks/s: still falling as workers are added.
 - The remaining 16 statements are a fence read, writes and the chain head read; reaching ≤ 12 needs several writes per round trip from the Store API. Completion (58 statements) is unchanged. Worker scaling is still flat: that is the `seq` row (FEAT-032.3).
 
+## Commit-time `seq` (FEAT-032.3)
+
+ADR-0028 revision 2 replaces the counter row with a sequence block drawn just before `COMMIT` under a transaction advisory lock, and pooled connections prefer index scans so disjoint writers do not share relation-wide predicate locks. Same Docker Desktop setup, same day:
+
+| | Counter row | Commit-time `seq` |
+|---|---|---|
+| 1 / 2 / 4 in-process workers | 19.5 / 18.4 / 20.1 tasks/s | 22.7 / 25.1 / 26.9 and 26.7 / 28.5 / 32.3 tasks/s (two runs) |
+| 8 writers inserting 5 rows each, serialization retries | some | 0 (`postgres-server.test.ts`) |
+
+- Throughput now grows with workers instead of staying flat. The gain is bounded by the single in-process store pool and the Docker network; separate hosts are FEAT-032.4.
+- A reader paging with `afterSeq` while 8 writers commit interleaved transactions sees every row exactly once (`postgres-server.test.ts`).
+- Acceptance and completion latency are unchanged within run-to-run noise; an inserting transaction adds one statement (the stamp) before `COMMIT`.
+
 ## Follow-ups
 
 - Batch several writes per round trip in the Store API, and apply the same changes to completion (FEAT-032.2).
-- Replace the single `seq` counter row with a sequence or commit-time ordering that does not serialize all writers, keeping "seq order equals commit order" for readers (ADR-0028 revision, FEAT-032.3).
+- ~~Replace the single `seq` counter row~~: done, commit-time `seq` (ADR-0028 revision 2, FEAT-032.3).
 - Measure on a dedicated database host (non-Docker, tuned `shared_buffers`, separate network) before treating the provisional targets as final (FEAT-032.4).
 - Serialization retries are now counted as `agentropy.store.conflicts` (FEAT-032.1).

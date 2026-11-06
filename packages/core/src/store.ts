@@ -46,7 +46,10 @@ export interface StoredDocument<T> {
   id: string;
   /** Starts at 1 and increases by one per update (compare-and-swap token). */
   revision: number;
-  /** Store-wide monotonic insertion order. */
+  /**
+   * Store-wide order of committed inserts: a reader paging with `afterSeq` never skips a row that commits later.
+   * Inside the inserting transaction an adapter may expose a provisional value; the committed value is final.
+   */
   seq: number;
   value: T;
 }

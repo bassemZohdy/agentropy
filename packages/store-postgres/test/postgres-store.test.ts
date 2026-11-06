@@ -92,6 +92,30 @@ describe('PostgresStore', () => {
     await db.close();
   });
 
+  it('schema 2 continues seq after the schema-1 counter; inserted rows carry their final seq after commit', async () => {
+    const db = new PGlite();
+    await new PostgresStore({ client: db }).migrate();
+    // Turn the database back into schema 1 with 41 rows' worth of counter.
+    await db.query('DROP SEQUENCE agentropy.seq');
+    await db.query('DELETE FROM agentropy.schema_migrations WHERE version = 2');
+    await db.query("UPDATE agentropy.meta SET value = 41 WHERE key = 'seq'");
+    const s = new PostgresStore({ client: db });
+    const a = await s.transaction(async (tx) => {
+      const doc = await tx.insert('sessions', 'a', {});
+      const inTx = (await tx.find('sessions', {}))[0]!.seq;
+      return { doc, inTx };
+    });
+    expect(a.doc.seq).toBe(42);
+    expect(a.inTx).toBeGreaterThan(Number.MAX_SAFE_INTEGER / 4); // provisional inside its own transaction
+    const b = await s.transaction(async (tx) => [
+      await tx.insert('sessions', 'b', {}),
+      await tx.insert('tasks', 'c', { status: 'created' }),
+    ]);
+    expect(b.map((d) => d.seq)).toEqual([43, 44]);
+    expect((await s.transaction((tx) => tx.get('tasks', 'c')))?.seq).toBe(44);
+    await db.close();
+  });
+
   it('refuses a database migrated by a newer adapter', async () => {
     const db = new PGlite();
     await new PostgresStore({ client: db }).migrate();
