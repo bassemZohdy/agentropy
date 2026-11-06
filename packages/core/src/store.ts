@@ -68,13 +68,17 @@ export interface StoreTx {
     collection: CollectionName,
     id: string,
   ): Promise<StoredDocument<T> | undefined>;
-  /** Fails StaleRevision (`reason: "exists"`) when the ID is taken. */
+  /**
+   * Fails StaleRevision (`reason: "exists"`) when the ID is taken. An adapter may buffer the write and report the
+   * failure at a later call in the same transaction or when the transaction commits, so do not catch a write
+   * failure inside the callback and carry on: let the transaction fail.
+   */
   insert<T>(
     collection: CollectionName,
     id: string,
     value: T,
   ): Promise<StoredDocument<T>>;
-  /** Compare-and-swap; fails StaleRevision when `expectedRevision` is not current. */
+  /** Compare-and-swap; fails StaleRevision when `expectedRevision` is not current (possibly later, as for insert). */
   update<T>(
     collection: CollectionName,
     id: string,

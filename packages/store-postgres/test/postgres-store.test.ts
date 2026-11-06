@@ -35,6 +35,33 @@ defineStoreConformance({ describe, it, expect }, 'postgres (PGlite)', {
   },
 });
 
+// The same contract with every write sent at the call (FEAT-032.2 switched off).
+defineStoreConformance(
+  { describe, it, expect },
+  'postgres (PGlite, unbatched)',
+  {
+    create: async () =>
+      new PostgresStore({
+        client: new PGlite(),
+        ownsConnection: true,
+        batchWrites: false,
+      }),
+  },
+);
+
+/** A PGlite client that records every statement it is sent. */
+function traced() {
+  const db = new PGlite();
+  const sent: string[] = [];
+  const client: PgClient = {
+    query: (text, params) => {
+      sent.push(text);
+      return db.query(text, params);
+    },
+  };
+  return { db, sent, client };
+}
+
 const code = async (p: Promise<unknown>) =>
   p.then(
     () => 'ok',
@@ -232,6 +259,86 @@ describe('PostgresStore', () => {
       ),
     ).toBe('ProviderUnavailable');
     await db.close();
+  });
+
+  it('buffers writes: one statement before COMMIT, own writes visible to later reads (FEAT-032.2)', async () => {
+    const { db, sent, client } = traced();
+    const s = new PostgresStore({ client });
+    await s.transaction((tx) => tx.insert('sessions', 'seen', { n: 0 }));
+    sent.length = 0;
+    const out = await s.transaction(async (tx) => {
+      const head = (await tx.get<{ n: number }>('sessions', 'seen'))!;
+      const t = await tx.insert('tasks', 't1', { status: 'created' });
+      const t2 = await tx.update('tasks', 't1', t.revision, {
+        status: 'running',
+      });
+      await tx.insert('outbox', 'e1', { published: 0, aggregateId: 't1' });
+      const h = await tx.update('sessions', 'seen', head.revision, { n: 1 });
+      return { t2, h };
+    });
+    // BEGIN, the read, one statement with every write, one for the seq block (an update is buffered), COMMIT.
+    expect(sent).toHaveLength(5);
+    expect([out.t2.revision, out.t2.seq, out.h.revision]).toEqual([
+      2,
+      out.t2.seq,
+      2,
+    ]);
+    const after = await s.transaction(async (tx) => [
+      await tx.get('tasks', 't1'),
+      await tx.get('outbox', 'e1'),
+      await tx.get('sessions', 'seen'),
+    ]);
+    expect(after.map((d) => [d?.revision, d?.value])).toEqual([
+      [2, { status: 'running' }],
+      [1, { published: 0, aggregateId: 't1' }],
+      [2, { n: 1 }],
+    ]);
+    // The task and outbox rows got consecutive final seqs, the updated document too.
+    expect(after[1]!.seq).toBe(after[0]!.seq + 1);
+    expect(out.t2.seq).toBe(after[0]!.seq);
+
+    // Reading a collection with buffered writes sends them first.
+    const seenInTx = await s.transaction(async (tx) => {
+      await tx.insert('tasks', 't2', { status: 'created' });
+      return (await tx.find('tasks', { where: { status: 'created' } })).map(
+        (d) => d.id,
+      );
+    });
+    expect(seenInTx).toEqual(['t2']);
+    await db.close();
+  });
+
+  it('a buffered write that loses fails the transaction and leaves nothing behind (FEAT-032.2)', async () => {
+    const s = new PostgresStore({ client: new PGlite(), ownsConnection: true });
+    await s.transaction((tx) => tx.insert('tasks', 'taken', { status: 'x' }));
+    // Inserted ID is taken: discovered when the writes are sent at commit.
+    expect(
+      await code(
+        s.transaction(async (tx) => {
+          await tx.insert('outbox', 'e1', { published: 0 });
+          await tx.insert('tasks', 'taken', {});
+        }),
+      ),
+    ).toBe('StaleRevision');
+    // A row read in the transaction fails fast on a stale revision or a second insert.
+    expect(
+      await code(
+        s.transaction(async (tx) => {
+          const t = (await tx.get('tasks', 'taken'))!;
+          await tx.update('tasks', 'taken', t.revision + 1, {});
+        }),
+      ),
+    ).toBe('StaleRevision');
+    expect(
+      await code(
+        s.transaction(async (tx) => {
+          await tx.get('tasks', 'taken');
+          await tx.insert('tasks', 'taken', {});
+        }),
+      ),
+    ).toBe('StaleRevision');
+    expect(await s.transaction((tx) => tx.get('outbox', 'e1'))).toBeUndefined();
+    await s.close();
   });
 
   it('uses pooled connections and releases each one', async () => {

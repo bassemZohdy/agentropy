@@ -11,7 +11,10 @@ import {
 } from '@agentropy/core';
 import { describe, expect, it } from 'vitest';
 import { createLocalApp } from '../../runtime/src/index.js';
-import { PostgresStore } from '../../store-postgres/src/index.js';
+import {
+  PostgresStore,
+  type PgClient,
+} from '../../store-postgres/src/index.js';
 import { FakeClock, FakePolicy } from '../src/index.js';
 
 const alice: TrustedPrincipal = { id: 'alice', type: 'user', tenantId: 't-1' };
@@ -58,6 +61,63 @@ function app(dir: string, clock: FakeClock) {
 }
 
 describe('runtime on PostgreSQL (M3-07)', () => {
+  it('accepts a task in at most 12 round trips (FEAT-032.2, R-02)', async () => {
+    const db = new PGlite();
+    let sent = 0;
+    const client: PgClient = {
+      query: (text, params) => {
+        sent++;
+        return db.query(text, params);
+      },
+    };
+    const a = createLocalApp({
+      store: new PostgresStore({ client }),
+      pdp: new FakePolicy(),
+      now: new FakeClock().iso,
+      profiles: BUILTIN_PROFILES,
+    });
+    a.define(
+      {
+        id: 'echo',
+        version: '1.0.0',
+        displayName: 'echo',
+        profile: { id: 'task', version: '1.0.0' },
+        implementation: {
+          providerId: 'native-ts',
+          providerVersion: '1.0.0',
+          artifact: { id: 'echo', version: '1.0.0' },
+        },
+        inputSchema: true,
+        runtimeRequirements: { guarantees: [] },
+        policyRef: { id: 'default', version: '1.0.0' },
+      },
+      { handle: async (inv) => ({ kind: 'completed', output: inv.input }) },
+    );
+    const inst = await a.createInstance(
+      {
+        definition: { id: 'echo', version: '1.0.0' },
+        ownerId: 'alice',
+        idempotencyKey: 'i',
+      },
+      alice,
+    );
+    const delegate = (k: string) =>
+      a.delegate(
+        {
+          target: { instanceId: inst.id },
+          input: k,
+          idempotencyKey: k,
+          correlationId: 'c',
+        },
+        alice,
+      );
+    await delegate('warm');
+    sent = 0;
+    await delegate('measured');
+    expect(sent).toBeLessThanOrEqual(12);
+    await db.close();
+  });
+
   it('runs, checkpoints, survives a restart and completes on the timer', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'agentropy-pg-rt-'));
     const clock = new FakeClock('2026-11-05T00:00:00.000Z');

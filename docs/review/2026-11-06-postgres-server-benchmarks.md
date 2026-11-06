@@ -81,9 +81,24 @@ ADR-0028 revision 2 replaces the counter row with a sequence block drawn just be
 - A reader paging with `afterSeq` while 8 writers commit interleaved transactions sees every row exactly once (`postgres-server.test.ts`).
 - Acceptance and completion latency are unchanged within run-to-run noise; an inserting transaction adds one statement (the stamp) before `COMMIT`.
 
+## Buffered writes (FEAT-032.2)
+
+ADR-0028 revision 3 keeps inserts, and updates of rows already read, in memory and sends them in one statement before the next read that could see them or at commit. Acceptance now runs: `BEGIN`, read instance, read idempotency record, `COMMIT`; `BEGIN`, read instance, read audit chain head, one statement with six writes, one statement drawing the seq block, `COMMIT`: 10 round trips, was 17.
+
+| | Before | After |
+|---|---|---|
+| Round trips per acceptance | 17 | 10 (test: ≤ 12) |
+| Acceptance throughput (200 sequential `delegate`) | 52.5 tasks/s | 78 tasks/s |
+| Acceptance latency p50 / p95 | 18.3 / 24.2 ms | 11.8 / 16.5 ms |
+| 1 / 2 / 4 in-process workers | 22.7 / 25.1 / 26.9 tasks/s | 20.2–21.1 / 22.7–24.3 / 25.5–26.4 tasks/s; unbatched in the same session 20.3 / 22.3 / 25.8 |
+
+- The first attempt drew the seq block in the same statement as buffered updates. An update waiting on another transaction's row lock then held the seq lock, so every inserting commit queued behind it: some runs fell to 3–5 tasks/s. Drawing the block in a second statement whenever an update is buffered fixed it.
+- About 1,200 serialization failures per multi-worker run, with or without buffering, come from workers' relays marking the same outbox rows published; they are retried, and they cost throughput.
+
 ## Follow-ups
 
-- Batch several writes per round trip in the Store API, and apply the same changes to completion (FEAT-032.2).
+- ~~Batch several writes per round trip~~: done, buffered writes (ADR-0028 revision 3, FEAT-032.2).
+- Stop workers' outbox relays from marking the same rows published (about 1,200 retried conflicts per multi-worker run).
 - ~~Replace the single `seq` counter row~~: done, commit-time `seq` (ADR-0028 revision 2, FEAT-032.3).
 - Measure on a dedicated database host (non-Docker, tuned `shared_buffers`, separate network) before treating the provisional targets as final (FEAT-032.4).
 - Serialization retries are now counted as `agentropy.store.conflicts` (FEAT-032.1).

@@ -14,6 +14,10 @@
  *   failure, so concurrent writers no longer conflict on a counter row. Inside its own transaction an inserted row
  *   has a provisional seq above every committed one; the document `insert` returned carries the final seq once
  *   the transaction has committed;
+ * - writes are buffered (FEAT-032.2, option `batchWrites`): inserts, and updates of rows the transaction has read
+ *   or written, are sent together in one statement before the next read that could see them or at commit; at
+ *   commit that statement also draws the seq block when only inserts are buffered. A taken ID or a stale revision
+ *   then fails the transaction at that point rather than at the call. An acceptance takes 10 round trips (was 17);
  * - indexed fields live in typed side columns (`n_<field>` numeric, `s_<field>` text in "C" collation) so equality,
  *   ranges and ordering behave exactly like the in-memory reference (nulls first, code-unit string order).
  */
@@ -41,11 +45,41 @@ export const SCHEMA_VERSION = 2;
 /** Provisional seq of rows inserted by a transaction that has not committed yet: above every committed seq. */
 const PROVISIONAL_SEQ = 2 ** 52;
 
-/** A row this transaction inserted; its document gets the final seq after COMMIT. */
+/** A row this transaction inserted: its place `k` in the seq block, and the documents to give the final seq. */
 interface Inserted {
   c: CollectionName;
-  doc: StoredDocument<unknown>;
+  id: string;
+  k: number;
+  /** Sent before the commit, with a provisional seq. */
+  sent: boolean;
+  docs: StoredDocument<unknown>[];
 }
+
+interface PendingWrite {
+  c: CollectionName;
+  id: string;
+  /** Revision the row has once the write is applied. */
+  revision: number;
+  value: string;
+  cols: string[];
+  params: unknown[];
+}
+
+/** A buffered write (FEAT-032.2). An update of a buffered row replaces the buffered write. */
+type Pending =
+  | (PendingWrite & { kind: 'insert'; row: Inserted })
+  | (PendingWrite & { kind: 'update'; expected: number });
+
+/** Write-behind state of one transaction. */
+interface TxState {
+  inserted: Inserted[];
+  rows: Map<string, Inserted>;
+  pending: Map<string, Pending>;
+  /** Revision and seq of rows this transaction has read or written. */
+  known: Map<string, { revision: number; seq: number }>;
+}
+
+const keyOf = (c: CollectionName, id: string) => `${c}\u0000${id}`;
 
 export interface PgResult<R> {
   rows: R[];
@@ -87,6 +121,12 @@ export interface PostgresStoreOptions {
    * transactions on small tables do not conflict through whole-table predicate locks. Default true.
    */
   preferIndexScans?: boolean;
+  /**
+   * Buffer inserts, and updates of rows the transaction has already read, and send them in one statement before
+   * the next read that could see them or at commit (FEAT-032.2). A taken ID or a stale revision then fails at that
+   * point instead of at the call; the transaction fails either way. Default true.
+   */
+  batchWrites?: boolean;
   /** Close the pool/client when the store closes. Default false (the caller owns the connection). */
   ownsConnection?: boolean;
   /**
@@ -268,35 +308,128 @@ export class PostgresStore implements Store {
   }
 
   /**
-   * Stamps the rows this transaction inserted with one block of seq values, in insertion order. The advisory lock
-   * is held until COMMIT, so blocks are drawn in commit order. One statement; returns the first value.
+   * Sends the writes this transaction has buffered in one statement (FEAT-032.2). At commit (`final`) the same
+   * statement also takes the per-schema seq lock, draws one block from the sequence for every row this transaction
+   * inserted, inserts the buffered rows with their final seq and stamps rows sent earlier with a provisional one.
+   * The lock is held until COMMIT, so blocks are drawn in commit order. Returns the first value of the block.
    */
-  private async assignSeq(db: PgClient, inserted: Inserted[]): Promise<number> {
-    const byCollection = new Map<
-      CollectionName,
-      { ids: string[]; ks: number[] }
-    >();
-    inserted.forEach(({ c, doc }, i) => {
-      const e = byCollection.get(c) ?? { ids: [], ks: [] };
-      e.ids.push(doc.id);
-      e.ks.push(i);
-      byCollection.set(c, e);
-    });
-    const params: unknown[] = [inserted.length, `agentropy-seq:${this.schema}`];
-    const updates = [...byCollection.entries()].map(([c, e], j) => {
-      params.push(e.ids, e.ks);
-      return (
-        `u${j} AS (UPDATE ${this.t(c)} t SET seq = blk.first + v.k FROM blk, ` +
-        `unnest($${params.length - 1}::text[], $${params.length}::int[]) AS v(id, k) WHERE t.id = v.id)`
+  private async flush(
+    db: PgClient,
+    st: TxState,
+    final: boolean,
+  ): Promise<number | undefined> {
+    const ops = [...st.pending.values()];
+    const draw = final && st.inserted.length > 0;
+    if (!ops.length && !draw) return undefined;
+    // An update can wait on another transaction's row lock. It must not wait while holding the seq lock: every
+    // inserting commit would queue behind it, and a holder of that row that also inserts would deadlock with it.
+    if (draw && ops.some((op) => op.kind === 'update')) {
+      await this.flush(db, st, false);
+      return this.flush(db, st, true);
+    }
+    const params: unknown[] = [];
+    const p = (v: unknown) => {
+      params.push(v);
+      return `$${params.length}`;
+    };
+    const ctes: string[] = [];
+    if (draw) {
+      const seq = `'"${this.schema}".seq'`;
+      const n = p(st.inserted.length);
+      ctes.push(
+        `blk AS (SELECT setval(${seq}, nextval(${seq}) + ${n}::bigint - 1) - ${n}::bigint + 1 AS first ` +
+          `FROM (SELECT pg_advisory_xact_lock(hashtext(${p(`agentropy-seq:${this.schema}`)}))) l)`,
       );
+    }
+    ops.forEach((op, i) => {
+      if (op.kind === 'insert') {
+        const seq = draw
+          ? `(SELECT first FROM blk) + ${p(op.row.k)}::bigint`
+          : p(PROVISIONAL_SEQ + op.row.k);
+        const values = [
+          p(op.id),
+          p(op.revision),
+          seq,
+          p(op.value),
+          ...op.params.map(p),
+        ];
+        ctes.push(
+          `o${i} AS (INSERT INTO ${this.t(op.c)} (id, revision, seq, value${op.cols.map((c) => `, ${c}`).join('')}) ` +
+            `VALUES (${values.join(', ')}) ON CONFLICT (id) DO NOTHING RETURNING 1)`,
+        );
+      } else {
+        const sets = [
+          `revision = ${p(op.revision)}`,
+          `value = ${p(op.value)}`,
+          ...op.cols.map((c, j) => `${c} = ${p(op.params[j])}`),
+        ];
+        ctes.push(
+          `o${i} AS (UPDATE ${this.t(op.c)} SET ${sets.join(', ')} WHERE id = ${p(op.id)} AND revision = ${p(op.expected)} RETURNING 1)`,
+        );
+      }
     });
-    const seq = `'"${this.schema}".seq'`;
-    const res = await db.query<{ first: string | number }>(
-      `WITH blk AS (SELECT setval(${seq}, nextval(${seq}) + $1::bigint - 1) - $1::bigint + 1 AS first ` +
-        `FROM (SELECT pg_advisory_xact_lock(hashtext($2))) l), ${updates.join(', ')} SELECT first FROM blk`,
+    if (draw) {
+      // Rows sent before the commit carry a provisional seq; give them their place in the block.
+      const byCollection = new Map<
+        CollectionName,
+        { ids: string[]; ks: number[] }
+      >();
+      for (const row of st.inserted)
+        if (row.sent) {
+          const e = byCollection.get(row.c) ?? { ids: [], ks: [] };
+          e.ids.push(row.id);
+          e.ks.push(row.k);
+          byCollection.set(row.c, e);
+        }
+      [...byCollection.entries()].forEach(([c, e], j) =>
+        ctes.push(
+          `s${j} AS (UPDATE ${this.t(c)} t SET seq = blk.first + v.k FROM blk, ` +
+            `unnest(${p(e.ids)}::text[], ${p(e.ks)}::int[]) AS v(id, k) WHERE t.id = v.id)`,
+        ),
+      );
+    }
+    const counts = ops.map(
+      (_, i) => `, (SELECT count(*) FROM o${i})::int AS c${i}`,
+    );
+    const res = await db.query<Record<string, string | number | null>>(
+      `WITH ${ctes.join(', ')} SELECT ${draw ? '(SELECT first FROM blk)' : 'NULL'} AS first${counts.join('')}`,
       params,
     );
-    return Number(res.rows[0]!.first);
+    const row = res.rows[0]!;
+    for (const [i, op] of ops.entries()) {
+      if (Number(row[`c${i}`]) === 1) continue;
+      if (op.kind === 'insert') throw staleRevision(op.c, op.id, 'exists');
+      const cur = await this.current(db, op.c, op.id);
+      if (cur === undefined)
+        throw staleRevision(op.c, op.id, 'missing', op.expected);
+      throw staleRevision(op.c, op.id, 'revision', op.expected, cur);
+    }
+    st.pending.clear();
+    for (const op of ops) {
+      const key = keyOf(op.c, op.id);
+      if (op.kind === 'insert') {
+        op.row.sent = true;
+        st.known.set(key, {
+          revision: op.revision,
+          seq: PROVISIONAL_SEQ + op.row.k,
+        });
+      } else
+        st.known.set(key, {
+          revision: op.revision,
+          seq: st.known.get(key)!.seq,
+        });
+    }
+    return draw ? Number(row.first) : undefined;
+  }
+
+  private async current(db: PgClient, c: CollectionName, id: string) {
+    const r = (
+      await db.query<{ revision: number }>(
+        `SELECT revision FROM ${this.t(c)} WHERE id = $1`,
+        [id],
+      )
+    ).rows[0];
+    return r ? Number(r.revision) : undefined;
   }
 
   /**
@@ -403,15 +536,18 @@ export class PostgresStore implements Store {
           try {
             await this.beginTransaction(db);
             try {
-              const inserted: Inserted[] = [];
-              const result = await fn(this.tx(db, inserted));
-              const first = inserted.length
-                ? await this.assignSeq(db, inserted)
-                : undefined;
+              const st: TxState = {
+                inserted: [],
+                rows: new Map(),
+                pending: new Map(),
+                known: new Map(),
+              };
+              const result = await fn(this.tx(db, st));
+              const first = await this.flush(db, st, true);
               await db.query('COMMIT');
               if (first !== undefined)
-                for (const [k, { doc }] of inserted.entries())
-                  doc.seq = first + k;
+                for (const row of st.inserted)
+                  for (const doc of row.docs) doc.seq = first + row.k;
               return result;
             } catch (err) {
               await db.query('ROLLBACK').catch(() => undefined);
@@ -458,15 +594,24 @@ export class PostgresStore implements Store {
     }
   }
 
-  private tx(db: PgClient, inserted: Inserted[]): StoreTx {
+  private tx(db: PgClient, st: TxState): StoreTx {
+    const batch = this.o.batchWrites !== false;
+    const seen = <T>(c: CollectionName, d: StoredDocument<T>) => {
+      st.known.set(keyOf(c, d.id), { revision: d.revision, seq: d.seq });
+      return d;
+    };
     const get = async <T>(c: CollectionName, id: string) => {
+      if (st.pending.has(keyOf(c, id))) await this.flush(db, st, false);
       const r = (
         await db.query<Row>(
           `SELECT id, revision, seq, value FROM ${this.t(c)} WHERE id = $1`,
           [id],
         )
       ).rows[0];
-      return r ? toDoc<T>(r) : undefined;
+      return r ? seen(c, toDoc<T>(r)) : undefined;
+    };
+    const sendUnlessBatched = async () => {
+      if (!batch) await this.flush(db, st, false);
     };
     const split = (v: IndexValue): [number | null, string | null] =>
       v === null ? [null, null] : typeof v === 'number' ? [v, null] : [null, v];
@@ -486,16 +631,38 @@ export class PostgresStore implements Store {
       get,
       insert: async <T>(c: CollectionName, id: string, value: T) => {
         const { cols, params } = indexParams(c, value);
-        // The final seq is assigned at commit (assignSeq); until then the row sorts after every committed row.
-        const seq = PROVISIONAL_SEQ + inserted.length;
-        const all = ['id', 'revision', 'seq', 'value', ...cols];
-        const res = await db.query(
-          `INSERT INTO ${this.t(c)} (${all.join(', ')}) VALUES (${all.map((_, i) => `$${i + 1}`).join(', ')}) ON CONFLICT (id) DO NOTHING`,
-          [id, 1, seq, JSON.stringify(value), ...params],
-        );
-        if (affected(res) !== 1) throw staleRevision(c, id, 'exists');
-        const doc = { id, revision: 1, seq, value: structuredClone(value) };
-        inserted.push({ c, doc });
+        const key = keyOf(c, id);
+        if (st.known.has(key) || st.pending.has(key))
+          throw staleRevision(c, id, 'exists');
+        // Buffered until the next read of this collection or the commit; the final seq is assigned at commit.
+        // Until then the row sorts after every committed row. A taken ID fails when the write is sent.
+        const row: Inserted = {
+          c,
+          id,
+          k: st.inserted.length,
+          sent: false,
+          docs: [],
+        };
+        const doc = {
+          id,
+          revision: 1,
+          seq: PROVISIONAL_SEQ + row.k,
+          value: structuredClone(value),
+        };
+        row.docs.push(doc);
+        st.inserted.push(row);
+        st.rows.set(key, row);
+        st.pending.set(key, {
+          kind: 'insert',
+          c,
+          id,
+          revision: 1,
+          value: JSON.stringify(value),
+          cols,
+          params,
+          row,
+        });
+        await sendUnlessBatched();
         return doc;
       },
       update: async <T>(
@@ -505,6 +672,40 @@ export class PostgresStore implements Store {
         value: T,
       ) => {
         const { cols, params } = indexParams(c, value);
+        const key = keyOf(c, id);
+        const pending = st.pending.get(key);
+        const known = st.known.get(key);
+        if (pending || known) {
+          // A row this transaction has read or written: its revision and seq are known, so the write can wait.
+          const current = pending?.revision ?? known!.revision;
+          if (current !== expected)
+            throw staleRevision(c, id, 'revision', expected, current);
+          const write = {
+            revision: expected + 1,
+            value: JSON.stringify(value),
+            cols,
+            params,
+          };
+          if (pending) Object.assign(pending, write);
+          else
+            st.pending.set(key, {
+              kind: 'update',
+              c,
+              id,
+              expected,
+              ...write,
+            });
+          const row = st.rows.get(key);
+          const doc = {
+            id,
+            revision: expected + 1,
+            seq: row ? PROVISIONAL_SEQ + row.k : known!.seq,
+            value: structuredClone(value),
+          };
+          row?.docs.push(doc);
+          await sendUnlessBatched();
+          return doc;
+        }
         const sets = ['revision', 'value', ...cols].map(
           (col, i) => `${col} = $${i + 1}`,
         );
@@ -518,14 +719,17 @@ export class PostgresStore implements Store {
           if (!cur) throw staleRevision(c, id, 'missing', expected);
           throw staleRevision(c, id, 'revision', expected, cur.revision);
         }
-        return {
+        return seen(c, {
           id,
           revision: expected + 1,
           seq: Number(res.rows[0]!.seq),
           value: structuredClone(value),
-        };
+        });
       },
       remove: async (c, id, expected) => {
+        const key = keyOf(c, id);
+        if (st.pending.has(key)) await this.flush(db, st, false);
+        st.known.delete(key);
         const res = await db.query(
           `DELETE FROM ${this.t(c)} WHERE id = $1 AND revision = $2`,
           [id, expected],
@@ -575,6 +779,9 @@ export class PostgresStore implements Store {
           }
         }
         if (o.afterSeq !== undefined) clauses.push(`seq > ${p(o.afterSeq)}`);
+        // Read your own writes: buffered writes to this collection are sent first.
+        if ([...st.pending.values()].some((w) => w.c === c))
+          await this.flush(db, st, false);
         const by = String(o.orderBy ?? 'seq');
         if (by !== 'seq') allowed(c, by);
         const order =
@@ -592,7 +799,7 @@ export class PostgresStore implements Store {
             params,
           )
         ).rows;
-        return rows.map((r) => toDoc<T>(r));
+        return rows.map((r) => seen(c, toDoc<T>(r)));
       },
     };
   }

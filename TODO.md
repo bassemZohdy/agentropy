@@ -7,13 +7,15 @@
   - Links: Ref: docs/review/2026-11-06-project-review.md#runtime-and-scale · Lane: store
   - [x] **FEAT-032.1** · low · Count serialization retries and exhausted retries as metrics and span attributes (R-03)
     - Done when: `pnpm exec vitest run packages/store-postgres/test/postgres-store.test.ts packages/testkit/test/telemetry.test.ts`
-  - [ ] **FEAT-032.2** · mid · Batch statements per transaction; at most 12 round trips per acceptance (R-02; now 16, R-26 fixed)
+  - [x] **FEAT-032.2** · mid · Batch statements per transaction; at most 12 round trips per acceptance (R-02; now 16, R-26 fixed)
     - Done when: `pnpm exec vitest run packages/store-postgres/test`
   - [x] **FEAT-032.3** · high · ADR-0028 revision: commit-ordered seq without one hot row; multi-worker throughput grows with workers (R-01)
     - Done when: `env AGENTROPY_PG_URL=postgres://postgres:ci@127.0.0.1:5432/agentropy pnpm exec vitest run packages/testkit/test/benchmarks.test.ts`
   - [!] **FEAT-032.4** · low · Re-measure on a dedicated database host and finalize the PostgreSQL SLOs (R-04)
     - Done when: `node scripts/check-doc-links.mjs`
     - Blocked: needs a dedicated PostgreSQL host → no such host is available to this checkout → owner provides a host URL or accepts the provisional targets
+  - [ ] **FEAT-032.5** · mid · Outbox relays on several workers stop marking the same rows published (~1,200 retried conflicts per multi-worker run)
+    - Done when: `pnpm exec vitest run packages/runtime/test/outbox-inbox.test.ts packages/testkit/test/multi-worker.test.ts`
 - [ ] **FEAT-034** · P1 · high · A2A in production: HTTP/SSE binding, third-party interop, durable push, missing methods (R-08–R-10)
   - Done when: `pnpm exec vitest run packages/testkit/test/a2a.test.ts packages/testkit/test/a2a-streaming.test.ts packages/testkit/test/a2a-push.test.ts packages/testkit/test/a2a-http.test.ts`
   - Links: Ref: docs/review/2026-11-06-project-review.md#interoperability · Lane: runtime

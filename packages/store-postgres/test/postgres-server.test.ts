@@ -148,6 +148,37 @@ live('PostgresStore on a server', () => {
     await s.close();
   });
 
+  it('a buffered update overtaken by a concurrent writer is retried, never lost (FEAT-032.2)', async () => {
+    const s = open();
+    await s.transaction((tx) => tx.insert('tasks', 'hot', { status: 'new' }));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let attempts = 0;
+    const slow = s.transaction(async (tx) => {
+      attempts++;
+      const t = (await tx.get<{ status: string }>('tasks', 'hot'))!;
+      await tx.update('tasks', 'hot', t.revision, {
+        status: `${t.value.status}+slow`,
+      });
+      await gate;
+    });
+    await s.transaction(async (tx) => {
+      const t = (await tx.get<{ status: string }>('tasks', 'hot'))!;
+      await tx.update('tasks', 'hot', t.revision, {
+        status: `${t.value.status}+fast`,
+      });
+    });
+    release();
+    await slow;
+    const final = await s.transaction((tx) => tx.get('tasks', 'hot'));
+    expect(attempts).toBe(2);
+    expect([final?.revision, final?.value]).toEqual([
+      3,
+      { status: 'new+fast+slow' },
+    ]);
+    await s.close();
+  });
+
   it('a hot row beyond the retry bound fails StaleRevision, never a lost or partial write', async () => {
     const r = await contend(40);
     // Each transaction either committed whole or failed with the typed serialization error.
