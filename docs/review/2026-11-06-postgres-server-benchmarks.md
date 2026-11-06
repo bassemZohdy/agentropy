@@ -95,10 +95,19 @@ ADR-0028 revision 3 keeps inserts, and updates of rows already read, in memory a
 - The first attempt drew the seq block in the same statement as buffered updates. An update waiting on another transaction's row lock then held the seq lock, so every inserting commit queued behind it: some runs fell to 3–5 tasks/s. Drawing the block in a second statement whenever an update is buffered fixed it.
 - About 1,200 serialization failures per multi-worker run, with or without buffering, come from workers' relays marking the same outbox rows published; they are retried, and they cost throughput.
 
+## Relay leadership in the multi-worker benchmark (FEAT-032.5)
+
+The serialization failures came from every worker's relay delivering and marking the same outbox rows: the benchmark workers had no relay lease. With a lease only one relay publishes; the others follow the outbox by `seq` and only wake their own subscribers. Before this change a subscriber on a non-leader worker was never woken, so the lease could not be recommended without it.
+
+| | No relay lease | Relay lease |
+|---|---|---|
+| Serialization failures per multi-worker run | ~1,200 | 134–205 |
+| 1 / 2 / 4 in-process workers | 20.2–21.1 / 22.7–24.3 / 25.5–26.4 tasks/s | 22.3–25.4 / 25.6–33.3 / 29.9–36 tasks/s |
+
 ## Follow-ups
 
 - ~~Batch several writes per round trip~~: done, buffered writes (ADR-0028 revision 3, FEAT-032.2).
-- Stop workers' outbox relays from marking the same rows published (about 1,200 retried conflicts per multi-worker run).
+- ~~Stop workers' outbox relays from marking the same rows published~~: relay lease in the benchmark, local subscribers woken on every worker (FEAT-032.5).
 - ~~Replace the single `seq` counter row~~: done, commit-time `seq` (ADR-0028 revision 2, FEAT-032.3).
 - Measure on a dedicated database host (non-Docker, tuned `shared_buffers`, separate network) before treating the provisional targets as final (FEAT-032.4).
 - Serialization retries are now counted as `agentropy.store.conflicts` (FEAT-032.1).

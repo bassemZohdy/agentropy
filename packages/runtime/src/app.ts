@@ -380,7 +380,9 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
   const stream = new TaskEventStream(tasks);
   const relay = new OutboxRelay({
     store,
-    consumers: [projector, stream],
+    consumers: [projector],
+    // Subscription wake-ups are per process: with a relay lease every worker still wakes its own subscribers.
+    localConsumers: [stream],
     ...(o.relay
       ? {
           relayId: o.relay.relayId,

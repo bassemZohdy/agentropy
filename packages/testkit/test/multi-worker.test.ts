@@ -65,6 +65,7 @@ function cluster(
   store: Store,
   agents: Agent[],
   quotas?: (tenantId: string) => TenantQuota | undefined,
+  o: { relayLease?: boolean } = {},
 ): Cluster {
   const clock = new FakeClock('2026-11-06T00:00:00.000Z');
   const workers = agents.map((agent, i) => {
@@ -76,6 +77,7 @@ function cluster(
       runtime: { workerId: `w${i + 1}` },
       limits: { poolSize: 4, leaseMs: 10_000, cancelGraceMs: 0 },
       ...(quotas ? { quotas } : {}),
+      ...(o.relayLease ? { relay: { relayId: `w${i + 1}` } } : {}),
     });
     app.define(def, agent);
     return app;
@@ -173,6 +175,35 @@ describe.each(stores)('multi-worker pool on %s (M3-02)', (_name, make) => {
       expect((await c.workers[2]!.getTask(id, user('t-1'))).status).toBe(
         'completed',
       );
+    await c.store.close();
+  });
+
+  it('with a relay lease one worker publishes each event once, and a subscriber on another worker still wakes (FEAT-032.5)', async () => {
+    const agent: Agent = {
+      handle: async (inv) => ({ kind: 'completed', output: inv.input }),
+    };
+    const c = cluster(make(), [agent, agent], undefined, { relayLease: true });
+    const delivered: [number, string][] = [];
+    c.workers.forEach((w, i) =>
+      w.relay.register({
+        id: 'count',
+        handle: async (e) => void delivered.push([i, e.eventId]),
+      }),
+    );
+    const inst = await c.instance('t-1');
+    const id = await c.submit(inst, 't-1', 'k');
+    const statuses = (async () => {
+      const out: string[] = [];
+      for await (const e of c.workers[1]!.subscribe(id, user('t-1')))
+        out.push(e.status);
+      return out;
+    })();
+    await drain(c);
+    await Promise.all(c.workers.map((w) => w.relay.drain()));
+    expect((await statuses).at(-1)).toBe('completed');
+    // Only the lease holder delivered, each event once.
+    expect(new Set(delivered.map(([w]) => w)).size).toBe(1);
+    expect(new Set(delivered.map(([, e]) => e)).size).toBe(delivered.length);
     await c.store.close();
   });
 

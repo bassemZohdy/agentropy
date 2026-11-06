@@ -68,6 +68,8 @@ function workers(store: Store, n: number, clock: FakeClock, agent = quick) {
       now: clock.iso,
       profiles: BUILTIN_PROFILES,
       runtime: { workerId: `w${i}` },
+      // One relay leads, as in a deployment (docs/deployment.md); the others only wake their own subscribers.
+      relay: { relayId: `w${i}` },
       limits: { poolSize: 8, leaseMs: 30_000, cancelGraceMs: 0 },
     });
     app.define(def, agent);

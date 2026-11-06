@@ -5,6 +5,11 @@
  * rows in commit order, hands each to every consumer and only then marks it published. A crash anywhere before
  * the mark re-delivers the row after restart, so delivery is at-least-once and consumers deduplicate by event ID
  * (or by the `(revision, sequence)` pair). No external exactly-once is claimed.
+ *
+ * With a leader lease (`relayId`, several workers on one store) only the leader delivers to `consumers` and marks
+ * rows published. `localConsumers` (in-process signals such as subscription wake-ups) are fed by every relay,
+ * leader or not, by following the outbox in seq order after a cursor; seq order is commit order, so the cursor
+ * never skips a row (FEAT-032.5).
  */
 import {
   isAfter,
@@ -61,6 +66,11 @@ export interface OutboxRelayOptions {
    * delivers, so per-task order holds; a crashed holder's lease expires and another relay replays its rows.
    */
   relayId?: string;
+  /**
+   * Consumers every relay feeds, leader or not (in-process signals; must not have shared side effects). Without
+   * `relayId` they are fed together with `consumers`.
+   */
+  localConsumers?: EventConsumer[];
   /** Leader lease length (default 30 s). */
   leaseMs?: number;
   /** Delivery lag and terminal-outcome metrics, recorded once per published row. */
@@ -70,10 +80,15 @@ export interface OutboxRelayOptions {
 
 export class OutboxRelay {
   private readonly consumers: EventConsumer[];
+  private readonly local: EventConsumer[];
   private draining?: Promise<number>;
+  /** Seq of the last row handed to local consumers (lease mode). */
+  private cursor = 0;
 
   constructor(private readonly o: OutboxRelayOptions) {
-    this.consumers = [...(o.consumers ?? [])];
+    this.local = [...(o.localConsumers ?? [])];
+    // Without a lease this relay is the only one: local consumers ride along with the shared ones.
+    this.consumers = [...(o.consumers ?? []), ...(o.relayId ? [] : this.local)];
   }
 
   register(consumer: EventConsumer): void {
@@ -142,8 +157,34 @@ export class OutboxRelay {
   }
 
   private async drainOnce(): Promise<number> {
+    const published = (await this.lead()) ? await this.publish() : 0;
+    if (this.o.relayId && this.local.length) await this.follow();
+    return published;
+  }
+
+  /** Hands every committed row after the cursor to the local consumers, published or not. */
+  private async follow(): Promise<void> {
+    const limit = this.o.batchSize ?? 100;
+    for (;;) {
+      const rows = await this.o.store.transaction((tx) =>
+        tx.find<OutboxRecord>('outbox', {
+          afterSeq: this.cursor,
+          orderBy: 'seq',
+          limit,
+        }),
+      );
+      for (const row of rows) {
+        const event = toTaskEvent(row.value);
+        for (const c of this.local)
+          await c.handle(event).catch(() => undefined);
+        this.cursor = row.seq;
+      }
+      if (rows.length < limit) return;
+    }
+  }
+
+  private async publish(): Promise<number> {
     let published = 0;
-    if (!(await this.lead())) return 0;
     for (;;) {
       const pending = await this.o.store.transaction((tx) =>
         tx.find<OutboxRecord>('outbox', {

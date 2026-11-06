@@ -14,7 +14,7 @@
   - [!] **FEAT-032.4** · low · Re-measure on a dedicated database host and finalize the PostgreSQL SLOs (R-04)
     - Done when: `node scripts/check-doc-links.mjs`
     - Blocked: needs a dedicated PostgreSQL host → no such host is available to this checkout → owner provides a host URL or accepts the provisional targets
-  - [ ] **FEAT-032.5** · mid · Outbox relays on several workers stop marking the same rows published (~1,200 retried conflicts per multi-worker run)
+  - [x] **FEAT-032.5** · mid · Outbox relays on several workers stop marking the same rows published (~1,200 retried conflicts per multi-worker run)
     - Done when: `pnpm exec vitest run packages/runtime/test/outbox-inbox.test.ts packages/testkit/test/multi-worker.test.ts`
 - [ ] **FEAT-034** · P1 · high · A2A in production: HTTP/SSE binding, third-party interop, durable push, missing methods (R-08–R-10)
   - Done when: `pnpm exec vitest run packages/testkit/test/a2a.test.ts packages/testkit/test/a2a-streaming.test.ts packages/testkit/test/a2a-push.test.ts packages/testkit/test/a2a-http.test.ts`
