@@ -65,6 +65,7 @@ Same Docker Desktop setup, same day:
 - An audit append reads a per-tenant chain head row (`auditHeads`) instead of scanning the whole chain (R-26). A store written before the head existed is scanned once, on its next append.
 - Acceptance reads the target instance and the idempotency record in one transaction, gives the tenant to the execution insert instead of reading the task again, and builds its handle from the task it wrote.
 - From the third attempt on, a retried transaction first takes a per-schema session advisory lock, so repeat losers wait their turn instead of colliding again. Without it, the 20-writer conformance case ran out of retries in 1 of 4 runs; with it, 6 of 6 runs passed. The lock is taken before `BEGIN`: a SERIALIZABLE snapshot starts at the first statement, so a lock taken inside the transaction left the waiter with a stale snapshot and made the conflicts worse.
+- CI run 42175166339 (same runner type as the first CI run): acceptance throughput 111 → 156 tasks/s, acceptance p50 / p95 7.8 / 14 → 5.9 / 11 ms, accept-to-complete p50 27 → 32 ms (completion is unchanged and runner timing varies), 1 / 2 / 4 workers 47 / 43 / 35 tasks/s: still falling as workers are added.
 - The remaining 16 statements are a fence read, writes and the chain head read; reaching ≤ 12 needs several writes per round trip from the Store API. Completion (58 statements) is unchanged. Worker scaling is still flat: that is the `seq` row (FEAT-032.3).
 
 ## Follow-ups
