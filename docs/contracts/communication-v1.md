@@ -5,15 +5,15 @@
 
 ## Revision history
 
-| Rev | Date | Change |
-|---|---|---|
-| 1 | 2026-11-04 | Initial baseline |
-| 2 | 2026-11-04 | Design review: AgentCommunication is an **outbound SPI of the TaskService**, not a handler API; every operation carries a `CallContext` (caller principal); duplicate `target` parameter removed from `delegate`; inbound path defined; remote task projection fields named |
-| 3 | 2026-11-04 | Map ADR-0019 five logical families to existing v1 SPI and document extensions, declared guarantees and transport-neutral tracing |
-| 4 | 2026-11-05 | Readiness closure: `CommunicationFeatures.durability` uses the canonical durability levels (`provider-dependent` counts as `none` for guarantee checks); `extensions` declaration formalized; `RouteRequirements` passed to `selectRoute`; `AgentRef` ↔ `VersionedRef` mapping stated; `AgentEvent` documented as a projection of `TaskEvent` |
-| 5 | 2026-11-05 | FEAT-027.8 (C-03, C-04): A2A provider pinned to A2A protocol 1.0 (JSON-RPC binding) — outbound `A2ACommunicationProvider` and inbound `createA2AServer` — and the custom broker/RPC provider sample; both pass the shared conformance suite (see "M2 providers") |
-| 6 | 2026-11-06 | FEAT-027.9: `RemoteTaskState.output` carries a completed remote result; remote targets in `delegation.delegate` are wired through the router with local projection tasks |
-| 7 | 2026-11-06 | FEAT-028.9 (M3-09, R-18): federation and discovery through A2A agent cards — `agentCardForDefinition`, `AgentDirectoryFederation` (configured peers only, strict card validation, tenant and policy scoping, delegation target in each result) |
+| Rev | Date       | Change                                                                                                                                                                                                                                                                                                                                        |
+| --- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | 2026-11-04 | Initial baseline                                                                                                                                                                                                                                                                                                                              |
+| 2   | 2026-11-04 | Design review: AgentCommunication is an **outbound SPI of the TaskService**, not a handler API; every operation carries a `CallContext` (caller principal); duplicate `target` parameter removed from `delegate`; inbound path defined; remote task projection fields named                                                                   |
+| 3   | 2026-11-04 | Map ADR-0019 five logical families to existing v1 SPI and document extensions, declared guarantees and transport-neutral tracing                                                                                                                                                                                                              |
+| 4   | 2026-11-05 | Readiness closure: `CommunicationFeatures.durability` uses the canonical durability levels (`provider-dependent` counts as `none` for guarantee checks); `extensions` declaration formalized; `RouteRequirements` passed to `selectRoute`; `AgentRef` ↔ `VersionedRef` mapping stated; `AgentEvent` documented as a projection of `TaskEvent` |
+| 5   | 2026-11-05 | FEAT-027.8 (C-03, C-04): A2A provider pinned to A2A protocol 1.0 (JSON-RPC binding) — outbound `A2ACommunicationProvider` and inbound `createA2AServer` — and the custom broker/RPC provider sample; both pass the shared conformance suite (see "M2 providers")                                                                              |
+| 6   | 2026-11-06 | FEAT-027.9: `RemoteTaskState.output` carries a completed remote result; remote targets in `delegation.delegate` are wired through the router with local projection tasks                                                                                                                                                                      |
+| 7   | 2026-11-06 | FEAT-028.9 (M3-09, R-18): federation and discovery through A2A agent cards — `agentCardForDefinition`, `AgentDirectoryFederation` (configured peers only, strict card validation, tenant and policy scoping, delegation target in each result)                                                                                                |
 
 ## Position in the call stack
 
@@ -45,18 +45,19 @@ export interface AgentRef {
   instanceId?: string;
   version?: string;
   tenantId: string;
-  endpoint?: string;            // resolved by the registry for remote agents; never taken from message content
+  endpoint?: string; // resolved by the registry for remote agents; never taken from message content
 }
 
 export interface CallContext {
-  caller: TrustedPrincipal;     // verified by the TaskService before the router is called
+  caller: TrustedPrincipal; // verified by the TaskService before the router is called
   correlationId: string;
   causationId?: string;
   deadline?: string;
   signal?: AbortSignal;
 }
 
-export interface RouteBinding {        // persisted on the local task at acceptance; never re-selected
+export interface RouteBinding {
+  // persisted on the local task at acceptance; never re-selected
   providerId: string;
   protocol: string;
   protocolVersion: string;
@@ -64,29 +65,30 @@ export interface RouteBinding {        // persisted on the local task at accepta
 }
 
 export interface RemoteTaskRef {
-  localTaskId: string;          // Agentropy projection record
+  localTaskId: string; // Agentropy projection record
   route: RouteBinding;
   remoteTaskId: string;
 }
 
 export type CommunicationOperation =
-  | "delegate" | "send" | "getTask" | "cancel" | "subscribe";
+  'delegate' | 'send' | 'getTask' | 'cancel' | 'subscribe';
 
 export interface CommunicationFeatures {
   operations: readonly CommunicationOperation[];
   streaming: boolean;
   pushNotifications: boolean;
   /** Canonical levels (runtime contract); "provider-dependent" satisfies only a "none" requirement. */
-  durability: "none" | "provider-dependent" | "durable-acceptance" | "durable-execution";
+  durability:
+    'none' | 'provider-dependent' | 'durable-acceptance' | 'durable-execution';
   protocol: string;
   protocolVersion: string;
-  extensions?: readonly { id: string; version: string }[];   // optional, versioned, explicitly negotiated
+  extensions?: readonly { id: string; version: string }[]; // optional, versioned, explicitly negotiated
 }
 
 export interface RouteRequirements {
-  operations?: readonly CommunicationOperation[];          // all must be supported
-  durability?: "none" | "durable-acceptance" | "durable-execution";
-  extensions?: readonly string[];                           // mandatory extension IDs
+  operations?: readonly CommunicationOperation[]; // all must be supported
+  durability?: 'none' | 'durable-acceptance' | 'durable-execution';
+  extensions?: readonly string[]; // mandatory extension IDs
 }
 
 /** Outbound SPI implemented by each provider. */
@@ -94,8 +96,16 @@ export interface AgentCommunicationProvider {
   readonly id: string;
   readonly features: CommunicationFeatures;
   supports(target: AgentRef, operation: CommunicationOperation): boolean;
-  delegate<I>(route: RouteBinding, request: DelegationRequest<I>, ctx: CallContext): Promise<RemoteTaskRef>;
-  send(route: RouteBinding, message: AgentMessage, ctx: CallContext): Promise<MessageReceipt>;
+  delegate<I>(
+    route: RouteBinding,
+    request: DelegationRequest<I>,
+    ctx: CallContext,
+  ): Promise<RemoteTaskRef>;
+  send(
+    route: RouteBinding,
+    message: AgentMessage,
+    ctx: CallContext,
+  ): Promise<MessageReceipt>;
   getTask(ref: RemoteTaskRef, ctx: CallContext): Promise<RemoteTaskState>;
   cancel(ref: RemoteTaskRef, ctx: CallContext): Promise<RemoteTaskState>;
   subscribe(ref: RemoteTaskRef, ctx: CallContext): AsyncIterable<AgentEvent>;
@@ -104,21 +114,35 @@ export interface AgentCommunicationProvider {
 /** Used only by the TaskService. Selects and pins a route, then delegates to the provider. */
 export interface CommunicationRouter {
   register(provider: AgentCommunicationProvider): void;
-  selectRoute(target: AgentRef, operation: CommunicationOperation, ctx: CallContext, requirements?: RouteRequirements): Promise<RouteBinding>;
-  provider(route: RouteBinding): AgentCommunicationProvider;   // NoCompatibleRoute if unregistered
+  selectRoute(
+    target: AgentRef,
+    operation: CommunicationOperation,
+    ctx: CallContext,
+    requirements?: RouteRequirements,
+  ): Promise<RouteBinding>;
+  provider(route: RouteBinding): AgentCommunicationProvider; // NoCompatibleRoute if unregistered
 }
 
 export interface RemoteTaskState {
-  remoteState: string;          // provider's own state value, stored verbatim
-  normalized: TaskSnapshot["status"] | "unknown";
+  remoteState: string; // provider's own state value, stored verbatim
+  normalized: TaskSnapshot['status'] | 'unknown';
   observedAt: string;
 }
 
 // References to Agentropy's existing contracts; no parallel task schema:
 //   DelegationRequest, TaskSnapshot, TrustedPrincipal -> agent-v1.md
 //   AgentMessage -> messaging-contract.md
-export interface MessageReceipt { messageId: string; accepted: boolean; }
-export interface AgentEvent { eventId: string; taskId: string; type: string; revision?: number; payload: unknown; }
+export interface MessageReceipt {
+  messageId: string;
+  accepted: boolean;
+}
+export interface AgentEvent {
+  eventId: string;
+  taskId: string;
+  type: string;
+  revision?: number;
+  payload: unknown;
+}
 ```
 
 `AgentRef.definitionId` + `version` correspond to Agent v1's `VersionedRef`; `tenantId` comes from the verified caller, and `endpoint` only from the registry. `AgentEvent` is the transport projection of the messaging contract's `TaskEvent` (same `eventId`, `taskId`, `revision`). Route selection fails `GuaranteeUnavailable` when no provider meets `requirements.durability`, and `UnsupportedOperation` when a required operation or extension is not declared.
@@ -129,13 +153,13 @@ Callers never see `RemoteTaskRef`: the public `TaskHandle`/`TaskSnapshot` always
 
 The five families are **protocol-neutral semantics**, not five A2A endpoints or a promise that every adapter implements them. The current `CommunicationOperation` union intentionally contains only the **v1 implemented-by-design SPI surface**, and no additional method is silently implied:
 
-| Family | Existing v1 SPI mapping | Support boundary |
-|---|---|---|
-| Message / request-response | `send` and `MessageReceipt` | Receipt acknowledges the declared transport acceptance only, not recipient processing or task creation |
-| Message/progress streaming | `subscribe` as `AsyncIterable<AgentEvent>` for task events | Does **not** yet provide general bidirectional streaming messages; that requires a negotiated extension |
-| Task delegation/lifecycle | `delegate`, `cancel` | Caller receives a local handle; remote authority and unknown-acceptance semantics retained |
-| Inquiry/query | `getTask`; public `getResult` is owned by TaskService | A generic inquiry is **not** an extra mandatory v1 method; map a supported query or message/task interaction per provider |
-| Subscription/notification/events | `subscribe`; `send` for explicitly supported non-task notifications | Push/webhook transport and durable notification guarantees remain optional/provider-declared |
+| Family                           | Existing v1 SPI mapping                                             | Support boundary                                                                                                          |
+| -------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Message / request-response       | `send` and `MessageReceipt`                                         | Receipt acknowledges the declared transport acceptance only, not recipient processing or task creation                    |
+| Message/progress streaming       | `subscribe` as `AsyncIterable<AgentEvent>` for task events          | Does **not** yet provide general bidirectional streaming messages; that requires a negotiated extension                   |
+| Task delegation/lifecycle        | `delegate`, `cancel`                                                | Caller receives a local handle; remote authority and unknown-acceptance semantics retained                                |
+| Inquiry/query                    | `getTask`; public `getResult` is owned by TaskService               | A generic inquiry is **not** an extra mandatory v1 method; map a supported query or message/task interaction per provider |
+| Subscription/notification/events | `subscribe`; `send` for explicitly supported non-task notifications | Push/webhook transport and durable notification guarantees remain optional/provider-declared                              |
 
 **Extension contract (architectural rule, not an implemented TypeScript API):** Providers advertise distinct, versioned extension IDs and operation/guarantee capabilities during route selection. Unknown mandatory extensions or missing requirements fail with `UnsupportedOperation` / `GuaranteeUnavailable`; no silent fallback from streaming to polling, durable to best-effort, or authenticated to unauthenticated transport. Discovery through Registry and context continuation are optional extensions, not new mandatory SPI methods. Schema and SDK design for general message streaming and future A2A bindings are deferred.
 
@@ -179,7 +203,7 @@ A2A SDK selection, protocol version, actual endpoint hosting, message serializat
 
 Verified by `packages/testkit/test/a2a.test.ts` (shared conformance suite for both, plus A2A end-to-end, protocol and identity rules).
 
-- **A2A (C-03), protocol 1.0, JSON-RPC binding** (`packages/runtime/src/a2a.ts`, pinned from the A2A specification 1.0.0; its `a2a.proto` is normative). Outbound: `SendMessage` (one text part; JSON input as `mediaType: application/json`; `messageId` = idempotency key, `contextId` = correlation ID; `returnImmediately`), `GetTask`, `CancelTask`; `A2A-Version: 1.0` on every call; a Bearer credential for this runtime resolved per call; no grant reference or caller identity is sent. State mapping: `SUBMITTED`→`created`, `WORKING`→`running`, `INPUT_REQUIRED`/`AUTH_REQUIRED`→`waiting`, `COMPLETED`, `FAILED`/`REJECTED`→`failed`, `CANCELED`→`cancelled`. Errors: A2A codes −32001 (`NotFound`), −32002 (`InvalidState`), −32004 (`UnsupportedOperation`), −32005 (`SchemaViolation`), −32009 (`IncompatibleVersion`); an Agentropy peer also returns the Errors v1 shape in `error.data`. Inbound: `createA2AServer(target, { instanceId })` with the transport's authenticated principal (unauthenticated → HTTP 401), over `localAppTarget(app)` so every AgentService PEP applies; completed tasks carry the output as an artifact. `a2aAgentCard` builds the card (`streaming: true` advertises `capabilities.streaming`). Streaming (FEAT-029.1): `A2AServer.stream` serves `SendStreamingMessage` and `SubscribeToTask` as JSON-RPC frames whose `result` is a `StreamResponse` (first the `task`, then forward-only `statusUpdate`s, the output `artifactUpdate` immediately before `COMPLETED`; the stream ends after the terminal status, and if the local event stream ends early the server reconciles with the task once); `sseFrames` serializes them as `text/event-stream`. `SubscribeToTask` on a terminal task is −32004, as the specification requires; streaming methods sent to `handle` are −32004 and unary methods sent to `stream` are −32601. Envelopes are not streamed. Outbound, `new A2ACommunicationProvider({ streaming: true })` makes `subscribe` read `SubscribeToTask` over SSE (`accept: text/event-stream`, events capped at 1 MiB) and fall back to polling `GetTask` from the last observed state when the peer declines (−32004 or a JSON reply) or the stream breaks; typed peer errors such as `NotFound` are not a fallback. Update events always carry `contextId` (the request's, or the task ID when none was given), as the specification requires. Push notifications (FEAT-029.2): with `createA2AServer(target, { push })` the server serves `CreateTaskPushNotificationConfig` (a `TaskPushNotificationConfig`: `taskId`, optional `id`, `url`, `token`, `authentication { scheme, credentials }`), `GetTaskPushNotificationConfig` and `DeleteTaskPushNotificationConfig` (`taskId`, `id`) and `ListTaskPushNotificationConfigs` (`taskId`; one page). Configs are scoped to tenant, creating principal and task; each call re-checks task visibility; credentials are write-only; a terminal task is −32004 and a server without `push` answers −32003. After a config is created, every later `StreamResponse` update (status, then the output artifact before `COMPLETED`) is POSTed to the URL with `X-A2A-Notification-Token`, the configured `Authorization` and `redirect: 'manual'`; 5xx, 429 and transport errors are retried with doubling backoff (`maxAttempts`, default 3), other responses end that notification, and `onDeliveryError` reports what was not delivered. The webhook URL must pass the deployment's `allowUrl` and be `https:` (unless `allowHttp`); see TM-35/TM-36. Configs live in memory unless `push.store` is set (FEAT-034.3): then they are stored (`pushConfigs` collection) with the last state delivered, `A2AServer.resumePush()` at start restarts a watcher for every config whose task is live and whose creator can still see it, and the first notification after a resume is the task's current state when it differs from the last one delivered. Webhook `token` and `credentials` are stored only sealed by `push.sealer` (e.g. a KMS key); with a store and no sealer, a config that carries them is −32004. Every server that resumes delivers, so with several servers a webhook can receive an update more than once. Deleting a config ends its watcher and releases its task subscription at once (subscriptions take an `AbortSignal` from `LocalApp.subscribe` down to the HTTP binding, which aborts when the client disconnects). The HTTP binding (FEAT-034.1) is `createA2AHttpHandler(server, { authenticate, agentCard })`: JSON-RPC `POST /a2a`, SSE for the streaming methods, the AgentCard at `/.well-known/agent-card.json`, bounded bodies (413) and streams (503). The outbound provider does not configure push at peers (`features.pushNotifications` stays false). `ListTasks` (FEAT-034.4) lists the tasks the caller may see on the endpoint (owner visibility, as `LocalApp.listTasks`), filtered by `contextId`, `status` and `statusTimestampAfter`, newest status first, `pageSize` 1–100 (default 50) with an opaque cursor; `includeArtifacts` adds outputs; `historyLength` has no effect because history is not kept; at most 10 000 visible tasks are scanned per call. A task waiting on a human action is reported as `INPUT_REQUIRED` (other waits stay `WORKING`), with `contextId` = its correlation ID and the status timestamp = its last change. A `SendMessage` (or `SendStreamingMessage`) with `message.taskId` continues that task: it must be visible (−32001 otherwise), not terminal (−32004), match `contextId` when given (−32602), and be waiting for input (−32004 otherwise); the message parts become the input of its pending human action, through `provideHumanInput` with its assignee check and the `messageId` as idempotency key. Parts follow A2A 1.0: exactly one of `text`, `raw` (base64), `url` (http/https, never fetched by the runtime) or `data`, with optional `mediaType` and `filename`, at most 16 per message; one text part is decoded as before, one data part is its value, and anything else reaches the agent as `{ parts: [{ kind: 'text' | 'file' | 'data', … }] }`. Not implemented: push-config paging, message history.
+- **A2A (C-03), protocol 1.0, JSON-RPC binding** (`packages/runtime/src/a2a.ts`, pinned from the A2A specification 1.0.0; its `a2a.proto` is normative). Outbound: `SendMessage` (one text part; JSON input as `mediaType: application/json`; `messageId` = idempotency key, `contextId` = correlation ID; `returnImmediately`), `GetTask`, `CancelTask`; `A2A-Version: 1.0` on every call; a Bearer credential for this runtime resolved per call; no grant reference or caller identity is sent. State mapping: `SUBMITTED`→`created`, `WORKING`→`running`, `INPUT_REQUIRED`/`AUTH_REQUIRED`→`waiting`, `COMPLETED`, `FAILED`/`REJECTED`→`failed`, `CANCELED`→`cancelled`. Errors: A2A codes −32001 (`NotFound`), −32002 (`InvalidState`), −32004 (`UnsupportedOperation`), −32005 (`SchemaViolation`), −32009 (`IncompatibleVersion`); an Agentropy peer also returns the Errors v1 shape in `error.data`. Inbound: `createA2AServer(target, { instanceId })` with the transport's authenticated principal (unauthenticated → HTTP 401), over `localAppTarget(app)` so every AgentService PEP applies; completed tasks carry the output as an artifact. `a2aAgentCard` builds the card (`streaming: true` advertises `capabilities.streaming`). Streaming (FEAT-029.1): `A2AServer.stream` serves `SendStreamingMessage` and `SubscribeToTask` as JSON-RPC frames whose `result` is a `StreamResponse` (first the `task`, then forward-only `statusUpdate`s, the output `artifactUpdate` immediately before `COMPLETED`; the stream ends after the terminal status, and if the local event stream ends early the server reconciles with the task once); `sseFrames` serializes them as `text/event-stream`. `SubscribeToTask` on a terminal task is −32004, as the specification requires; streaming methods sent to `handle` are −32004 and unary methods sent to `stream` are −32601. Envelopes are not streamed. Outbound, `new A2ACommunicationProvider({ streaming: true })` makes `subscribe` read `SubscribeToTask` over SSE (`accept: text/event-stream`, events capped at 1 MiB) and fall back to polling `GetTask` from the last observed state when the peer declines (−32004 or a JSON reply) or the stream breaks; typed peer errors such as `NotFound` are not a fallback. Update events always carry `contextId` (the request's, or the task ID when none was given), as the specification requires. Push notifications (FEAT-029.2): with `createA2AServer(target, { push })` the server serves `CreateTaskPushNotificationConfig` (a `TaskPushNotificationConfig`: `taskId`, optional `id`, `url`, `token`, `authentication { scheme, credentials }`), `GetTaskPushNotificationConfig` and `DeleteTaskPushNotificationConfig` (`taskId`, `id`) and `ListTaskPushNotificationConfigs` (`taskId`; one page). Configs are scoped to tenant, creating principal and task; each call re-checks task visibility; credentials are write-only; a terminal task is −32004 and a server without `push` answers −32003. After a config is created, every later `StreamResponse` update (status, then the output artifact before `COMPLETED`) is POSTed to the URL with `X-A2A-Notification-Token`, the configured `Authorization` and `redirect: 'manual'`; 5xx, 429 and transport errors are retried with doubling backoff (`maxAttempts`, default 3), other responses end that notification, and `onDeliveryError` reports what was not delivered. The webhook URL must pass the deployment's `allowUrl` and be `https:` (unless `allowHttp`); see TM-35/TM-36. Configs live in memory unless `push.store` is set (FEAT-034.3): then they are stored (`pushConfigs` collection) with the last state delivered, `A2AServer.resumePush()` at start restarts a watcher for every config whose task is live and whose creator can still see it, and the first notification after a resume is the task's current state when it differs from the last one delivered. Webhook `token` and `credentials` are stored only sealed by `push.sealer` (e.g. a KMS key); with a store and no sealer, a config that carries them is −32004. Every server that resumes delivers, so with several servers a webhook can receive an update more than once. Deleting a config ends its watcher and releases its task subscription at once (subscriptions take an `AbortSignal` from `LocalApp.subscribe` down to the HTTP binding, which aborts when the client disconnects). The HTTP binding (FEAT-034.1) is `createA2AHttpHandler(server, { authenticate, agentCard })`: JSON-RPC `POST /a2a`, SSE for the streaming methods, the AgentCard at `/.well-known/agent-card.json`, bounded bodies (413) and streams (503). The outbound provider does not configure push at peers (`features.pushNotifications` stays false). `ListTasks` (FEAT-034.4) lists the tasks the caller may see on the endpoint (owner visibility, as `LocalApp.listTasks`), filtered by `contextId`, `status` and `statusTimestampAfter`, newest status first, `pageSize` 1–100 (default 50) with an opaque cursor; `includeArtifacts` adds outputs; `historyLength` has no effect because history is not kept; at most 10 000 visible tasks are scanned per call. A task waiting on a human action is reported as `INPUT_REQUIRED` (other waits stay `WORKING`), with `contextId` = its correlation ID and the status timestamp = its last change. A `SendMessage` (or `SendStreamingMessage`) with `message.taskId` continues that task: it must be visible (−32001 otherwise), not terminal (−32004), match `contextId` when given (−32602), and be waiting for input (−32004 otherwise); the message parts become the input of its pending human action, through `provideHumanInput` with its assignee check and the `messageId` as idempotency key. Parts follow A2A 1.0: exactly one of `text`, `raw` (base64), `url` (http/https, never fetched by the runtime) or `data`, with optional `mediaType` and `filename`, at most 16 per message; one text part is decoded as before, one data part is its value, and anything else reaches the agent as `{ parts: [{ kind: 'text' | 'file' | 'data', … }] }`. Interop (FEAT-034.2): `packages/testkit/test/a2a-interop.test.ts` runs, offline, against the reference JavaScript SDK `@a2a-js/sdk` 1.3.0 (an exact dev dependency): the SDK's client resolves Agentropy's AgentCard and calls `SendMessage`, `GetTask`, `ListTasks` and `SendStreamingMessage`, and Agentropy's provider delegates to a server built from the SDK's `DefaultRequestHandler` and reads the completed output. Other implementations are not tested. Not implemented: push-config paging, message history.
 - **Custom provider sample (C-04)** (`packages/examples/src/broker-provider.ts`): the same SPI over any request/response broker, with an in-memory broker standing in for NATS, RabbitMQ, Kafka request-reply or gRPC; the serving side uses only the identity the broker stamps on a request.
 - **Remote targets in `delegation.delegate`** (FEAT-027.9, `packages/runtime/src/remote.ts`): a `target.remote` delegation runs authentication, grant status, the `delegation:delegate` policy (resource `remote-agent`) and route selection, then calls the provider with the delegation's idempotency key and without the caller's grant. The runtime stores a local projection (`remoteTasks`), refreshes it from `getTask` before every wake-up evaluation (an unreachable peer leaves it as last observed, with `lastError`), wakes `child-tasks` waiters when it becomes terminal, and forwards `cancel`. Verified by `packages/testkit/test/remote-delegation.test.ts` over A2A and the broker sample.
 
@@ -194,4 +218,3 @@ Remote registries are discovered through **A2A 1.0 agent cards**, not a registry
 - **Freshness:** `refresh()` re-fetches cards older than `refreshMs` (5 min); a failed fetch keeps the last good card, marked `stale`, until `maxStaleMs` (24 h).
 
 Verified by `packages/testkit/test/federation.test.ts`, including discover-then-delegate between two runtimes over A2A.
-
