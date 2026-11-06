@@ -40,6 +40,9 @@ Trace from user request through delegation, agent instance, task, attempts, prov
 
 ## Deployment stance
 
+Concrete self-hosting files and the air-gapped procedure: [deployment guide](deployment.md).
+
+
 Begin with a local deployment and interfaces that permit later Kubernetes/OpenShift and self-hosted/air-gapped operation. HA/DR topology, retention targets and capacity SLOs require measured design and separate signoff; no undocumented production readiness claim.
 
 ## Parallel execution isolation — added design acceptance criteria (2026-11-05)

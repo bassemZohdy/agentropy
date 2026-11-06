@@ -23,7 +23,7 @@
     - Done when: provider conformance passes for both workflow adapters; `pnpm exec vitest run packages/workflow-conductor/test`
   - [x] **FEAT-028.7** · mid · Benchmarks for throughput, latency and recovery with SLOs set from measurements (M3-06)
     - Done when: benchmark suite records numbers and the SLO document cites them; `pnpm exec vitest run packages/testkit/test/benchmarks.test.ts`
-  - [ ] **FEAT-028.8** · mid · Self-hosting: container image, Kubernetes/OpenShift manifests and air-gapped install guide (M3-08)
+  - [x] **FEAT-028.8** · mid · Self-hosting: container image, Kubernetes/OpenShift manifests and air-gapped install guide (M3-08)
     - Done when: deployment manifests validate offline; `node scripts/check-deploy.mjs`
   - [ ] **FEAT-028.9** · mid · Registry federation and discovery through published agent cards (M3-09)
     - Done when: federation suite passes; `pnpm exec vitest run packages/testkit/test/federation.test.ts`

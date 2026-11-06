@@ -45,3 +45,32 @@ jobs:
         run: node scripts/check-readiness.mjs
       - name: Formatting
         run: pnpm format:check
+      - name: Deployment files (offline checks)
+        run: node scripts/check-deploy.mjs
+
+  image:
+    # FEAT-028.8: build the host image and smoke-test it the way Kubernetes/OpenShift run it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -f deploy/Dockerfile -t agentropy-host:ci .
+      - name: Run as the image user (read-only root, no capabilities)
+        run: |
+          docker run -d --name host --read-only --tmpfs /tmp -v agentropy-data:/data \
+            --cap-drop ALL --security-opt no-new-privileges -p 8080:8080 agentropy-host:ci
+          for i in $(seq 1 30); do curl -fsS localhost:8080/readyz && break; sleep 1; done
+          curl -fsS localhost:8080/readyz
+          curl -fsS localhost:8080/healthz
+          test "$(docker exec host id -u)" != "0"
+          docker stop -t 30 host
+          docker logs host
+          test "$(docker inspect -f '{{.State.ExitCode}}' host)" = "0"
+      - name: Run with an arbitrary UID in group 0 (OpenShift restricted-v2)
+        run: |
+          docker run -d --name host-oc --user 1000770000:0 --read-only --tmpfs /tmp \
+            -v agentropy-data-oc:/data --cap-drop ALL --security-opt no-new-privileges -p 8081:8080 agentropy-host:ci
+          for i in $(seq 1 30); do curl -fsS localhost:8081/readyz && break; sleep 1; done
+          curl -fsS localhost:8081/readyz
+          docker stop -t 30 host-oc
+          docker logs host-oc

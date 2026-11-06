@@ -1,0 +1,10 @@
+# Sample policy allow-list for the example host (deny by default). Production deployments replace the sample
+# policy with their own policy decision point.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentropy-policy
+  labels:
+    app.kubernetes.io/name: agentropy
+data:
+  allow: "delegation:delegate,task:dispatch"

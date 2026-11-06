@@ -1,0 +1,20 @@
+# Default deny for the runtime pod: no inbound traffic (it serves only kubelet probes) and outbound DNS only.
+# Add egress rules for the PostgreSQL server, policy point, model and tool endpoints the deployment uses.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agentropy
+  labels:
+    app.kubernetes.io/name: agentropy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentropy
+  policyTypes: ["Ingress", "Egress"]
+  ingress: []
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
