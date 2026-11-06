@@ -207,13 +207,15 @@ Types, schemas, errors, lifecycle tables and pure resolvers (no I/O). 196 export
 
 ## @agentropy/runtime
 
-Registries, task service, runtime, scheduler, providers and the local app facade. 150 exports.
+Registries, task service, runtime, scheduler, providers and the local app facade. 154 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
 | `A2A_PROTOCOL_VERSION` | const | [runtime/src/a2a-protocol.ts](../packages/runtime/src/a2a-protocol.ts) |  |
 | `a2aAgentCard` | function | [runtime/src/a2a-client.ts](../packages/runtime/src/a2a-client.ts) | Minimal A2A AgentCard for an endpoint (spec section 8); serve it at the well-known path. |
 | `A2ACommunicationProvider` | class | [runtime/src/a2a-client.ts](../packages/runtime/src/a2a-client.ts) |  |
+| `A2AHttpHandler` | interface | [runtime/src/a2a-http.ts](../packages/runtime/src/a2a-http.ts) |  |
+| `A2AHttpOptions` | interface | [runtime/src/a2a-http.ts](../packages/runtime/src/a2a-http.ts) |  |
 | `A2AHttpResponse` | interface | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) |  |
 | `A2AMessage` | interface | [runtime/src/a2a-protocol.ts](../packages/runtime/src/a2a-protocol.ts) |  |
 | `A2APart` | interface | [runtime/src/a2a-protocol.ts](../packages/runtime/src/a2a-protocol.ts) |  |
@@ -230,6 +232,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `actionEntryId` | const | [runtime/src/inbox.ts](../packages/runtime/src/inbox.ts) |  |
 | `actionUsers` | const | [runtime/src/task-service.ts](../packages/runtime/src/task-service.ts) | Users whose inbox shows a human-action request: its named assignees, else the task owner. |
 | `ActivationIngress` | interface | [runtime/src/ingress.ts](../packages/runtime/src/ingress.ts) |  |
+| `AGENT_CARD_PATH` | const | [runtime/src/a2a-http.ts](../packages/runtime/src/a2a-http.ts) | Well-known AgentCard path (A2A 1.0, section 8.2). |
 | `agentCardForDefinition` | function | [runtime/src/federation.ts](../packages/runtime/src/federation.ts) | A2A AgentCard for one local definition served at `url` (the A2A JSON-RPC endpoint). |
 | `AgentDirectoryFederation` | class | [runtime/src/federation.ts](../packages/runtime/src/federation.ts) |  |
 | `AgentRuntime` | class | [runtime/src/runtime.ts](../packages/runtime/src/runtime.ts) |  |
@@ -249,6 +252,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `checkInstanceQuota` | function | [runtime/src/quotas.ts](../packages/runtime/src/quotas.ts) |  |
 | `checkTaskQuota` | function | [runtime/src/quotas.ts](../packages/runtime/src/quotas.ts) |  |
 | `coreOperationHandlers` | function | [runtime/src/wakeups.ts](../packages/runtime/src/wakeups.ts) | Handlers for delegation, event-handling and scheduling operations (Capability v1 operation I/O). |
+| `createA2AHttpHandler` | function | [runtime/src/a2a-http.ts](../packages/runtime/src/a2a-http.ts) |  |
 | `createA2AServer` | function | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) |  |
 | `createActivationIngress` | function | [runtime/src/ingress.ts](../packages/runtime/src/ingress.ts) |  |
 | `CreateInstanceRequest` | interface | [runtime/src/registry.ts](../packages/runtime/src/registry.ts) |  |
