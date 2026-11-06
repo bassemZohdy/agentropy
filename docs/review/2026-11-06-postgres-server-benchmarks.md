@@ -20,6 +20,20 @@
 | Recovery drain after lease expiry (20 tasks, 8 lost leases) | 1.1–1.2 s | 0.29 s | 0.13 s |
 | 1 / 2 / 4 in-process workers on one pool (120 tasks, 5 ms handler I/O) | 16–17 / 16–18 / 18–20 tasks/s (5 of 6 runs); one run 16 / 16 / **4.3** | — | 129 / 126 / 128 tasks/s |
 
+## CI
+
+The `postgres` CI job (GitHub-hosted Ubuntu runner, Node 24.22, `postgres:17` service container) prints the same lines on every push. First run, 42163263499 (9/9 server conformance and contention tests, 11/11 benchmark cases):
+
+| Case | PostgreSQL server (CI) |
+|---|---|
+| Acceptance / completion throughput | 111 / 57 tasks/s |
+| Acceptance latency p50 / p95 | 7.8 / 14 ms |
+| Accept-to-complete p50 / p95 | 27 / 44 ms |
+| Recovery drain after lease expiry | 0.52 s |
+| 1 / 2 / 4 in-process workers | 53 / 36 / 36 tasks/s |
+
+The runner's lower round-trip time makes everything about 3–4× faster than the Docker Desktop setup, and there adding workers **reduces** throughput (53 → 36 tasks/s): the clearest sign yet of writers serializing on the `seq` row.
+
 ## Where the time goes
 
 A profile of 60 acceptances and their completions (statement counts through a counting pool wrapper):
