@@ -1,6 +1,6 @@
 # 2026-11-05 — M2 monitoring scale baseline (FEAT-027.4)
 
-**What this is:** a first measured baseline for the single-process runtime, not a target or an SLO (numeric targets are M3-06). Numbers come from `packages/testkit/test/scale.test.ts`, which prints a `[scale-baseline]` line on every run; re-run it to compare.
+**What this is:** a first measured baseline for the single-process runtime, not a target or an SLO (targets: [SLOs](../slo.md), from the [M3 benchmarks](2026-11-06-m3-benchmarks.md)). Numbers come from `packages/testkit/test/scale.test.ts`, which prints a `[scale-baseline]` line on every run; re-run it to compare.
 
 ## Scenario
 
