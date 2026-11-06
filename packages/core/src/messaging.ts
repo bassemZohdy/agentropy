@@ -129,6 +129,13 @@ export interface HumanActionInput {
   assignees: { principalIds?: string[]; roles?: string[] };
   dueAt?: string;
   onExpiry: 'resume' | 'fail-task';
+  /**
+   * Approvals only (FEAT-028.5): distinct eligible principals who must submit the same decision input before the
+   * request resolves (default 1, at most 5). Differing decisions are recorded and the request stays open.
+   */
+  requiredApprovals?: number;
+  /** Approvals only: whether the principal who delegated the task may approve it (default false). */
+  allowSelfApproval?: boolean;
 }
 
 export interface HumanActionRequest extends HumanActionInput {

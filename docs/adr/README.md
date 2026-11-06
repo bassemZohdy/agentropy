@@ -36,6 +36,7 @@ ADRs capture architectural direction separately from implementation status. **Ac
 | [0027](0027-m1-setup-choices.md) | M1 setup choices: validator, SemVer, YAML, SQLite driver, package placement | Accepted |
 | [0028](0028-postgresql-store-adapter.md) | PostgreSQL store adapter | Accepted |
 | [0029](0029-upgrades-and-version-migration.md) | Upgrades: instance version migration, checkpoint codecs, store schema evolution | Accepted |
+| [0030](0030-hardening-and-d24-decisions.md) | Hardening: approvals, secrets and the D-24 governance items | Accepted |
 
 Use numbered Markdown files and record context, decision, consequences and open questions. Amend the ADR or supersede it with a new one when substantial direction changes.
 

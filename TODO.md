@@ -17,7 +17,7 @@
     - Done when: upgrade suite passes; `pnpm exec vitest run packages/testkit/test/upgrades.test.ts`
   - [x] **FEAT-028.4** · mid · Audit retention, legal hold, archive anchors and verified disposal (M3-04, D-21, D-22)
     - Done when: audit-retention suite passes; `pnpm exec vitest run packages/testkit/test/audit-retention.test.ts`
-  - [ ] **FEAT-028.5** · mid · Hardening: secret handling, delegated-authority and approval enforcement; decide D-24 items by ADR (M3-05, D-24)
+  - [x] **FEAT-028.5** · mid · Hardening: secret handling, delegated-authority and approval enforcement; decide D-24 items by ADR (M3-05, D-24)
     - Done when: hardening suite passes and the ADR is accepted; `pnpm exec vitest run packages/testkit/test/hardening.test.ts`
   - [ ] **FEAT-028.6** · mid · Second workflow adapter and the cross-provider conformance kit (M3-01, C-05, X-10)
     - Done when: provider conformance passes for both workflow adapters; `pnpm exec vitest run packages/testkit/test/provider-conformance.test.ts`

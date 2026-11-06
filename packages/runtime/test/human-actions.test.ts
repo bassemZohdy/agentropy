@@ -52,6 +52,8 @@ function approver(
                   assignees: { principalIds: opts.assignees ?? ['alice'] },
                   dueAt: opts.dueAt ?? '2026-11-07T00:00:00.000Z',
                   onExpiry: opts.onExpiry ?? 'fail-task',
+                  // These tests exercise decision mechanics with the delegator as approver (FEAT-028.5 opt-out).
+                  allowSelfApproval: true,
                 },
                 { stepKey: 'approval' },
               )

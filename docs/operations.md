@@ -20,6 +20,10 @@ Cancel and instance suspend/resume must have consistent documented semantics acr
 
 Each accepted task pins its AgentDefinition/Profile and effective capability/provider versions. Runtime adapters must validate history compatibility on replay and support a documented rollout/rollback/drain or migration strategy; immutable version metadata alone cannot guarantee provider replay safety. A local single-process + SQLite development mode, if selected, does not imply safe multi-host HA. Document exactly which state survives API, worker, scheduler, storage or network failure.
 
+## Quarantine an agent instance
+
+There is no separate quarantine state ([ADR-0030](adr/0030-hardening-and-d24-decisions.md)). To isolate a misbehaving instance: (1) `suspendInstance` — no new tasks are accepted; (2) `revokeAuthority(grantRef)` for each grant its running tasks use — handlers get an `AuthorityExpired` abort, their next protected effect is refused and the tasks wait behind the dispatch gate; (3) inspect `listEffects(taskId)` and the audit log (`audit:read`); (4) either `reauthorize` and `resumeInstance`, or cancel the tasks and `retireInstance`. Every step is audited.
+
 ## Observability
 
 Trace from user request through delegation, agent instance, task, attempts, provider actions and inbox updates. Track queue lag, task success/failure, recovery rates, duplicate suppression, approval waiting, tool/model usage, latency and tenant quotas. Sensitive prompts, personal data and credentials must be redacted from logs/telemetry.

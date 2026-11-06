@@ -1,6 +1,6 @@
 # Agentropy threat model — identity flows (M2-09, FEAT-027.7)
 
-**Status:** revision 2 (2026-11-06; TM-29…TM-31 added by FEAT-028.4). STRIDE analysis of every identity-bearing flow in the single-process runtime and its ingress adapters. Each mitigation names the test that proves it; `node scripts/check-readiness.mjs` fails if a referenced test file is missing. Rows marked *planned* name the backlog root that owns them. Related: [Security v1](../contracts/security-v1.md), [ADR-0021](../adr/0021-delegated-authorization.md), [ADR-0024](../adr/0024-pre-dispatch-authorization-gate.md).
+**Status:** revision 2 (2026-11-06; TM-29…TM-31 added by FEAT-028.4, TM-32…TM-33 by FEAT-028.5). STRIDE analysis of every identity-bearing flow in the single-process runtime and its ingress adapters. Each mitigation names the test that proves it; `node scripts/check-readiness.mjs` fails if a referenced test file is missing. Rows marked *planned* name the backlog root that owns them. Related: [Security v1](../contracts/security-v1.md), [ADR-0021](../adr/0021-delegated-authorization.md), [ADR-0024](../adr/0024-pre-dispatch-authorization-gate.md).
 
 ## Trust boundaries and assets
 
@@ -53,10 +53,12 @@
 | TM-28 | F8 remote A2A peers | E | Local authority leaks to, or is escalated by, a peer | Outbound calls carry only this runtime's credential; no grant reference or caller identity is sent; remote results and errors are data mapped to typed codes | `packages/testkit/test/a2a.test.ts` |
 | TM-29 | F7 audit and telemetry | T | Whole chain rewritten consistently, or newest rows deleted, by someone with store access | Chain head published to an external anchor sink; `verify` with anchors reports `anchor-mismatch` or `truncated` | `packages/testkit/test/audit-retention.test.ts` |
 | TM-30 | F7 audit and telemetry | R | Evidence destroyed before its time or during an investigation | Disposal only of expired, forwarded rows outside active legal holds; tenant retention cannot go below the deployment floor; disposal leaves a receipt that keeps the chain verifiable | `packages/testkit/test/audit-retention.test.ts` |
+| TM-32 | F4 human approvals | E | Requester approves their own request, or one approver acts alone on a high-risk decision | Self-approval refused by default; `requiredApprovals` needs N distinct agreeing approvers | `packages/testkit/test/hardening.test.ts` |
+| TM-33 | F5 tools and credentials | I | Credential leaks through provider error text into errors, events, audit or spans | Provider errors are mapped without their text; canary test scans store, outbox, audit sink, task errors and spans | `packages/testkit/test/hardening.test.ts` |
 | TM-31 | F7 audit and telemetry | E | Audit administration used without trace | Read, verify, export, retention, hold, release, anchor and dispose are separate permissions; uses and denials are themselves audited | `packages/testkit/test/audit-retention.test.ts` |
 
 ## Residual risks (accepted for M2)
 
 - A compromised process or store can read task data; encryption at rest and KMS integration are deployment concerns (FEAT-028.5/.8). Audit anchoring protects only as well as the anchor sink is isolated from store writers.
-- Break-glass, dual control and quarantine are not implemented (D-24, deferred).
+- Break-glass is not adopted; administrative dual control and data residency are deployment policy ([ADR-0030](../adr/0030-hardening-and-d24-decisions.md)).
 - Quotas are per tenant only; per-user quotas and cost attribution are M3.

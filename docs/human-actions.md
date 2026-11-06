@@ -40,6 +40,10 @@ A handler awaits a request with the wake-up condition `{ kind: "human-action", r
 
 `claimHumanAction` sets `claimedBy` (claim timeout: runtime setting, default 15 min); `releaseHumanAction` or claim timeout returns it to `pending`. Only the claimant may decide a claimed request; anyone eligible may decide a `pending` one.
 
+### Separation of duties and dual control (FEAT-028.5, [ADR-0030](adr/0030-hardening-and-d24-decisions.md))
+
+For `kind: "approval"`, the principal who delegated the task cannot decide the request (`NotAssignee`, `details.reason: "selfApproval"`) unless the request sets `allowSelfApproval: true`. `requiredApprovals: N` (1–5, approvals only) resolves the request only when N distinct eligible principals submit the same input; a repeat by the same principal counts once, a differing input is recorded and the request stays `pending` (a partial approval also releases the approver's claim). Each partial approval writes a `human-action.approve-partial` audit event with the agreeing count. Verified by `packages/testkit/test/hardening.test.ts`.
+
 ### Inbox entry shape
 
 ```ts

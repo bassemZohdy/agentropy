@@ -40,6 +40,8 @@ export interface StoredHumanAction extends Omit<
   decidedAt?: string;
   /** Fingerprint of the accepted decision (decider + input), for duplicate detection. */
   decisionFingerprint?: string;
+  /** Approvals so far when `requiredApprovals` > 1: one entry per distinct principal. */
+  approvals?: { by: string; inputDigest: string; at: string }[];
 }
 
 export interface HumanActionOptions {
@@ -53,8 +55,10 @@ const view = (d: StoredDocument<StoredHumanAction>): HumanActionRequest => {
     decidedBy: _b,
     decidedAt: _a,
     decisionFingerprint: _f,
+    approvals: _p,
     ...rest
   } = d.value;
+  void _p;
   void _i;
   void _b;
   void _a;
@@ -83,7 +87,21 @@ function validateRequest(input: unknown): HumanActionInput {
     throw bad('onExpiry must be "resume" or "fail-task"');
   if (r.dueAt !== undefined && Number.isNaN(Date.parse(r.dueAt)))
     throw bad('dueAt must be an ISO timestamp');
+  if (
+    r.requiredApprovals !== undefined &&
+    (r.kind !== 'approval' ||
+      !Number.isInteger(r.requiredApprovals) ||
+      r.requiredApprovals < 1 ||
+      r.requiredApprovals > 5)
+  )
+    throw bad('requiredApprovals must be 1–5 and only on approvals');
+  if (r.allowSelfApproval !== undefined && r.kind !== 'approval')
+    throw bad('allowSelfApproval applies to approvals only');
   return {
+    ...(r.requiredApprovals !== undefined
+      ? { requiredApprovals: r.requiredApprovals }
+      : {}),
+    ...(r.allowSelfApproval ? { allowSelfApproval: true } : {}),
     kind: r.kind!,
     prompt: r.prompt,
     inputSchema: r.inputSchema,
@@ -259,6 +277,57 @@ export class HumanActionService {
         'human decision input',
       );
       const task = (await tx.get<TaskRecord>('tasks', live.value.taskId))!;
+      // Separation of duties (FEAT-028.5): whoever delegated the work does not approve it.
+      if (
+        live.value.kind === 'approval' &&
+        !live.value.allowSelfApproval &&
+        caller.id === task.value.callerId
+      )
+        throw new AgentropyError(
+          'NotAssignee',
+          'The requester of the work cannot approve it',
+          { details: { reason: 'selfApproval' } },
+        );
+      const needed = live.value.requiredApprovals ?? 1;
+      if (needed > 1) {
+        const inputDigest = digestOf(decision.input);
+        const prior = (live.value.approvals ?? []).filter(
+          (x) => x.by !== caller.id,
+        );
+        const approvals = [
+          ...prior,
+          { by: caller.id, inputDigest, at: this.now() },
+        ];
+        const agreeing = approvals.filter(
+          (x) => x.inputDigest === inputDigest,
+        ).length;
+        if (agreeing < needed) {
+          await this.tasks.audit(tx, caller, {
+            type: 'human-action.approve-partial',
+            action: 'human-input:decide',
+            resource: { type: 'human-action', id: live.id },
+            decision: 'allow',
+            correlationId: task.value.correlationId,
+            taskId: task.id,
+            details: { agreeing, required: needed },
+          });
+          await tx.update<StoredHumanAction>(
+            'humanActions',
+            live.id,
+            live.revision,
+            {
+              ...live.value,
+              // A partial approval releases the caller's claim so the next approver can act.
+              status: 'pending',
+              approvals,
+              ...(live.value.claimedBy === caller.id
+                ? { claimedBy: undefined, claimExpiresAt: undefined }
+                : {}),
+            },
+          );
+          return;
+        }
+      }
       await this.tasks.audit(tx, caller, {
         type: 'human-action.decide',
         action: 'human-input:decide',
