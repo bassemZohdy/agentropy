@@ -49,5 +49,5 @@
   - [!] **TASK-034.2** · low · Decide D-09 (Temporal + LangGraph TypeScript): keep deferred or schedule (R-24)
     - Done when: `node scripts/check-readiness.mjs`
     - Blocked: owner decision → no command can make it → owner records the decision in docs/plans/DESIGN-FOLLOWUPS.md
-  - [ ] **TASK-034.3** · mid · STRIDE rows for multi-worker and PostgreSQL flows, including cross-worker cache staleness (R-25)
+  - [x] **TASK-034.3** · mid · STRIDE rows for multi-worker and PostgreSQL flows, including cross-worker cache staleness (R-25)
     - Done when: `node scripts/check-readiness.mjs`

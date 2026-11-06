@@ -176,6 +176,41 @@ describe.each(stores)('multi-worker pool on %s (M3-02)', (_name, make) => {
     await c.store.close();
   });
 
+  it('audit appends from every worker form one verifiable chain per tenant', async () => {
+    const agent: Agent = {
+      handle: async (inv) => ({ kind: 'completed', output: inv.input }),
+    };
+    const c = cluster(make(), [agent, agent, agent]);
+    const inst = await c.instance('t-1');
+    // Acceptances through all three workers at once, then their executions: every one appends audit rows.
+    await Promise.all(
+      Array.from({ length: 12 }, (_, i) =>
+        c.workers[i % 3]!.delegate(
+          {
+            target: { instanceId: inst },
+            input: { i },
+            idempotencyKey: `a${i}`,
+            correlationId: `a${i}`,
+          },
+          user('t-1'),
+        ),
+      ),
+    );
+    await drain(c);
+    expect(
+      await c.workers[1]!.auditLog.verify('t-1', user('t-1')),
+    ).toMatchObject({ ok: true });
+    const rows = await c.store.transaction((tx) =>
+      tx.find<{ prevHash: string; hash: string }>('audit', {
+        where: { tenantId: 't-1' },
+        orderBy: 'seq',
+      }),
+    );
+    // Linear: each link names the one before it, so no two appends forked from the same head.
+    expect(new Set(rows.map((r) => r.value.prevHash)).size).toBe(rows.length);
+    await c.store.close();
+  });
+
   it('a stalled worker loses its lease to another worker; its late result is fenced', async () => {
     const stuck = gate();
     let lateResult: unknown;
