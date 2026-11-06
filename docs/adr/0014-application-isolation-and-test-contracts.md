@@ -1,6 +1,6 @@
 # ADR-0014: Isolated application contexts and provider conformance tests
 
-- Status: Proposed (2026-11-04)
+- Status: Accepted (2026-11-06, TASK-034.1)
 - Inspiration: [langgraph-flows ADR-0011](https://github.com/bassemZohdy/langgraph-flows/blob/main/docs/adr/ADR-0011-per-app-factory-and-config.md) and [ADR-0018](https://github.com/bassemZohdy/langgraph-flows/blob/main/docs/adr/ADR-0018-author-test-contract-and-ci.md).
 
 ## Context
@@ -14,3 +14,9 @@ Multi-instance isolation tests and offline acceptance become design gates. Speci
 
 ## Alternatives
 Shared mutable module singletons, always-online integration testing and per-project incompatible test harnesses.
+
+## Evidence (2026-11-06, TASK-034.1)
+
+- Every app is built by a factory (`createLocalApp`) with its own registry, store, runtime, models and providers; no mutable module-level instances: `packages/testkit/test/isolation.test.ts` runs two contexts in one process.
+- Offline, deterministic tests: fake clock, policy, model and fault injector in `@agentropy/testkit`; a process-wide network guard fails any unplanned connection; live suites are opt-in (`AGENTROPY_PG_URL`).
+- The reusable provider contract kit is the [conformance kit](../conformance-kit.md) (`defineStoreConformance` and the provider suites).

@@ -11,17 +11,17 @@ ADRs capture architectural direction separately from implementation status. **Ac
 | [0005](0005-registry-directory-pool.md) | Registry, directory and pool boundaries | Accepted |
 | [0006](0006-workflows-as-capabilities.md) | Workflows as agent execution capabilities | Accepted |
 | [0007](0007-always-on-and-inbox.md) | Always-on reactivation and shared inbox | Accepted |
-| [0008](0008-provider-neutral-runtime.md) | Pluggable runtime and durable guarantees | Proposed |
-| [0009](0009-authorization-and-governance.md) | Scoped delegation and auditable policy | Proposed |
-| [0010](0010-async-first-and-state-operations.md) | Async-first delegation and task state guards | Proposed |
-| [0011](0011-versioned-agent-messaging.md) | Versioned command/query/event envelopes | Proposed |
-| [0012](0012-human-actions-and-priority.md) | Actionable inbox, approval and priority policy | Proposed |
-| [0013](0013-version-pinned-agent-executions.md) | Definition/provider version pinning | Proposed |
-| [0014](0014-application-isolation-and-test-contracts.md) | Per-app isolation and offline provider contract tests | Proposed |
+| [0008](0008-provider-neutral-runtime.md) | Pluggable runtime and durable guarantees | Accepted (2026-11-06, with evidence) |
+| [0009](0009-authorization-and-governance.md) | Scoped delegation and auditable policy | Accepted (2026-11-06, with evidence) |
+| [0010](0010-async-first-and-state-operations.md) | Async-first delegation and task state guards | Accepted (2026-11-06, with evidence) |
+| [0011](0011-versioned-agent-messaging.md) | Versioned command/query/event envelopes | Accepted (2026-11-06, with evidence) |
+| [0012](0012-human-actions-and-priority.md) | Actionable inbox, approval and priority policy | Accepted (2026-11-06, with evidence) |
+| [0013](0013-version-pinned-agent-executions.md) | Definition/provider version pinning | Accepted (2026-11-06, with evidence) |
+| [0014](0014-application-isolation-and-test-contracts.md) | Per-app isolation and offline provider contract tests | Accepted (2026-11-06, with evidence) |
 | [0015](0015-pluggable-agent-communication.md) | Communication abstraction; internal, A2A and custom providers | Accepted |
 | [0016](0016-implementation-language.md) | TypeScript/Node.js, pnpm monorepo, JSON Schema, Vitest | Accepted (M1) |
 | [0017](0017-first-persistence-and-activation.md) | SQLite store port, polling wake-up scheduler, in-process bus and outbox (M1) | Accepted (M1) |
-| [0018](0018-execution-per-activation.md) | One execution per activation; standing duties as cycling tasks | Proposed |
+| [0018](0018-execution-per-activation.md) | One execution per activation; standing duties as cycling tasks | Accepted (2026-11-06, with evidence) |
 
 **Review note (2026-11-04):** Earlier proposed ADRs were individually assessed without blanket acceptance. See the [ADR status reconciliation](../review/2026-11-04-adr-status-reconciliation.md). Architecture acceptance does not imply runnable conformance or implementation.
 

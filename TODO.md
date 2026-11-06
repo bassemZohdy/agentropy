@@ -44,7 +44,7 @@
 - [ ] **TASK-034** · P2 · mid · Governance: settle Proposed ADRs, decide D-09, extend the threat model to multi-worker deployments (R-23–R-25)
   - Done when: `node scripts/check-readiness.mjs`
   - Links: Ref: docs/review/2026-11-06-project-review.md#governance-and-documentation · Lane: docs
-  - [ ] **TASK-034.1** · mid · Accept, supersede or annotate ADRs 0008–0014 and 0018 with evidence (R-23)
+  - [x] **TASK-034.1** · mid · Accept, supersede or annotate ADRs 0008–0014 and 0018 with evidence (R-23)
     - Done when: `node scripts/check-doc-links.mjs`
   - [!] **TASK-034.2** · low · Decide D-09 (Temporal + LangGraph TypeScript): keep deferred or schedule (R-24)
     - Done when: `node scripts/check-readiness.mjs`

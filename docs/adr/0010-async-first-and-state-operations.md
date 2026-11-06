@@ -1,6 +1,6 @@
 # ADR-0010: Asynchronous-first delegation and explicit state operations
 
-- Status: Proposed (2026-11-04)
+- Status: Accepted (2026-11-06, TASK-034.1); the optional `executeAndWait` helper is not provided
 - Inspiration: [langgraph-flows ADR-0002](https://github.com/bassemZohdy/langgraph-flows/blob/main/docs/adr/ADR-0002-flow-lifecycle-and-capability-operations.md) and [ADR-0003](https://github.com/bassemZohdy/langgraph-flows/blob/main/docs/adr/ADR-0003-async-first-flow-execution-and-isolation.md).
 
 ## Context
@@ -14,3 +14,10 @@ Requires a versioned transition matrix, idempotent acceptance, transport-unknown
 
 ## Alternatives
 Synchronous-only task execution, per-agent arbitrary public lifecycle, implicit no-op unsupported controls.
+
+## Evidence (2026-11-06, TASK-034.1)
+
+- `delegate` returns a task handle after durable acceptance; the runtime alone moves tasks through the versioned transition matrix (`assertTransition`, `packages/core/src/lifecycle.ts`): `packages/runtime/test/task-service.test.ts`, `packages/runtime/test/runtime.test.ts`.
+- Task and Execution records are separate; retries create new executions and never reopen terminal tasks (ADR-0018).
+- Idempotent acceptance and transport-unknown resolution by re-sending the same key (TM-03).
+- Not provided: a bounded `executeAndWait`. Callers combine `delegate` with `subscribe` or `getTask`; the helper can be added later without changing the task path.
