@@ -4,7 +4,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Store } from '@agentropy/core';
+import { METRICS, NOOP_TELEMETRY, type Store } from '@agentropy/core';
 import { defineStoreConformance } from '@agentropy/testkit';
 import { describe, expect, it } from 'vitest';
 import {
@@ -112,8 +112,10 @@ describe('PostgresStore', () => {
   it('re-runs a transaction after a serialization failure; gives up as StaleRevision', async () => {
     const db = new PGlite();
     let failCommits = 0;
+    let locks = 0;
     const flaky: PgClient = {
       query: async (text, params) => {
+        if (text.includes('pg_advisory_lock(')) locks++;
         if (text === 'COMMIT' && failCommits-- > 0) {
           await db.query('ROLLBACK');
           throw Object.assign(new Error('could not serialize access'), {
@@ -132,17 +134,41 @@ describe('PostgresStore', () => {
       await tx.insert('sessions', 's1', { n: runs });
     });
     expect(runs).toBe(3);
+    // FEAT-032.2: the second re-run queues behind other repeat losers.
+    expect(locks).toBe(1);
     expect(
       (await s.transaction((tx) => tx.get<{ n: number }>('sessions', 's1')))
         ?.value.n,
     ).toBe(3);
 
-    const capped = new PostgresStore({ client: flaky, maxRetries: 1 });
+    const counted: [string, number, Record<string, unknown> | undefined][] = [];
+    const telemetry = {
+      ...NOOP_TELEMETRY,
+      count: (name: string, n: number, attrs?: Record<string, unknown>) =>
+        void counted.push([name, n, attrs]),
+    };
+    const capped = new PostgresStore({
+      client: flaky,
+      maxRetries: 1,
+      telemetry,
+    });
     await capped.migrate();
     failCommits = 100;
     expect(
       await code(capped.transaction((tx) => tx.insert('sessions', 's2', {}))),
     ).toBe('StaleRevision');
+    // FEAT-032.1: one retried conflict, then the exhausted one.
+    expect(counted).toEqual(
+      ['retried', 'exhausted'].map((outcome) => [
+        METRICS.storeConflicts,
+        1,
+        {
+          'agentropy.store.adapter': 'postgres',
+          'agentropy.store.outcome': outcome,
+          'agentropy.store.sqlstate': '40001',
+        },
+      ]),
+    );
     await db.close();
   });
 

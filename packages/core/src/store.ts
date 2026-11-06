@@ -31,6 +31,8 @@ export const STORE_COLLECTIONS = {
   auditPolicies: ['tenantId'],
   auditHolds: ['tenantId', 'status'],
   auditReceipts: ['tenantId'],
+  /** Per-tenant audit chain head (`id` = tenant ID): the last link's hash, so appends need no chain scan. */
+  auditHeads: ['tenantId'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type CollectionName = keyof typeof STORE_COLLECTIONS;

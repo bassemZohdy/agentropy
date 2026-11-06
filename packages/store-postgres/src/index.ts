@@ -14,6 +14,7 @@
  */
 import {
   AgentropyError,
+  METRICS,
   AsyncMutex,
   STORE_COLLECTIONS,
   indexValues,
@@ -24,6 +25,7 @@ import {
   type Store,
   type StoreTx,
   type StoredDocument,
+  type Telemetry,
 } from '@agentropy/core';
 
 export const packageName = '@agentropy/store-postgres' as const;
@@ -61,8 +63,18 @@ export interface PostgresStoreOptions {
   schema?: string;
   /** Re-runs after a serialization failure or deadlock before giving up with StaleRevision. Default 8. */
   maxRetries?: number;
+  /**
+   * From this re-run on, a retried transaction first takes a per-schema transaction-level advisory lock, so
+   * transactions that keep losing queue behind each other instead of colliding again. Default 2.
+   */
+  serializeRetriesAfter?: number;
   /** Close the pool/client when the store closes. Default false (the caller owns the connection). */
   ownsConnection?: boolean;
+  /**
+   * Counts serialization conflicts and deadlocks as `agentropy.store.conflicts` with `agentropy.store.outcome`
+   * `retried` (the transaction ran again) or `exhausted` (it failed StaleRevision after `maxRetries`).
+   */
+  telemetry?: Telemetry;
 }
 
 const RETRYABLE = new Set(['40001', '40P01']);
@@ -113,6 +125,9 @@ export class PostgresStore implements Store {
   private readonly mutex = new AsyncMutex();
   private ready?: Promise<void>;
   private closed = false;
+  private get retryLockKey() {
+    return `agentropy-retry:${this.schema}`;
+  }
 
   constructor(private readonly o: PostgresStoreOptions) {
     if (!o.pool === !o.client)
@@ -279,14 +294,28 @@ export class PostgresStore implements Store {
     for (let attempt = 0; ; attempt++) {
       try {
         return await this.withConnection(async (db) => {
-          await db.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+          // Taken before BEGIN: a SERIALIZABLE snapshot starts at the first statement, so waiting inside the
+          // transaction would hand the winner of the queue a stale snapshot.
+          const queued = attempt >= (this.o.serializeRetriesAfter ?? 2);
+          if (queued)
+            await db.query('SELECT pg_advisory_lock(hashtext($1))', [
+              this.retryLockKey,
+            ]);
           try {
-            const result = await fn(this.tx(db));
-            await db.query('COMMIT');
-            return result;
-          } catch (err) {
-            await db.query('ROLLBACK').catch(() => undefined);
-            throw err;
+            await db.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+            try {
+              const result = await fn(this.tx(db));
+              await db.query('COMMIT');
+              return result;
+            } catch (err) {
+              await db.query('ROLLBACK').catch(() => undefined);
+              throw err;
+            }
+          } finally {
+            if (queued)
+              await db.query('SELECT pg_advisory_unlock(hashtext($1))', [
+                this.retryLockKey,
+              ]);
           }
         });
       } catch (err) {
@@ -294,7 +323,13 @@ export class PostgresStore implements Store {
         const code = pgCode(err);
         if (!code || !SQLSTATE.test(code)) throw err;
         if (!RETRYABLE.has(code)) throw fromSqlState(code);
-        if (attempt >= this.maxRetries)
+        const exhausted = attempt >= this.maxRetries;
+        this.o.telemetry?.count(METRICS.storeConflicts, 1, {
+          'agentropy.store.adapter': 'postgres',
+          'agentropy.store.outcome': exhausted ? 'exhausted' : 'retried',
+          'agentropy.store.sqlstate': code,
+        });
+        if (exhausted)
           throw new AgentropyError(
             'StaleRevision',
             'Transaction kept conflicting with concurrent writers',
@@ -346,20 +381,20 @@ export class PostgresStore implements Store {
       get,
       insert: async <T>(c: CollectionName, id: string, value: T) => {
         const { cols, params } = indexParams(c, value);
-        if (await get(c, id)) throw staleRevision(c, id, 'exists');
-        const seq = Number(
-          (
-            await db.query<{ value: string | number }>(
-              `UPDATE ${s}.meta SET value = value + 1 WHERE key = 'seq' RETURNING value`,
-            )
-          ).rows[0]!.value,
-        );
+        // One round trip (FEAT-032.2): the counter bump and the insert share a statement. A duplicate ID still
+        // consumes a seq value; seq stays unique and in commit order, only not gap-free.
         const all = ['id', 'revision', 'seq', 'value', ...cols];
-        const res = await db.query(
-          `INSERT INTO ${this.t(c)} (${all.join(', ')}) VALUES (${all.map((_, i) => `$${i + 1}`).join(', ')}) ON CONFLICT (id) DO NOTHING`,
-          [id, 1, seq, JSON.stringify(value), ...params],
+        let n = 0;
+        const values = all.map((col) =>
+          col === 'seq' ? '(SELECT value FROM next_seq)' : `$${++n}`,
         );
-        if (affected(res) !== 1) throw staleRevision(c, id, 'exists');
+        const res = await db.query<{ seq: string | number }>(
+          `WITH next_seq AS (UPDATE ${s}.meta SET value = value + 1 WHERE key = 'seq' RETURNING value) ` +
+            `INSERT INTO ${this.t(c)} (${all.join(', ')}) VALUES (${values.join(', ')}) ON CONFLICT (id) DO NOTHING RETURNING seq`,
+          [id, 1, JSON.stringify(value), ...params],
+        );
+        if (res.rows.length !== 1) throw staleRevision(c, id, 'exists');
+        const seq = Number(res.rows[0]!.seq);
         return { id, revision: 1, seq, value: structuredClone(value) };
       },
       update: async <T>(

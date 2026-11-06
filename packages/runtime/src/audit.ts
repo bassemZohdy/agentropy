@@ -39,6 +39,13 @@ const GENESIS = 'sha256:genesis';
 const chainHash = (prevHash: string, auditId: string, event: AuditEvent) =>
   digestOf({ prevHash, auditId, event });
 
+/** The newest link of a tenant's audit chain. */
+interface AuditHead {
+  tenantId: string;
+  auditId: string;
+  hash: string;
+}
+
 /** Writes one intent row inside `tx`; any failure (including an injected one) is AuditCommitUnavailable. */
 export async function recordAuditIntent(
   tx: StoreTx,
@@ -54,23 +61,37 @@ export async function recordAuditIntent(
       ...(details && Object.keys(details).length ? { details } : {}),
     } as AuditEvent;
     // Same transaction as the previous link: Store transactions are serialized, so the chain cannot fork.
-    const prev = (
-      await tx.find<AuditIntentRow>('audit', {
-        where: { tenantId: event.tenantId },
-        orderBy: 'seq',
-      })
-    ).at(-1);
-    const prevHash = prev?.value.hash ?? GENESIS;
+    // The head row makes an append O(1) (FEAT-032.2); a store written before it existed is scanned once.
+    const head = await tx.get<AuditHead>('auditHeads', event.tenantId);
+    const prevHash =
+      head?.value.hash ??
+      (
+        await tx.find<AuditIntentRow>('audit', {
+          where: { tenantId: event.tenantId },
+          orderBy: 'seq',
+        })
+      ).at(-1)?.value.hash ??
+      GENESIS;
+    const hash = chainHash(prevHash, auditId, stored);
     await tx.insert<AuditIntentRow>('audit', auditId, {
       auditId,
       tenantId: event.tenantId,
       type: event.type,
       event: stored,
       prevHash,
-      hash: chainHash(prevHash, auditId, stored),
+      hash,
       forwarded: 0,
       attempts: 0,
     });
+    const next: AuditHead = { tenantId: event.tenantId, auditId, hash };
+    if (head)
+      await tx.update<AuditHead>(
+        'auditHeads',
+        event.tenantId,
+        head.revision,
+        next,
+      );
+    else await tx.insert<AuditHead>('auditHeads', event.tenantId, next);
   } catch (cause) {
     throw new AgentropyError(
       'AuditCommitUnavailable',

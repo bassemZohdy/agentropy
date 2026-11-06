@@ -48,9 +48,28 @@ A profile of 60 acceptances and their completions (statement counts through a co
 - **Workers on one database barely add throughput** (16 → 19 tasks/s from one to four workers), and in one of six runs four workers collapsed to 4.3 tasks/s. Every writing transaction updates the store-wide `seq` counter row ([ADR-0028](../adr/0028-postgresql-store-adapter.md)), so concurrent writers serialize on it and conflicts are retried with backoff. The collapse is consistent with a retry storm on that row; the retries were not instrumented, so this is the likely, not the proven, cause.
 - **Correctness under contention holds.** With 8 concurrent writers on one hot row (equal to the pool size) every transaction committed once; with 40, each transaction either committed whole or failed `StaleRevision` (`reason: "serialization"`) after the bounded retries, and the counter always equalled the number of commits: no lost or partial write.
 
-## Follow-ups (not scheduled)
+## Round-trip reduction (FEAT-032.2, first pass)
 
-- Batch statements per transaction to cut round trips.
-- Replace the single `seq` counter row with a sequence or commit-time ordering that does not serialize all writers, keeping "seq order equals commit order" for readers (ADR-0028 revision).
-- Count serialization retries in telemetry so contention is visible in production.
-- Measure on a dedicated database host (non-Docker, tuned `shared_buffers`, separate network) before treating the provisional targets as final.
+Same Docker Desktop setup, same day:
+
+| | Before | After |
+|---|---|---|
+| Statements per acceptance | 36 (6 transactions) | 16 (2 transactions) |
+| Acceptance time (profile) | 31 ms | 16 ms |
+| Acceptance throughput (200 sequential `delegate`) | 30–33 tasks/s | 70 tasks/s |
+| Acceptance latency p50 / p95 | 28 / 32–33 ms | 14 / 33 ms |
+| Accept-to-complete p50 / p95 | 103–105 / 109–118 ms | 87 / 126 ms |
+| 1 / 2 / 4 in-process workers | 16–20 tasks/s | 19.5 / 18.4 / 20.1 tasks/s |
+
+- An insert takes its `seq` value in the same statement (`WITH next_seq AS (UPDATE … RETURNING value) INSERT …`), not in a separate update. A rejected duplicate insert still uses up one value, so `seq` stays unique and in commit order but may have gaps.
+- An audit append reads a per-tenant chain head row (`auditHeads`) instead of scanning the whole chain (R-26). A store written before the head existed is scanned once, on its next append.
+- Acceptance reads the target instance and the idempotency record in one transaction, gives the tenant to the execution insert instead of reading the task again, and builds its handle from the task it wrote.
+- From the third attempt on, a retried transaction first takes a per-schema session advisory lock, so repeat losers wait their turn instead of colliding again. Without it, the 20-writer conformance case ran out of retries in 1 of 4 runs; with it, 6 of 6 runs passed. The lock is taken before `BEGIN`: a SERIALIZABLE snapshot starts at the first statement, so a lock taken inside the transaction left the waiter with a stale snapshot and made the conflicts worse.
+- The remaining 16 statements are a fence read, writes and the chain head read; reaching ≤ 12 needs several writes per round trip from the Store API. Completion (58 statements) is unchanged. Worker scaling is still flat: that is the `seq` row (FEAT-032.3).
+
+## Follow-ups
+
+- Batch several writes per round trip in the Store API, and apply the same changes to completion (FEAT-032.2).
+- Replace the single `seq` counter row with a sequence or commit-time ordering that does not serialize all writers, keeping "seq order equals commit order" for readers (ADR-0028 revision, FEAT-032.3).
+- Measure on a dedicated database host (non-Docker, tuned `shared_buffers`, separate network) before treating the provisional targets as final (FEAT-032.4).
+- Serialization retries are now counted as `agentropy.store.conflicts` (FEAT-032.1).

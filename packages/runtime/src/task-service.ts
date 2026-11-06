@@ -190,6 +190,16 @@ export const DEFAULT_RETRY: RetryPolicy = {
   backoff: { initialMs: 1000, maxMs: 300_000, multiplier: 2 },
 };
 
+/** The handle an acceptance answers with. */
+const handleOf = (t: TaskRecord): TaskHandle => ({
+  taskId: t.taskId,
+  agentInstanceId: t.instanceId,
+  // The status at acceptance: both T1 and T2 commit in the accepting transaction.
+  status: 'assigned',
+  definition: t.definition,
+  durability: t.snapshot.durability,
+});
+
 export const hashKey = (...parts: string[]) =>
   createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 
@@ -275,7 +285,13 @@ export class TaskService {
       throw new AgentropyError('Unauthenticated', 'No trusted principal');
     // 2. Authorize: grant, target visibility (tenant), policy.
     await this.checkGrant(caller);
-    const instance = await this.resolveTarget(request, caller);
+    const idemId = hashKey(caller.tenantId, caller.id, request.idempotencyKey);
+    // FEAT-032.2: the target and the idempotency record come from one read; the record is acted on only below.
+    const { instance, replay: early } = await this.resolveTarget(
+      request,
+      caller,
+      idemId,
+    );
     await enforcePolicy(this.o.pdp, {
       principal: caller,
       action: 'delegation:delegate',
@@ -298,10 +314,12 @@ export class TaskService {
       input: request.input,
       parentTaskId: request.parentTaskId ?? null,
     });
-    const idemId = hashKey(caller.tenantId, caller.id, request.idempotencyKey);
-    const replay = await this.o.store.transaction((tx) =>
-      tx.get<IdempotencyRecord>('idempotency', idemId),
-    );
+    const replay =
+      early === null
+        ? await this.o.store.transaction((tx) =>
+            tx.get<IdempotencyRecord>('idempotency', idemId),
+          )
+        : early;
     if (replay) {
       if (replay.value.fingerprint !== fingerprint)
         throw new AgentropyError(
@@ -458,7 +476,15 @@ export class TaskService {
         await this.emit(tx, task, created.revision);
         // T2: the instance is available, so bind it and queue the first execution in the same unit of work.
         await this.transition(tx, created, 'assigned', 'T2');
-        await this.queueExecution(tx, taskId, 1, 1, 'delegation', now);
+        await this.queueExecution(
+          tx,
+          taskId,
+          1,
+          1,
+          'delegation',
+          now,
+          caller.tenantId,
+        );
       });
     } catch (err) {
       // A concurrent duplicate won the idempotency insert: answer with its task.
@@ -473,7 +499,7 @@ export class TaskService {
       'agentropy.agent.id': definition.id,
       'agentropy.profile': definition.profile.id,
     });
-    return this.handleFor(taskId);
+    return handleOf(task);
   }
 
   /**
@@ -706,28 +732,42 @@ export class TaskService {
     });
   }
 
+  /**
+   * The visible target instance, and the caller's idempotency record when it could be read in the same
+   * transaction (`null` when it was not read).
+   */
   private async resolveTarget(
     request: DelegationRequest<unknown>,
     caller: TrustedPrincipal,
-  ) {
-    if (request.target.instanceId) {
+    idemId: string,
+  ): Promise<{
+    instance: AgentInstance;
+    replay: StoredDocument<IdempotencyRecord> | undefined | null;
+  }> {
+    const instanceId = request.target.instanceId;
+    if (instanceId) {
+      const [doc, replay] = await this.o.store.transaction(
+        async (tx) =>
+          [
+            await tx.get<AgentInstance>('instances', instanceId),
+            await tx.get<IdempotencyRecord>('idempotency', idemId),
+          ] as const,
+      );
       // AC-09: a target owned by another tenant is TenantMismatch; an unknown ID stays NotFound.
-      const tenant = await this.o.instances.tenantOf(request.target.instanceId);
-      if (tenant !== undefined && tenant !== caller.tenantId) {
+      if (doc && doc.value.tenantId !== caller.tenantId)
         throw new AgentropyError(
           'TenantMismatch',
           'Cross-tenant delegation denied',
         );
-      }
-      const target = await this.o.instances.get(
-        request.target.instanceId,
-        caller,
-      );
-      await this.checkInstanceAccess(target, caller);
-      return target;
+      if (!doc)
+        throw new AgentropyError('NotFound', 'Instance not found', {
+          details: { kind: 'instance' },
+        });
+      await this.checkInstanceAccess(doc.value, caller);
+      return { instance: doc.value, replay };
     }
     if (request.target.definition) {
-      return this.o.instances.create(
+      const instance = await this.o.instances.create(
         {
           definition: request.target.definition,
           ownerId: caller.id,
@@ -735,6 +775,7 @@ export class TaskService {
         },
         caller,
       );
+      return { instance, replay: null };
     }
     throw new AgentropyError(
       'SchemaViolation',
@@ -746,15 +787,7 @@ export class TaskService {
     const doc = (await this.o.store.transaction((tx) =>
       tx.get<TaskRecord>('tasks', taskId),
     ))!;
-    const t = doc.value;
-    return {
-      taskId,
-      agentInstanceId: t.instanceId,
-      // The status at acceptance: both T1 and T2 commit in the accepting transaction.
-      status: 'assigned',
-      definition: t.definition,
-      durability: t.snapshot.durability,
-    };
+    return handleOf(doc.value);
   }
 
   /** Mandatory audit intent in the caller's transaction (SEC-03); failure aborts it with AuditCommitUnavailable. */
@@ -986,11 +1019,14 @@ export class TaskService {
     attempt: number,
     trigger: AgentInvocation['trigger'],
     runAt: string,
+    /** The task's tenant when the caller already holds it; otherwise it is read. */
+    knownTenantId?: string,
   ): Promise<string> {
     assertTransition(EXECUTION_MACHINE, null, 'queued', 'E1');
     const executionId = this.newId('execution');
-    const tenantId = (await tx.get<TaskRecord>('tasks', taskId))?.value
-      .tenantId;
+    const tenantId =
+      knownTenantId ??
+      (await tx.get<TaskRecord>('tasks', taskId))?.value.tenantId;
     await tx.insert<StoredExecution>('executions', executionId, {
       executionId,
       taskId,

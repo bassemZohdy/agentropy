@@ -59,6 +59,8 @@ export const METRICS = {
   mailboxDropped: 'agentropy.mailbox.dropped',
   outboxLag: 'agentropy.outbox.delivery_lag',
   traceRejected: 'agentropy.trace.rejected',
+  /** Store transactions that hit a serialization conflict or deadlock (FEAT-032.1). */
+  storeConflicts: 'agentropy.store.conflicts',
 } as const;
 
 /** Span names (D-13). */

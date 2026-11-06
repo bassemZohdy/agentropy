@@ -341,11 +341,16 @@ describe('worker processes sharing one SQLite file (M3-02)', () => {
     await app.store.close();
 
     const script = join(import.meta.dirname, 'fixtures', 'sqlite-worker.mjs');
+    const barrier = await mkdtemp(join(tmpdir(), 'agentropy-mw-barrier-'));
     const run = (n: number) =>
       new Promise<{ code: number | null; out: string }>((resolve) => {
-        const child = spawn(process.execPath, [script, path, `p${n}`], {
-          stdio: ['ignore', 'pipe', 'pipe'],
-        });
+        const child = spawn(
+          process.execPath,
+          [script, path, `p${n}`, barrier, '3'],
+          {
+            stdio: ['ignore', 'pipe', 'pipe'],
+          },
+        );
         let out = '';
         child.stdout.on('data', (d) => (out += d));
         child.stderr.on('data', (d) => (out += d));

@@ -1,11 +1,14 @@
 /* global process, setTimeout */
 // Worker process for multi-worker.test.ts: runs the runtime against a shared SQLite file until no work is left.
-// Usage: node sqlite-worker.mjs <db path> <worker id>. Uses the built packages (run after `pnpm build`).
+// Usage: node sqlite-worker.mjs <db path> <worker id> [<barrier dir> <workers>]. Uses the built packages (run after `pnpm build`).
+// With a barrier, a worker waits until every worker has started so one fast process cannot drain the queue alone.
+import { readdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { BUILTIN_PROFILES } from '../../../core/dist/index.js';
 import { createLocalApp } from '../../../runtime/dist/index.js';
 import { SqliteStore } from '../../../store-sqlite/dist/index.js';
 
-const [path, workerId] = process.argv.slice(2);
+const [path, workerId, barrier, workers] = process.argv.slice(2);
 const app = createLocalApp({
   store: new SqliteStore({ path }),
   pdp: { decide: async () => ({ effect: 'allow' }) },
@@ -30,11 +33,18 @@ app.define(
   },
   {
     handle: async () => {
-      await new Promise((r) => setTimeout(r, 5));
+      // Long enough that SQLite's busy back-off (up to 100 ms per wait) cannot let one process drain the queue.
+      await new Promise((r) => setTimeout(r, 25));
       return { kind: 'completed', output: { workerId } };
     },
   },
 );
+
+if (barrier) {
+  await writeFile(join(barrier, workerId), '');
+  while ((await readdir(barrier)).length < Number(workers))
+    await new Promise((r) => setTimeout(r, 10));
+}
 
 for (let idle = 0; idle < 3;) {
   const started = await app.runtime.tick();

@@ -201,7 +201,10 @@ describe('retention, disposal and legal hold (ADR-0022 §4–6)', () => {
 
 describe('integrity anchors and archive (ADR-0022 §7)', () => {
   /** An attacker with database access rewrites one decision and recomputes every later hash. */
-  async function rewriteChain(s: Awaited<ReturnType<typeof setup>>) {
+  async function rewriteChain(
+    s: Awaited<ReturnType<typeof setup>>,
+    moveHead = true,
+  ) {
     const rows = await s.rows();
     await s.store.transaction(async (tx) => {
       let prev = 'sha256:genesis';
@@ -223,8 +226,45 @@ describe('integrity anchors and archive (ADR-0022 §7)', () => {
         });
         prev = hash;
       }
+      // An attacker with store access also moves the chain head, or the next append would expose the rewrite.
+      const head = await tx.get<{ auditId: string }>('auditHeads', 't-1');
+      if (head && moveHead)
+        await tx.update('auditHeads', 't-1', head.revision, {
+          ...head.value,
+          hash: prev,
+        });
     });
   }
+
+  it('a store written before chain heads existed links its next append to the scanned chain end', async () => {
+    const s = await setup();
+    await s.activity();
+    await s.store.transaction(async (tx) => {
+      const head = (await tx.get('auditHeads', 't-1'))!;
+      await tx.remove('auditHeads', 't-1', head.revision);
+    });
+    await s.activity(1);
+    expect(await s.app.auditLog.verify('t-1', auditor)).toMatchObject({
+      ok: true,
+    });
+    expect(
+      await s.store.transaction((tx) => tx.get('auditHeads', 't-1')),
+    ).toBeDefined();
+  });
+
+  it('a rewrite that leaves the chain head alone breaks at the next append', async () => {
+    const s = await setup();
+    await s.activity();
+    await rewriteChain(s, false);
+    // The rewritten chain is self-consistent until the next append links to the real head.
+    expect(await s.app.auditLog.verify('t-1', auditor)).toMatchObject({
+      ok: true,
+    });
+    await s.activity(1);
+    expect(await s.app.auditLog.verify('t-1', auditor)).toMatchObject({
+      ok: false,
+    });
+  });
 
   it('a consistent rewrite passes the bare chain check but fails against a published anchor', async () => {
     const s = await setup();
