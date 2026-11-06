@@ -54,6 +54,12 @@ jobs:
         run: node scripts/api-index.mjs --check
       - name: Release packaging (pack, inspect, install tarballs, run a task)
         run: node scripts/check-pack.mjs
+      - name: SBOMs (CycloneDX) for the packages and the host application (TASK-030.2)
+        run: node scripts/sbom.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-packages
+          path: sbom/
 
   node-floor:
     # TASK-033.5: the engines floor (Node 24.0.0) builds and passes the offline suite.
@@ -110,6 +116,15 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Build image
         run: docker build -f deploy/Dockerfile -t agentropy-host:ci .
+      - name: Image SBOM (CycloneDX, OS and application packages) with syft (TASK-030.2)
+        run: |
+          mkdir -p sbom
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/sbom:/out"             anchore/syft:v1.57.0@sha256:3c70e6d5979364cefdc22b51617a78fd264574d3bd6b4f84a351204147025e2a             agentropy-host:ci -o cyclonedx-json=/out/host-image.cdx.json
+          test -s sbom/host-image.cdx.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-image
+          path: sbom/host-image.cdx.json
       - name: Run as the image user (read-only root, no capabilities)
         run: |
           docker run -d --name host --read-only --tmpfs /tmp -v agentropy-data:/data \

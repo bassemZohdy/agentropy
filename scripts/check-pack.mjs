@@ -16,6 +16,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { ALLOWED_LICENSES, sbomFor } from './sbom.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const install = !process.argv.includes('--no-install');
@@ -58,11 +59,16 @@ console.log('smoke ok');
 `;
 
 function run(cmd, args, cwd) {
-  const r = spawnSync(cmd, args, {
-    cwd,
-    encoding: 'utf8',
-    shell: win && (cmd === 'pnpm' || cmd === 'npm'), // .cmd shims on Windows
-  });
+  // Windows runs the pnpm/npm .cmd shims through a shell, which takes one quoted command string.
+  const shell = win && (cmd === 'pnpm' || cmd === 'npm');
+  const quote = (x) => (/[\s"]/.test(x) ? `"${x.replaceAll('"', '\\"')}"` : x);
+  const r = shell
+    ? spawnSync([cmd, ...args].map(quote).join(' '), {
+        cwd,
+        encoding: 'utf8',
+        shell: true,
+      })
+    : spawnSync(cmd, args, { cwd, encoding: 'utf8' });
   if (r.status !== 0)
     throw new Error(
       `${cmd} ${args.join(' ')} failed in ${cwd}:\n${r.stdout}\n${r.stderr}`,
@@ -131,6 +137,20 @@ try {
         /\.test\.(js|d\.ts)$/.test(e)
       )
         fail(`${at}: tarball must not ship ${e}`);
+    // TASK-030.2: the SBOM covers every direct dependency, and every component has a purl and an allowed license.
+    const bom = sbomFor(dir);
+    const names = new Set(bom.components.map((c) => c.name));
+    for (const d of Object.keys(j.dependencies ?? {}))
+      if (!names.has(d)) fail(`${at}: SBOM lacks dependency ${d}`);
+    for (const c of bom.components) {
+      const lic = c.licenses?.[0]?.license?.id;
+      if (!c.purl?.startsWith('pkg:npm/'))
+        fail(`${at}: SBOM component ${c.name} has no purl`);
+      if (!ALLOWED_LICENSES.has(lic))
+        fail(
+          `${at}: dependency ${c.name}@${c.version} has license ${lic}, not in the allow-list (scripts/sbom.mjs)`,
+        );
+    }
     const packed = run('tar', ['-xzOf', tgz, 'package/package.json'], work);
     if (packed.includes('workspace:'))
       fail(`${at}: packed package.json still has workspace: ranges`);
