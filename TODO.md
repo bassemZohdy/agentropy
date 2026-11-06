@@ -1,3 +1,83 @@
 # Active Backlog
 
 ## 🌳 Task Tree
+
+- [ ] **FEAT-032** · P1 · high · PostgreSQL scaling: remove the store-wide seq hot row, cut round trips, expose retries (R-01–R-04)
+  - Done when: `env AGENTROPY_PG_URL=postgres://postgres:ci@127.0.0.1:5432/agentropy pnpm exec vitest run packages/store-postgres/test packages/testkit/test/benchmarks.test.ts`
+  - Links: Ref: docs/review/2026-11-06-project-review.md#runtime-and-scale · Lane: store
+  - [ ] **FEAT-032.1** · low · Count serialization retries and exhausted retries as metrics and span attributes (R-03)
+    - Done when: `pnpm exec vitest run packages/store-postgres/test/postgres-store.test.ts packages/testkit/test/telemetry.test.ts`
+  - [ ] **FEAT-032.2** · mid · Batch statements per transaction; at most 12 round trips per acceptance (R-02)
+    - Done when: `pnpm exec vitest run packages/store-postgres/test`
+  - [ ] **FEAT-032.3** · high · ADR-0028 revision: commit-ordered seq without one hot row; multi-worker throughput grows with workers (R-01)
+    - Done when: `env AGENTROPY_PG_URL=postgres://postgres:ci@127.0.0.1:5432/agentropy pnpm exec vitest run packages/testkit/test/benchmarks.test.ts`
+  - [!] **FEAT-032.4** · low · Re-measure on a dedicated database host and finalize the PostgreSQL SLOs (R-04)
+    - Done when: `node scripts/check-doc-links.mjs`
+    - Blocked: needs a dedicated PostgreSQL host → no such host is available to this checkout → owner provides a host URL or accepts the provisional targets
+- [ ] **FEAT-033** · P1 · mid · Multi-worker correctness and scale: cross-worker policy invalidation, indexed wake-ups (R-05, R-06)
+  - Done when: `pnpm exec vitest run packages/runtime/test packages/testkit/test`
+  - Links: Ref: docs/review/2026-11-06-project-review.md#runtime-and-scale · Lane: runtime
+  - [ ] **FEAT-033.1** · mid · Propagate PolicyDecisionCache invalidation to every worker through the store (R-05)
+    - Done when: `pnpm exec vitest run packages/runtime/test/policy-cache.test.ts packages/testkit/test/multi-worker.test.ts`
+  - [ ] **FEAT-033.2** · mid · Wake-up polling by due-time index instead of scanning every armed registration; benchmark 10k waiters (R-06)
+    - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/testkit/test/benchmarks.test.ts`
+- [ ] **FEAT-034** · P1 · high · A2A in production: HTTP/SSE binding, third-party interop, durable push, missing methods (R-08–R-10)
+  - Done when: `pnpm exec vitest run packages/testkit/test/a2a.test.ts packages/testkit/test/a2a-streaming.test.ts packages/testkit/test/a2a-push.test.ts packages/testkit/test/a2a-http.test.ts`
+  - Links: Ref: docs/review/2026-11-06-project-review.md#interoperability · Lane: runtime
+  - [ ] **FEAT-034.1** · mid · HTTP binding: JSON-RPC POST, SSE responses, principal mapping, well-known agent card; wired into the host (R-08)
+    - Done when: `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts`
+  - [ ] **FEAT-034.2** · mid · Interop test against the pinned reference A2A SDK, offline in CI (R-09)
+    - Done when: `pnpm exec vitest run packages/testkit/test/a2a-interop.test.ts`
+  - [ ] **FEAT-034.3** · mid · Persist push configs in the store, resume watchers on start, release a deleted config's subscription (R-10)
+    - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push.test.ts`
+  - [ ] **FEAT-034.4** · mid · `ListTasks`, task continuation (`message.taskId`) and file parts (R-10)
+    - Done when: `pnpm exec vitest run packages/testkit/test/a2a.test.ts`
+- [ ] **FEAT-035** · P2 · high · Provider integrations: MCP tools, live opt-in model and Conductor suites, model routing (R-11–R-13)
+  - Done when: `pnpm exec vitest run packages/runtime/test/tools.test.ts packages/testkit/test`
+  - Links: Ref: docs/review/2026-11-06-project-review.md#interoperability · Lane: runtime
+  - [ ] **FEAT-035.1** · high · MCP client tool provider (tools/list, tools/call) under the tool PEP and audit (R-11)
+    - Done when: `pnpm exec vitest run packages/runtime/test/mcp-tools.test.ts`
+  - [ ] **FEAT-035.2** · mid · Opt-in live suites for the model API and Conductor; Conductor OSS service job in CI (R-12)
+    - Done when: `pnpm exec vitest run packages/workflow-conductor/test packages/testkit/test/providers.test.ts`
+  - [ ] **FEAT-035.3** · mid · Rule-based model routing wrapper with residency and data-class floors (R-13)
+    - Done when: `pnpm exec vitest run packages/runtime/test/model-routing.test.ts`
+- [ ] **FEAT-036** · P1 · mid · Live-cluster deployment test: apply manifests on kind, readiness, rollout, pod loss recovery (R-14)
+  - Done when: `bash deploy/kind-smoke.sh`
+  - Links: Ref: docs/review/2026-11-06-project-review.md#deployment-supply-chain-and-release · Lane: ops
+- [ ] **TASK-030** · P1 · mid · Supply chain: dependency updates, audit, pinned actions and base image, SBOM and signing (R-15, R-16)
+  - Done when: `node scripts/check-deploy.mjs`
+  - Links: Ref: docs/review/2026-11-06-project-review.md#deployment-supply-chain-and-release · Lane: ops
+  - [ ] **TASK-030.1** · low · Dependabot or Renovate, `pnpm audit --prod` in CI, actions pinned by SHA, base image by digest (R-15)
+    - Done when: `node scripts/check-deploy.mjs`
+  - [ ] **TASK-030.2** · mid · SBOM for packages and image, image signature, provenance plan for publishing (R-16)
+    - Done when: `node scripts/check-pack.mjs --no-install`
+- [ ] **TASK-031** · P2 · low · Split runtime/src/a2a.ts into server, push, client and SSE modules without API change (R-07)
+  - Done when: `node scripts/api-index.mjs --check`
+  - Links: Ref: docs/review/2026-11-06-project-review.md#runtime-and-scale · Lane: runtime
+- [!] **TASK-032** · P2 · low · Release decisions: version, npm scope, release workflow, image registry (R-17)
+  - Done when: `node scripts/check-pack.mjs`
+  - Links: Ref: docs/release.md · Lane: ops
+  - Blocked: owner decisions needed → nothing to run until they are made → owner records version, scope, registry and flow in docs/release.md
+- [ ] **TASK-033** · P2 · low · Developer experience: LF line endings, Windows-safe tests, global network guard, coverage, Node floor (R-18–R-22)
+  - Done when: `pnpm check`
+  - Links: Ref: docs/review/2026-11-06-project-review.md#developer-experience-and-quality · Lane: dx
+  - [ ] **TASK-033.1** · low · `.gitattributes` with `* text=auto eol=lf` and renormalize (R-18)
+    - Done when: `pnpm format:check`
+  - [ ] **TASK-033.2** · low · Skip the symlink-escape case where the OS refuses symlinks; mandatory in CI (R-19)
+    - Done when: `pnpm exec vitest run packages/runtime/test/skills.test.ts`
+  - [ ] **TASK-033.3** · low · Process-global network guard with explicit `allowNetwork(hosts)` (R-20)
+    - Done when: `pnpm exec vitest run packages/testkit/test packages/store-postgres/test`
+  - [ ] **TASK-033.4** · low · V8 coverage report in CI with a recorded baseline (R-21)
+    - Done when: `pnpm exec vitest run --coverage`
+  - [ ] **TASK-033.5** · low · Correct the Node floor in the compatibility matrix and test the floor in CI (R-22)
+    - Done when: `node scripts/check-doc-links.mjs`
+- [ ] **TASK-034** · P2 · mid · Governance: settle Proposed ADRs, decide D-09, extend the threat model to multi-worker deployments (R-23–R-25)
+  - Done when: `node scripts/check-readiness.mjs`
+  - Links: Ref: docs/review/2026-11-06-project-review.md#governance-and-documentation · Lane: docs
+  - [ ] **TASK-034.1** · mid · Accept, supersede or annotate ADRs 0008–0014 and 0018 with evidence (R-23)
+    - Done when: `node scripts/check-doc-links.mjs`
+  - [!] **TASK-034.2** · low · Decide D-09 (Temporal + LangGraph TypeScript): keep deferred or schedule (R-24)
+    - Done when: `node scripts/check-readiness.mjs`
+    - Blocked: owner decision → no command can make it → owner records the decision in docs/plans/DESIGN-FOLLOWUPS.md
+  - [ ] **TASK-034.3** · mid · STRIDE rows for multi-worker and PostgreSQL flows, including cross-worker cache staleness (R-25)
+    - Done when: `node scripts/check-readiness.mjs`
