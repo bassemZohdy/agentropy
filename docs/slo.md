@@ -1,6 +1,6 @@
 # Service level objectives (M3-06)
 
-**Status:** revision 1 (2026-11-06), set from the [M3 benchmarks](review/2026-11-06-m3-benchmarks.md). Targets apply to the **reference single-node deployment**: one runtime process on the SQLite adapter with `durable-execution`, trivial handlers, default limits. They describe what Agentropy itself adds; handler, model, tool and network time come on top and belong in the application's own SLOs.
+**Status:** revision 2 (2026-11-06; PostgreSQL section added by FEAT-031). The SQLite targets were set from the [M3 benchmarks](review/2026-11-06-m3-benchmarks.md). Targets apply to the **reference single-node deployment**: one runtime process on the SQLite adapter with `durable-execution`, trivial handlers, default limits. They describe what Agentropy itself adds; handler, model, tool and network time come on top and belong in the application's own SLOs.
 
 | Objective | Target | Measured (benchmarks) | Notes |
 |---|---|---|---|
@@ -11,6 +11,18 @@
 | Accepted tasks lost on a durable store | 0 | 0 in every recovery and crash test | `durability: none` runtimes disclose loss instead |
 | Duplicate dispatch of one execution | 0 | 0 across workers and processes | Effects use step keys; providers must honor idempotency keys |
 
-**PostgreSQL:** no targets yet. The only measurements are on PGlite (embedded WASM PostgreSQL), which is not a server. Targets will be set from measurements on a PostgreSQL server deployment (FEAT-028.8).
+## PostgreSQL
+
+**Provisional** (revision 2, FEAT-031), set from the [PostgreSQL server benchmarks](review/2026-11-06-postgres-server-benchmarks.md): one runtime process, one PostgreSQL 17 server with a client round trip of about 0.65 ms, pool of 8, default PostgreSQL settings. Latency scales with the round trip (an acceptance is 36 sequential statements), so restate the latency targets for your network: roughly 36 × RTT for acceptance and 100 × RTT for accept-to-complete, plus server time.
+
+| Objective | Target | Measured | Notes |
+|---|---|---|---|
+| Acceptance latency, p95 | ≤ 60 ms | 32–33 ms | Round-trip bound |
+| Accept-to-complete overhead, trivial handler, idle runtime, p95 | ≤ 250 ms | 109–118 ms | Scheduler interval not included |
+| Sustained completion throughput per database | ≥ 10 tasks/s | 18–19 tasks/s with one worker | Extra workers on one database add little (store-wide `seq` row) and can collapse under contention |
+| Recovery after a worker crash | work resumes within `leaseMs` + one scheduler interval + 5 s | 1.1–1.2 s after lease expiry | |
+| Accepted tasks lost; duplicate dispatch | 0; 0 | 0; 0 (Store conformance, contention cases) | Conflicts beyond the retry bound fail `StaleRevision`, never a partial write |
+
+These are provisional until measured on a dedicated database host.
 
 **How to check:** run `pnpm exec vitest run packages/testkit/test/benchmarks.test.ts` on the target hardware and compare its `[bench]` lines with the table. The suite's own assertions are floors an order of magnitude below these targets, so CI noise does not fail builds; a target miss is found by reading the lines, not by a red test.

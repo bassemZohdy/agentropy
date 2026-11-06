@@ -3,7 +3,12 @@
 // docs/review/2026-11-06-m3-benchmarks.md come from these lines, and docs/slo.md sets targets from them. The
 // assertions are deliberately loose floors (an order of magnitude under the measurements) so CI noise cannot fail
 // the suite; regressions are spotted by comparing the printed lines.
+//
+// FEAT-031: with AGENTROPY_PG_URL set (e.g. postgres://postgres:pw@127.0.0.1:55432/agentropy) the same cases also
+// run on a PostgreSQL server through node-postgres, each store in a fresh schema. That opt-in lifts the offline
+// network guard for this file only; without it nothing here touches the network.
 import { PGlite } from '@electric-sql/pglite';
+import pg from 'pg';
 import {
   BUILTIN_PROFILES,
   type Agent,
@@ -15,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { createLocalApp, type LocalApp } from '../../runtime/src/index.js';
 import { sqliteTempStore } from '../../runtime/test/harness.js';
 import { PostgresStore } from '../../store-postgres/src/index.js';
-import { FakeClock, FakePolicy } from '../src/index.js';
+import { FakeClock, FakePolicy, blockNetwork } from '../src/index.js';
 
 const alice: TrustedPrincipal = { id: 'alice', type: 'user', tenantId: 't-1' };
 
@@ -89,12 +94,23 @@ const delegate = (app: LocalApp, inst: string, key: string) =>
     alice,
   );
 
+const PG_URL = process.env['AGENTROPY_PG_URL'];
+if (PG_URL) blockNetwork()(); // explicit opt-in to a live database for this file
+let schemas = 0;
+const pgServer = (): Store =>
+  new PostgresStore({
+    pool: new pg.Pool({ connectionString: PG_URL, max: 8 }),
+    schema: `bench_${process.pid}_${Date.now().toString(36)}_${schemas++}`,
+    ownsConnection: true,
+  });
+
 const stores: [string, () => Store][] = [
   ['sqlite', () => sqliteTempStore()],
   [
     'postgres-pglite',
     () => new PostgresStore({ client: new PGlite(), ownsConnection: true }),
   ],
+  ...(PG_URL ? [['postgres-server', pgServer] as [string, () => Store]] : []),
 ];
 
 describe.each(stores)('benchmarks on %s (M3-06)', (storeName, make) => {
@@ -185,43 +201,51 @@ describe.each(stores)('benchmarks on %s (M3-06)', (storeName, make) => {
   }, 120_000);
 });
 
-describe('multi-worker scaling on SQLite (M3-06)', () => {
-  it('completes the same batch with 1, 2 and 4 in-process workers', async () => {
-    const N = 120;
-    const out: Record<string, number> = {};
-    for (const n of [1, 2, 4]) {
-      const store = sqliteTempStore();
-      const clock = new FakeClock('2026-11-06T00:00:00.000Z');
-      const ws = workers(store, n, clock, {
-        handle: async (inv) => {
-          await new Promise((r) => setTimeout(r, 5)); // simulated I/O in the handler
-          return { kind: 'completed', output: inv.input };
-        },
-      });
-      const inst = await instance(ws[0]!);
-      for (let i = 0; i < N; i++) await delegate(ws[0]!, inst, `m${i}`);
-      const t0 = performance.now();
-      for (let round = 0; round < 200; round++) {
-        await Promise.all(ws.map((w) => w.runtime.tick()));
-        await Promise.all(ws.map((w) => w.runtime.idle()));
-        const open = (
-          await store.transaction((tx) =>
-            tx.find<{ state: string }>('executions', {
-              where: { state: 'queued' },
-            }),
-          )
-        ).length;
-        if (!open) break;
+const scaling: [string, () => Store][] = [
+  ['sqlite', () => sqliteTempStore()],
+  ...(PG_URL ? [['postgres-server', pgServer] as [string, () => Store]] : []),
+];
+
+describe.each(scaling)(
+  'multi-worker scaling on %s (M3-06)',
+  (storeName, make) => {
+    it('completes the same batch with 1, 2 and 4 in-process workers', async () => {
+      const N = 120;
+      const out: Record<string, number> = {};
+      for (const n of [1, 2, 4]) {
+        const store = make();
+        const clock = new FakeClock('2026-11-06T00:00:00.000Z');
+        const ws = workers(store, n, clock, {
+          handle: async (inv) => {
+            await new Promise((r) => setTimeout(r, 5)); // simulated I/O in the handler
+            return { kind: 'completed', output: inv.input };
+          },
+        });
+        const inst = await instance(ws[0]!);
+        for (let i = 0; i < N; i++) await delegate(ws[0]!, inst, `m${i}`);
+        const t0 = performance.now();
+        for (let round = 0; round < 200; round++) {
+          await Promise.all(ws.map((w) => w.runtime.tick()));
+          await Promise.all(ws.map((w) => w.runtime.idle()));
+          const open = (
+            await store.transaction((tx) =>
+              tx.find<{ state: string }>('executions', {
+                where: { state: 'queued' },
+              }),
+            )
+          ).length;
+          if (!open) break;
+        }
+        out[`workers${n}PerSec`] = round(N / ((performance.now() - t0) / 1000));
+        await store.close();
       }
-      out[`workers${n}PerSec`] = round(N / ((performance.now() - t0) / 1000));
-      await store.close();
-    }
-    bench('multi-worker', {
-      store: 'sqlite',
-      tasks: N,
-      handlerIoMs: 5,
-      ...out,
-    });
-    expect(out.workers2PerSec!).toBeGreaterThan(out.workers1PerSec! * 0.4);
-  }, 120_000);
-});
+      bench('multi-worker', {
+        store: storeName,
+        tasks: N,
+        handlerIoMs: 5,
+        ...out,
+      });
+      expect(out.workers2PerSec!).toBeGreaterThan(out.workers1PerSec! * 0.4);
+    }, 120_000);
+  },
+);

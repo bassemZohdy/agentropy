@@ -17,7 +17,7 @@
 |---|---|---|---|---|
 | `MemoryStore` | — | none | 1 | Tested: Store conformance |
 | `SqliteStore` (`node:sqlite`) | SQLite bundled with Node | durable-execution | several processes on one host (one writer at a time) | Tested: conformance, crash mid-transaction, three worker processes |
-| `PostgresStore` | PostgreSQL 18.6 via PGlite 0.5.10; any server supporting `SERIALIZABLE`, advisory locks and `COLLATE "C"` is expected to work | durable-execution | many | Tested on PGlite only; a PostgreSQL server is **not** tested in CI |
+| `PostgresStore` | PostgreSQL 17 server via node-postgres 8.23; PostgreSQL 18.6 via PGlite 0.5.10; other servers supporting `SERIALIZABLE`, advisory locks and `COLLATE "C"` are expected to work | durable-execution | many | Tested: Store conformance, contention and benchmarks on a PostgreSQL 17 server in CI (`postgres` job) and locally; PGlite in the offline suite. Workers on one database add little throughput ([server benchmarks](review/2026-11-06-postgres-server-benchmarks.md)) |
 
 ## Protocols and providers
 

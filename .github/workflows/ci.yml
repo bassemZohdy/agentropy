@@ -53,6 +53,37 @@ jobs:
       - name: Release packaging (pack, inspect, install tarballs, run a task)
         run: node scripts/check-pack.mjs
 
+  postgres:
+    # FEAT-031: Store conformance, contention cases and benchmarks on a PostgreSQL server.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: agentropy
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      AGENTROPY_PG_URL: postgres://postgres:ci@127.0.0.1:5432/agentropy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.34.9'
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Store conformance on PostgreSQL server
+        run: pnpm exec vitest run packages/store-postgres/test/postgres-server.test.ts
+      - name: Benchmarks including PostgreSQL server ([bench] lines)
+        run: pnpm exec vitest run packages/testkit/test/benchmarks.test.ts
+
   image:
     # FEAT-028.8: build the host image and smoke-test it the way Kubernetes/OpenShift run it.
     runs-on: ubuntu-latest
