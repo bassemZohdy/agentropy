@@ -157,6 +157,13 @@ export function decodeCheckpoint(
   }
 }
 
+/**
+ * A grace-period sleep that does not keep the process alive: nothing awaits it except a background fence, so a
+ * shutdown must not wait for it (FEAT-037.3).
+ */
+const sleepUnref = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms).unref());
+
 const addMs = (iso: string, ms: number) =>
   new Date(Date.parse(iso) + ms).toISOString();
 
@@ -1066,7 +1073,7 @@ export class AgentRuntime {
     controller.abort(
       new AgentropyError('Timeout', 'Activation exceeded maxActivationMs'),
     );
-    await new Promise((r) => setTimeout(r, this.o.cancelGraceMs));
+    await sleepUnref(this.o.cancelGraceMs);
     if (!this.running.has(executionId)) return;
     await this.store.transaction(async (tx) => {
       const e = await tx.get<StoredExecution>('executions', executionId);
@@ -1088,7 +1095,7 @@ export class AgentRuntime {
     controller.abort(
       new AgentropyError('TaskCancelled', 'Task cancellation requested'),
     );
-    await new Promise((r) => setTimeout(r, this.o.cancelGraceMs));
+    await sleepUnref(this.o.cancelGraceMs);
     if (!this.running.has(executionId)) return;
     await this.store.transaction(async (tx) => {
       const e = await tx.get<StoredExecution>('executions', executionId);

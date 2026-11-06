@@ -49,7 +49,7 @@
     - Done when: `pnpm exec vitest run packages/runtime/test/runtime.test.ts packages/testkit/test/recovery.test.ts`
   - [x] **FEAT-037.2** · mid · `execute()` contains disposition-write failures (bounded retry, then lost execution, never an unhandled rejection) and `limits.maxActivationMs` aborts a hung handler (R-28, R-29)
     - Done when: `pnpm exec vitest run packages/runtime/test/runtime.test.ts packages/testkit/test/hardening.test.ts`
-  - [ ] **FEAT-037.3** · mid · Host shutdown order (stop accepting, abort streams, stop scheduler, drain, close store), unref'd grace timers, structured lifecycle and error log lines, optional OTLP wiring (R-30, R-31)
+  - [ ] **FEAT-037.3** · low · Host observability: `AGENTROPY_OTLP_ENDPOINT` wires the OpenTelemetry SDK as an optional dependency of the examples package (R-31; shutdown order, unref'd timers and error logs done)
     - Done when: `pnpm exec vitest run packages/examples/test/host.test.ts packages/testkit/test/telemetry.test.ts`
 - [ ] **FEAT-038** · P1 · high · Lifecycle correctness: deadlines while waiting, activation budget, subscription re-activation, timestamp validation, remote error codes, envelopes (R-32–R-38)
   - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/runtime/test/task-service.test.ts packages/testkit/test/a2a.test.ts packages/testkit/test/providers.test.ts`

@@ -16,12 +16,15 @@
  * Endpoints: GET /healthz (process alive), GET /readyz (store answers a transaction, the scheduler loop is not
  * stalled, not shutting down); with AGENTROPY_A2A_TOKENS also POST /a2a (A2A JSON-RPC, SSE streaming) and
  * GET /.well-known/agent-card.json. A scheduler tick that fails is logged to stderr and the loop goes on.
- * SIGTERM stops accepting new scheduler ticks, waits for running executions, closes the store and exits.
+ * SIGTERM (see `shutdownHost`): readiness drops, the listener closes and open connections (A2A streams) are cut, the
+ * scheduler stops and running executions finish, then the store closes. An unhandled rejection is logged as one
+ * JSON line and ends the process with status 1.
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
 import {
   createServer,
   type IncomingMessage,
+  type Server,
   type ServerResponse,
 } from 'node:http';
 import {
@@ -198,6 +201,25 @@ export function defineAgents(app: LocalApp): void {
   );
 }
 
+/**
+ * Orderly shutdown (FEAT-037.3): mark not ready, stop accepting connections and cut the open ones (SSE streams would
+ * otherwise hold the server until the pod's SIGKILL), stop the scheduler and wait for running executions, and only
+ * then close the store. Safe to call twice.
+ */
+export async function shutdownHost(h: {
+  state: HostState;
+  server: Server;
+  stop: () => Promise<void>;
+  app: LocalApp;
+}): Promise<void> {
+  if (h.state.shuttingDown) return;
+  h.state.shuttingDown = true;
+  h.server.close();
+  h.server.closeAllConnections();
+  await h.stop();
+  await h.app.store.close();
+}
+
 export async function main(env = process.env): Promise<void> {
   const app = createLocalApp({
     store: new SqliteStore({ path: env.AGENTROPY_DB ?? '/data/agentropy.db' }),
@@ -227,15 +249,19 @@ export async function main(env = process.env): Promise<void> {
     })();
   });
   server.listen(Number(env.PORT ?? 8080));
-  const shutdown = async () => {
-    if (state.shuttingDown) return;
-    state.shuttingDown = true;
-    await stop();
-    await app.store.close();
-    server.close();
-  };
+  const shutdown = () => shutdownHost({ state, server, stop, app });
   process.once('SIGTERM', () => void shutdown());
   process.once('SIGINT', () => void shutdown());
+  process.on('unhandledRejection', (reason) => {
+    console.error(
+      JSON.stringify({
+        level: 'fatal',
+        event: 'unhandledRejection',
+        message: reason instanceof Error ? reason.message : String(reason),
+      }),
+    );
+    process.exit(1);
+  });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) void main();

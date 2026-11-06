@@ -3,8 +3,15 @@
 import { BUILTIN_PROFILES, type TrustedPrincipal } from '@agentropy/core';
 import { createLocalApp } from '@agentropy/runtime';
 import { SqliteStore } from '@agentropy/store-sqlite';
-import type { IncomingMessage, ServerResponse } from 'node:http';
-import { describe, expect, it } from 'vitest';
+import {
+  createServer,
+  get,
+  type IncomingMessage,
+  type ServerResponse,
+} from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { allowNetwork } from '@agentropy/testkit';
+import { describe, expect, it, vi } from 'vitest';
 import {
   AllowListPolicy,
   a2aEndpoint,
@@ -12,6 +19,7 @@ import {
   defineAgents,
   healthHandler,
   schedulerStalled,
+  shutdownHost,
 } from '../src/host.js';
 
 function call(
@@ -204,5 +212,56 @@ describe('container host (M3-08)', () => {
         )
       ).status,
     ).toBe(200);
+  });
+
+  it('shutdown cuts open streams, stops the scheduler, then closes the store, and is safe twice', async () => {
+    const store = new SqliteStore({ path: ':memory:' });
+    const app = createLocalApp({
+      store,
+      pdp: new AllowListPolicy(''),
+      profiles: BUILTIN_PROFILES,
+    });
+    const order: string[] = [];
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.write(': open\n\n'); // a stream that never ends by itself
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const port = (server.address() as AddressInfo).port;
+    const release = allowNetwork([`127.0.0.1:${port}`]);
+    const cut = new Promise<void>((resolve) => {
+      get(`http://127.0.0.1:${port}/`, (res) => {
+        res.on('data', () => undefined);
+        res.on('close', () => {
+          order.push('stream cut');
+          resolve();
+        });
+      }).on('error', () => undefined);
+    });
+    await vi.waitFor(() =>
+      expect(server.listening && order.length === 0).toBe(true),
+    );
+    await new Promise((r) => setTimeout(r, 50)); // the request reached the server
+    const state = { shuttingDown: false };
+    const stop = vi.fn(async () => {
+      order.push('scheduler stopped');
+    });
+    const close = store.close.bind(store);
+    store.close = async () => {
+      order.push('store closed');
+      return close();
+    };
+    await shutdownHost({ state, server, stop, app });
+    await cut;
+    await shutdownHost({ state, server, stop, app }); // second call is a no-op
+    release();
+    expect(state.shuttingDown).toBe(true);
+    expect(server.listening).toBe(false);
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(order).toContain('stream cut');
+    expect(order.filter((x) => x !== 'stream cut')).toEqual([
+      'scheduler stopped',
+      'store closed',
+    ]);
   });
 });
