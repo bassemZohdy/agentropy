@@ -19,8 +19,8 @@
     - Done when: audit-retention suite passes; `pnpm exec vitest run packages/testkit/test/audit-retention.test.ts`
   - [x] **FEAT-028.5** · mid · Hardening: secret handling, delegated-authority and approval enforcement; decide D-24 items by ADR (M3-05, D-24)
     - Done when: hardening suite passes and the ADR is accepted; `pnpm exec vitest run packages/testkit/test/hardening.test.ts`
-  - [ ] **FEAT-028.6** · mid · Second workflow adapter and the cross-provider conformance kit (M3-01, C-05, X-10)
-    - Done when: provider conformance passes for both workflow adapters; `pnpm exec vitest run packages/testkit/test/provider-conformance.test.ts`
+  - [x] **FEAT-028.6** · mid · Second workflow adapter and the cross-provider conformance kit (M3-01, C-05, X-10)
+    - Done when: provider conformance passes for both workflow adapters; `pnpm exec vitest run packages/workflow-conductor/test`
   - [ ] **FEAT-028.7** · mid · Benchmarks for throughput, latency and recovery with SLOs set from measurements (M3-06)
     - Done when: benchmark suite records numbers and the SLO document cites them; `pnpm exec vitest run packages/testkit/test/benchmarks.test.ts`
   - [ ] **FEAT-028.8** · mid · Self-hosting: container image, Kubernetes/OpenShift manifests and air-gapped install guide (M3-08)

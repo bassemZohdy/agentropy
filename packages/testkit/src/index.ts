@@ -9,3 +9,4 @@ export * from './fault-injector.js';
 export * from './store.js';
 export * from './network-guard.js';
 export * from './fake-workflow.js';
+export * from './workflow-conformance.js';

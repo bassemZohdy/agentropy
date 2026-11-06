@@ -125,6 +125,16 @@ importers:
         specifier: 2.0.1
         version: 2.0.1(@opentelemetry/api@1.9.0)
 
+  packages/workflow-conductor:
+    dependencies:
+      '@agentropy/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@agentropy/testkit':
+        specifier: workspace:*
+        version: link:../testkit
+
 packages:
 
   '@electric-sql/pglite@0.5.10':
