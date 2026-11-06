@@ -1,6 +1,6 @@
 # Agentropy threat model — identity flows (M2-09, FEAT-027.7)
 
-**Status:** revision 2 (2026-11-06; TM-29…TM-31 added by FEAT-028.4, TM-32…TM-33 by FEAT-028.5, TM-34 by FEAT-028.9). STRIDE analysis of every identity-bearing flow in the single-process runtime and its ingress adapters. Each mitigation names the test that proves it; `node scripts/check-readiness.mjs` fails if a referenced test file is missing. Rows marked *planned* name the backlog root that owns them. Related: [Security v1](../contracts/security-v1.md), [ADR-0021](../adr/0021-delegated-authorization.md), [ADR-0024](../adr/0024-pre-dispatch-authorization-gate.md).
+**Status:** revision 2 (2026-11-06; TM-29…TM-31 added by FEAT-028.4, TM-32…TM-33 by FEAT-028.5, TM-34 by FEAT-028.9, TM-35…TM-36 by FEAT-029.2). STRIDE analysis of every identity-bearing flow in the single-process runtime and its ingress adapters. Each mitigation names the test that proves it; `node scripts/check-readiness.mjs` fails if a referenced test file is missing. Rows marked *planned* name the backlog root that owns them. Related: [Security v1](../contracts/security-v1.md), [ADR-0021](../adr/0021-delegated-authorization.md), [ADR-0024](../adr/0024-pre-dispatch-authorization-gate.md).
 
 ## Trust boundaries and assets
 
@@ -56,6 +56,8 @@
 | TM-32 | F4 human approvals | E | Requester approves their own request, or one approver acts alone on a high-risk decision | Self-approval refused by default; `requiredApprovals` needs N distinct agreeing approvers | `packages/testkit/test/hardening.test.ts` |
 | TM-33 | F5 tools and credentials | I | Credential leaks through provider error text into errors, events, audit or spans | Provider errors are mapped without their text; canary test scans store, outbox, audit sink, task errors and spans | `packages/testkit/test/hardening.test.ts` |
 | TM-34 | F8 remote A2A peers | S/T | Discovery used for request forgery, or a card redirects delegations to an attacker host | Only configured https peers fetched; endpoint must be same-origin or explicitly allowed; strict size and field validation; tenant and policy scoping | `packages/testkit/test/federation.test.ts` |
+| TM-35 | F8 remote A2A peers | S/T | A push-notification config used for server-side request forgery (internal addresses, metadata endpoints) or to bounce deliveries through redirects | Push is off unless configured; every webhook URL must pass the deployment's `allowUrl` allow-list; `https:` only unless `allowHttp`; URLs with embedded credentials refused; deliveries never follow redirects | `packages/testkit/test/a2a-push.test.ts` |
+| TM-36 | F8 remote A2A peers | I/T | Push configs read or deleted by another principal, webhook credentials echoed back, or header injection through token or credentials | Configs scoped to tenant, creating principal and task, and every config call re-checks task visibility; credentials are write-only; CR/LF/NUL in token or credentials and non-token auth schemes refused; per-task config quota | `packages/testkit/test/a2a-push.test.ts` |
 | TM-31 | F7 audit and telemetry | E | Audit administration used without trace | Read, verify, export, retention, hold, release, anchor and dispose are separate permissions; uses and denials are themselves audited | `packages/testkit/test/audit-retention.test.ts` |
 
 ## Residual risks (accepted for M2)
