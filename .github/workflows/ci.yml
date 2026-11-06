@@ -56,7 +56,7 @@ jobs:
         run: node scripts/check-pack.mjs
       - name: SBOMs (CycloneDX) for the packages and the host application (TASK-030.2)
         run: node scripts/sbom.mjs
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom-packages
           path: sbom/
@@ -121,7 +121,7 @@ jobs:
           mkdir -p sbom
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/sbom:/out"             anchore/syft:v1.57.0@sha256:3c70e6d5979364cefdc22b51617a78fd264574d3bd6b4f84a351204147025e2a             agentropy-host:ci -o cyclonedx-json=/out/host-image.cdx.json
           test -s sbom/host-image.cdx.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom-image
           path: sbom/host-image.cdx.json
