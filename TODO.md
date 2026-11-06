@@ -40,7 +40,7 @@
 - [ ] **TASK-030** · P1 · mid · Supply chain: dependency updates, audit, pinned actions and base image, SBOM and signing (R-15, R-16)
   - Done when: `node scripts/check-deploy.mjs`
   - Links: Ref: docs/review/2026-11-06-project-review.md#deployment-supply-chain-and-release · Lane: ops
-  - [ ] **TASK-030.1** · low · Dependabot or Renovate, `pnpm audit --prod` in CI, actions pinned by SHA, base image by digest (R-15)
+  - [x] **TASK-030.1** · low · Dependabot or Renovate, `pnpm audit --prod` in CI, actions pinned by SHA, base image by digest (R-15)
     - Done when: `node scripts/check-deploy.mjs`
   - [ ] **TASK-030.2** · mid · SBOM for packages and image, image signature, provenance plan for publishing (R-16)
     - Done when: `node scripts/check-pack.mjs --no-install`

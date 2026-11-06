@@ -33,7 +33,7 @@ Severity: **high** = a production deployment would hit it; **medium** = limits a
 | ID | Sev | Finding | Evidence | Proposed action | Root |
 |---|---|---|---|---|---|
 | R-14 | high | Kubernetes/OpenShift manifests are only checked statically, never applied to a cluster | [compatibility](../compatibility.md); `scripts/check-deploy.mjs` | CI job with kind: apply manifests, wait for readiness, roll, delete a pod, verify recovery | FEAT-036 |
-| R-15 | medium | No dependency update automation or vulnerability audit; GitHub Actions are pinned by tag (`@v4`), not commit SHA; base image not pinned by digest in the repo | `.github/workflows/*.yml`; `deploy/Dockerfile` | Dependabot or Renovate, `pnpm audit --prod` in CI, SHA-pinned actions, digest-pinned base image | TASK-030 |
+| R-15 | medium | No dependency update automation or vulnerability audit; GitHub Actions are pinned by tag (`@v4`), not commit SHA; base image not pinned by digest in the repo | `.github/workflows/*.yml`; `deploy/Dockerfile` | Dependabot or Renovate, `pnpm audit --prod` in CI, SHA-pinned actions, digest-pinned base image; done in TASK-030.1 (also vitest 4.1.12 and OpenTelemetry SDK 2.12.0, clearing 8 of 9 dev advisories) | TASK-030 |
 | R-16 | medium | No SBOM, image signature or npm provenance | [release](../release.md) | Generate an SBOM for packages and image; sign the image; publish with provenance when publishing starts | TASK-030 |
 | R-17 | medium | Publishing decisions open: version, `@agentropy` scope ownership, release flow, image registry | [release, owner decisions](../release.md#owner-decisions) | Owner decides; then a tag-triggered release workflow | TASK-032 |
 

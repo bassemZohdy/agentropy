@@ -14,7 +14,9 @@ On SIGTERM it stops the scheduler, waits for running executions, closes the stor
 docker build -f deploy/Dockerfile -t registry.example.com/agentropy/agentropy-host:0.0.0 .
 ```
 
-Two stages on `node:24-bookworm-slim`: install with `--frozen-lockfile`, build, `pnpm deploy --prod` of the examples package; the final stage runs as UID 1001 with `/data` owned by group 0 and group-writable. For production, pin the base image by digest (`FROM node:24-bookworm-slim@sha256:…`).
+Two stages on `node:24-bookworm-slim`: install with `--frozen-lockfile`, build, `pnpm deploy --prod` of the examples package; the final stage runs as UID 1001 with `/data` owned by group 0 and group-writable. The base image is pinned by digest (`node:24-bookworm-slim@sha256:…`).
+
+**Supply chain (TASK-030.1):** the base image and the CI PostgreSQL service image are pinned by digest, and every GitHub Action by commit SHA (the tag in a trailing comment). Dependabot (`.github/dependabot.yml`) proposes weekly npm, Actions and base-image updates. CI fails on a known vulnerability in a production dependency (`pnpm audit --prod`). `node scripts/check-deploy.mjs` enforces the pins, the audit step and the Dependabot ecosystems. Development-only advisories are reviewed when they appear and not gated: on 2026-11-06 the only one left was minimatch 10 (a ReDoS) through typescript-eslint, which matches only patterns from the repository's own configuration and has no fixed release within typescript-eslint's range yet.
 
 ## Kubernetes
 

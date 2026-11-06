@@ -77,10 +77,32 @@ const dockerfile = readFileSync(join(root, 'deploy/Dockerfile'), 'utf8');
 const froms = [...dockerfile.matchAll(/^FROM\s+(\S+)/gm)].map((m) => m[1]);
 if (!froms.length) fail('Dockerfile: no FROM');
 for (const f of froms)
-  if (/:latest$/.test(f) || !/[:@]/.test(f)) fail(`Dockerfile: base image ${f} needs a tag or digest`);
+  if (!/@sha256:[0-9a-f]{64}$/.test(f)) fail(`Dockerfile: base image ${f} must be pinned by digest (TASK-030.1)`);
 const users = [...dockerfile.matchAll(/^USER\s+(\S+)/gm)].map((m) => m[1]);
 if (!users.length || ['root', '0'].includes(users.at(-1))) fail('Dockerfile: final stage must run as a non-root USER');
 if (!/--frozen-lockfile/.test(dockerfile)) fail('Dockerfile: install must use --frozen-lockfile');
+
+// TASK-030.1 (R-15): third-party actions and service images pinned immutably; update automation configured.
+const wfDir = join(root, '.github/workflows');
+for (const file of readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f))) {
+  const text = readFileSync(join(wfDir, file), 'utf8');
+  for (const m of text.matchAll(/^[ \t]*-?[ \t]*uses:[ \t]*(\S+)/gm))
+    if (!m[1].startsWith('./') && !/@[0-9a-f]{40}$/.test(m[1]))
+      fail(`${file}: action ${m[1]} must be pinned by commit SHA`);
+  for (const m of text.matchAll(/^[ \t]+image:[ \t]*([^\s#]+)/gm))
+    if (!/@sha256:[0-9a-f]{64}$/.test(m[1])) fail(`${file}: service image ${m[1]} must be pinned by digest`);
+}
+if (!/pnpm audit --prod/.test(readFileSync(join(wfDir, 'ci.yml'), 'utf8')))
+  fail('ci.yml: production dependency audit (pnpm audit --prod) missing');
+let dependabot = '';
+try {
+  dependabot = readFileSync(join(root, '.github/dependabot.yml'), 'utf8');
+} catch {
+  fail('.github/dependabot.yml missing');
+}
+for (const eco of ['npm', 'github-actions', 'docker'])
+  if (dependabot && !new RegExp(`package-ecosystem:\\s*${eco}\\b`).test(dependabot))
+    fail(`.github/dependabot.yml: no ${eco} updates`);
 if (!/CMD \["node", "dist\/host\.js"\]/.test(dockerfile)) fail('Dockerfile: CMD must start dist/host.js');
 
 if (problems.length) {
