@@ -15,7 +15,7 @@ Severity: **high** = a production deployment would hit it; **medium** = limits a
 | R-05 | medium | `PolicyDecisionCache.invalidate` only clears the local process; with several workers a revoked grant can still be allowed elsewhere until `ttlMs` (30 s) | `packages/runtime/src/policy-cache.ts` | Propagate invalidation through the store (an invalidation epoch row read with the decision) or document a TTL bound per deployment; done in FEAT-033.1 (`shared` cache, bound `syncMs`) | FEAT-033 |
 | R-06 | medium | Wake-up polling evaluates every armed registration on each poll (O(n) per tick) | `packages/runtime/src/wakeups.ts` `poll` | Due-time index queries (`dueAt <= now`) and event-driven arming; benchmark with 10k waiting tasks; done in FEAT-033.2 (`checkAt` index, 300 → 3 ms per poll at 10k) | FEAT-033 |
 | R-26 | medium | Every audit intent scanned the tenant's whole audit chain to find its predecessor, so each acceptance got slower as the chain grew (O(n) per append) | `packages/runtime/src/audit.ts` `recordAuditIntent` | Keep a per-tenant chain head row; fixed in FEAT-032.2 | FEAT-032 |
-| R-07 | low | `a2a.ts` (1.3k lines), `runtime.ts` (1.2k) and `task-service.ts` (1k) are the largest modules; A2A mixes server, push, client and SSE parsing | `wc -l packages/runtime/src/*.ts` | Split `a2a.ts` into server, push, client and sse modules without API change | TASK-031 |
+| R-07 | low | `a2a.ts` (1.3k lines), `runtime.ts` (1.2k) and `task-service.ts` (1k) are the largest modules; A2A mixes server, push, client and SSE parsing | `wc -l packages/runtime/src/*.ts` | Split `a2a.ts` into server, push, client and sse modules without API change; done in TASK-031 (largest module now 450 lines) | TASK-031 |
 
 ## Interoperability
 

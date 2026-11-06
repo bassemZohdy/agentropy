@@ -211,22 +211,22 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
-| `A2A_PROTOCOL_VERSION` | const | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
-| `a2aAgentCard` | function | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) | Minimal A2A AgentCard for an endpoint (spec section 8); serve it at the well-known path. |
-| `A2ACommunicationProvider` | class | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
-| `A2AHttpResponse` | interface | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
-| `A2AMessage` | interface | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
-| `A2APart` | interface | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
-| `A2AProviderOptions` | interface | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
-| `A2APushConfig` | interface | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) | A2A `TaskPushNotificationConfig` (credentials are write-only: reads return the scheme alone). |
-| `A2APushFetch` | type | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) | Push delivery transport; `redirect: 'manual'` keeps a webhook from bouncing deliveries elsewhere. |
-| `A2APushOptions` | interface | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
-| `A2AServer` | interface | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
-| `A2AServerOptions` | interface | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
-| `A2AStreamFrame` | type | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) | One frame of a streaming response: a JSON-RPC response whose `result` is an A2A `StreamResponse`. |
-| `A2AStreamResult` | type | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) | A streaming call either fails up front (a plain JSON-RPC response) or opens an event stream. |
-| `A2ATask` | interface | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
-| `A2ATaskState` | type | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
+| `A2A_PROTOCOL_VERSION` | const | [runtime/src/a2a-protocol.ts](../packages/runtime/src/a2a-protocol.ts) |  |
+| `a2aAgentCard` | function | [runtime/src/a2a-client.ts](../packages/runtime/src/a2a-client.ts) | Minimal A2A AgentCard for an endpoint (spec section 8); serve it at the well-known path. |
+| `A2ACommunicationProvider` | class | [runtime/src/a2a-client.ts](../packages/runtime/src/a2a-client.ts) |  |
+| `A2AHttpResponse` | interface | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) |  |
+| `A2AMessage` | interface | [runtime/src/a2a-protocol.ts](../packages/runtime/src/a2a-protocol.ts) |  |
+| `A2APart` | interface | [runtime/src/a2a-protocol.ts](../packages/runtime/src/a2a-protocol.ts) |  |
+| `A2AProviderOptions` | interface | [runtime/src/a2a-client.ts](../packages/runtime/src/a2a-client.ts) |  |
+| `A2APushConfig` | interface | [runtime/src/a2a-push.ts](../packages/runtime/src/a2a-push.ts) | A2A `TaskPushNotificationConfig` (credentials are write-only: reads return the scheme alone). |
+| `A2APushFetch` | type | [runtime/src/a2a-push.ts](../packages/runtime/src/a2a-push.ts) | Push delivery transport; `redirect: 'manual'` keeps a webhook from bouncing deliveries elsewhere. |
+| `A2APushOptions` | interface | [runtime/src/a2a-push.ts](../packages/runtime/src/a2a-push.ts) |  |
+| `A2AServer` | interface | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) |  |
+| `A2AServerOptions` | interface | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) |  |
+| `A2AStreamFrame` | type | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) | One frame of a streaming response: a JSON-RPC response whose `result` is an A2A `StreamResponse`. |
+| `A2AStreamResult` | type | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) | A streaming call either fails up front (a plain JSON-RPC response) or opens an event stream. |
+| `A2ATask` | interface | [runtime/src/a2a-protocol.ts](../packages/runtime/src/a2a-protocol.ts) |  |
+| `A2ATaskState` | type | [runtime/src/a2a-protocol.ts](../packages/runtime/src/a2a-protocol.ts) |  |
 | `actionEntryId` | const | [runtime/src/inbox.ts](../packages/runtime/src/inbox.ts) |  |
 | `actionUsers` | const | [runtime/src/task-service.ts](../packages/runtime/src/task-service.ts) | Users whose inbox shows a human-action request: its named assignees, else the task owner. |
 | `ActivationIngress` | interface | [runtime/src/ingress.ts](../packages/runtime/src/ingress.ts) |  |
@@ -249,7 +249,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `checkInstanceQuota` | function | [runtime/src/quotas.ts](../packages/runtime/src/quotas.ts) |  |
 | `checkTaskQuota` | function | [runtime/src/quotas.ts](../packages/runtime/src/quotas.ts) |  |
 | `coreOperationHandlers` | function | [runtime/src/wakeups.ts](../packages/runtime/src/wakeups.ts) | Handlers for delegation, event-handling and scheduling operations (Capability v1 operation I/O). |
-| `createA2AServer` | function | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
+| `createA2AServer` | function | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) |  |
 | `createActivationIngress` | function | [runtime/src/ingress.ts](../packages/runtime/src/ingress.ts) |  |
 | `CreateInstanceRequest` | interface | [runtime/src/registry.ts](../packages/runtime/src/registry.ts) |  |
 | `createLocalApp` | function | [runtime/src/app.ts](../packages/runtime/src/app.ts) |  |
@@ -298,7 +298,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `journaled` | function | [runtime/src/inbox.ts](../packages/runtime/src/inbox.ts) | Platform-internal effect journal: runs `effect` at most once per idempotency key, in the same transaction as the journal write, and returns the original resu… |
 | `LocalApp` | interface | [runtime/src/app.ts](../packages/runtime/src/app.ts) |  |
 | `LocalAppOptions` | interface | [runtime/src/app.ts](../packages/runtime/src/app.ts) |  |
-| `localAppTarget` | function | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) | Exposes one instance of a LocalApp as an A2A target (inbound), reusing every AgentService check. |
+| `localAppTarget` | function | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) | Exposes one instance of a LocalApp as an A2A target (inbound), reusing every AgentService check. |
 | `LoopbackJsonRpcToolProvider` | class | [runtime/src/tools.ts](../packages/runtime/src/tools.ts) | Second adapter: serializes calls into a JSON-RPC envelope over an injected transport (protocol-shaped, offline). |
 | `LoopbackRequest` | interface | [runtime/src/tools.ts](../packages/runtime/src/tools.ts) | A JSON-RPC-shaped request as it would cross a protocol boundary; payloads are serialized, never shared by reference. |
 | `LoopbackTransport` | type | [runtime/src/tools.ts](../packages/runtime/src/tools.ts) |  |
@@ -339,7 +339,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `SecurityServices` | interface | [runtime/src/tools.ts](../packages/runtime/src/tools.ts) |  |
 | `SEVERITY_ORDER` | const | [runtime/src/priority.ts](../packages/runtime/src/priority.ts) |  |
 | `SkillRegistration` | interface | [runtime/src/skills.ts](../packages/runtime/src/skills.ts) |  |
-| `sseFrames` | function | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) | Server-Sent Events serialization of stream frames (`text/event-stream`). |
+| `sseFrames` | function | [runtime/src/a2a-sse.ts](../packages/runtime/src/a2a-sse.ts) | Server-Sent Events serialization of stream frames (`text/event-stream`). |
 | `StoredExecution` | interface | [runtime/src/task-service.ts](../packages/runtime/src/task-service.ts) |  |
 | `StoredHumanAction` | interface | [runtime/src/human-actions.ts](../packages/runtime/src/human-actions.ts) | Stored form; `revision` is the store document revision (the value the user must echo back). |
 | `StoredInboxEntry` | interface | [runtime/src/inbox.ts](../packages/runtime/src/inbox.ts) |  |

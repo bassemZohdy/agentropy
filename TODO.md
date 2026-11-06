@@ -44,9 +44,6 @@
     - Done when: `node scripts/check-deploy.mjs`
   - [ ] **TASK-030.2** · mid · SBOM for packages and image, image signature, provenance plan for publishing (R-16)
     - Done when: `node scripts/check-pack.mjs --no-install`
-- [ ] **TASK-031** · P2 · low · Split runtime/src/a2a.ts into server, push, client and SSE modules without API change (R-07)
-  - Done when: `node scripts/api-index.mjs --check`
-  - Links: Ref: docs/review/2026-11-06-project-review.md#runtime-and-scale · Lane: runtime
 - [!] **TASK-032** · P2 · low · Release decisions: version, npm scope, release workflow, image registry (R-17)
   - Done when: `node scripts/check-pack.mjs`
   - Links: Ref: docs/release.md · Lane: ops
