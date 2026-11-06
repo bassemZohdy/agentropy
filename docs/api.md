@@ -207,7 +207,7 @@ Types, schemas, errors, lifecycle tables and pure resolvers (no I/O). 196 export
 
 ## @agentropy/runtime
 
-Registries, task service, runtime, scheduler, providers and the local app facade. 155 exports.
+Registries, task service, runtime, scheduler, providers and the local app facade. 156 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
@@ -341,6 +341,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `resolveLimits` | function | [runtime/src/limits.ts](../packages/runtime/src/limits.ts) |  |
 | `RuntimeLimits` | interface | [runtime/src/limits.ts](../packages/runtime/src/limits.ts) |  |
 | `RuntimeOptions` | interface | [runtime/src/runtime.ts](../packages/runtime/src/runtime.ts) |  |
+| `SchedulerStatus` | interface | [runtime/src/app.ts](../packages/runtime/src/app.ts) | State of the loop `LocalApp.start()` runs (FEAT-037.1). |
 | `SecurityServices` | interface | [runtime/src/tools.ts](../packages/runtime/src/tools.ts) |  |
 | `SEVERITY_ORDER` | const | [runtime/src/priority.ts](../packages/runtime/src/priority.ts) |  |
 | `SkillRegistration` | interface | [runtime/src/skills.ts](../packages/runtime/src/skills.ts) |  |

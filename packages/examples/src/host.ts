@@ -13,8 +13,9 @@
  * - AGENTROPY_TENANT      tenant of those principals and of the exposed instance (default `default`)
  * - AGENTROPY_PUBLIC_URL  external base URL written into the AgentCard (default http://localhost:PORT)
  *
- * Endpoints: GET /healthz (process alive), GET /readyz (store answers a transaction, not shutting down); with
- * AGENTROPY_A2A_TOKENS also POST /a2a (A2A JSON-RPC, SSE streaming) and GET /.well-known/agent-card.json.
+ * Endpoints: GET /healthz (process alive), GET /readyz (store answers a transaction, the scheduler loop is not
+ * stalled, not shutting down); with AGENTROPY_A2A_TOKENS also POST /a2a (A2A JSON-RPC, SSE streaming) and
+ * GET /.well-known/agent-card.json. A scheduler tick that fails is logged to stderr and the loop goes on.
  * SIGTERM stops accepting new scheduler ticks, waits for running executions, closes the store and exits.
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
@@ -38,6 +39,7 @@ import {
   localAppTarget,
   type A2AHttpHandler,
   type LocalApp,
+  type SchedulerStatus,
 } from '@agentropy/runtime';
 import { SqliteStore } from '@agentropy/store-sqlite';
 
@@ -63,8 +65,29 @@ export interface HostState {
   shuttingDown: boolean;
 }
 
+/** Ticks that may fail in a row before readiness drops. */
+const STALLED_AFTER_FAILURES = 3;
+
+/**
+ * A started scheduler loop counts as stalled when its last good tick is older than 30 s (or 20 intervals, whichever
+ * is longer) or when `STALLED_AFTER_FAILURES` ticks failed in a row (FEAT-037.1).
+ */
+export function schedulerStalled(s: SchedulerStatus, nowMs: number): boolean {
+  if (!s.running) return false;
+  if (s.consecutiveFailures >= STALLED_AFTER_FAILURES) return true;
+  const last = Date.parse(s.lastTickAt ?? s.startedAt ?? '');
+  return (
+    Number.isFinite(last) &&
+    nowMs - last > Math.max(30_000, 20 * (s.intervalMs ?? 250))
+  );
+}
+
 /** Request handler for the health port; exported for tests (no socket needed). */
-export function healthHandler(app: LocalApp, state: HostState) {
+export function healthHandler(
+  app: LocalApp,
+  state: HostState,
+  now: () => number = Date.now,
+) {
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const send = (status: number, body: Record<string, unknown>) => {
       res.writeHead(status, { 'content-type': 'application/json' });
@@ -78,11 +101,13 @@ export function healthHandler(app: LocalApp, state: HostState) {
         await app.store.transaction((tx) =>
           tx.get('leases', 'readiness-probe'),
         );
-        return send(200, { status: 'ready' });
       } catch {
         // No error details on an unauthenticated endpoint.
         return send(503, { status: 'store-unavailable' });
       }
+      if (schedulerStalled(app.schedulerStatus(), now()))
+        return send(503, { status: 'scheduler-stalled' });
+      return send(200, { status: 'ready' });
     }
     return send(404, { error: 'not found' });
   };
@@ -181,7 +206,18 @@ export async function main(env = process.env): Promise<void> {
   });
   defineAgents(app);
   const state: HostState = { shuttingDown: false };
-  const stop = app.start(Number(env.AGENTROPY_TICK_MS ?? 250));
+  const stop = app.start(Number(env.AGENTROPY_TICK_MS ?? 250), {
+    // One line per failed tick, no payloads: the loop itself goes on and readiness reports a stall.
+    onError: (error) =>
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          event: 'scheduler.tick',
+          code: error.code,
+          message: error.message,
+        }),
+      ),
+  });
   const a2a = await a2aEndpoint(app, env);
   const health = healthHandler(app, state);
   const server = createServer((req, res) => {

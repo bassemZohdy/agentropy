@@ -1,10 +1,18 @@
 // FEAT-022.3: restart and history acceptance — AC-05 (restart while J1 waits), AC-13 (durability none),
 // AC-20 (a monitoring task over 150 events keeps a bounded checkpoint and pruned execution history).
-import type { Agent, InboxEntry } from '@agentropy/core';
+import {
+  AgentropyError,
+  BUILTIN_PROFILES,
+  type Agent,
+  type InboxEntry,
+  type Store,
+} from '@agentropy/core';
+import { createLocalApp } from '../../runtime/src/index.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { FakePolicy } from '../src/index.js';
 import {
   MemoryStore,
   SqliteStore,
@@ -220,5 +228,46 @@ describe('AC-20: a monitoring task cycles through 150 events', () => {
       'failed',
       'SchemaViolation',
     ]);
+  });
+});
+
+describe('FEAT-037.1: the scheduler loop survives a failing store', () => {
+  it('counts and reports failed ticks, keeps looping, recovers when the store does, and stop() does not reject', async () => {
+    const inner = new SqliteStore({ path: ':memory:' });
+    let broken = true;
+    const store: Store = {
+      durability: inner.durability,
+      close: () => inner.close(),
+      transaction: (fn) =>
+        broken
+          ? Promise.reject(new AgentropyError('ProviderUnavailable', 'down'))
+          : inner.transaction(fn),
+    };
+    const app = createLocalApp({
+      store,
+      pdp: new FakePolicy(),
+      profiles: BUILTIN_PROFILES,
+    });
+    const errors: string[] = [];
+    const stop = app.start(5, { onError: (e) => errors.push(e.code) });
+    await vi.waitFor(() =>
+      expect(app.schedulerStatus().consecutiveFailures).toBeGreaterThanOrEqual(
+        3,
+      ),
+    );
+    expect(app.schedulerStatus()).toMatchObject({
+      running: true,
+      lastError: 'ProviderUnavailable',
+    });
+    expect(errors.length).toBeGreaterThanOrEqual(3);
+    broken = false;
+    await vi.waitFor(() =>
+      expect(app.schedulerStatus().consecutiveFailures).toBe(0),
+    );
+    expect(app.schedulerStatus().lastTickAt).toBeDefined();
+    expect(app.schedulerStatus().lastError).toBeUndefined();
+    broken = true; // a failure while stopping must not reject either
+    await expect(stop()).resolves.toBeUndefined();
+    expect(app.schedulerStatus().running).toBe(false);
   });
 });

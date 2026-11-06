@@ -11,8 +11,10 @@ import {
   enforcePolicy,
   BUILTIN_PROFILES,
   CAPABILITY_CATALOG,
+  METRICS,
   TASK_MACHINE,
   isTerminal,
+  toAgentropyError,
   validateAgentDefinition,
   type Agent,
   type AgentDefinition,
@@ -141,6 +143,23 @@ export interface LocalAppOptions {
     ) => InboxPreferences | Promise<InboxPreferences>;
     push?: (entry: InboxEntry) => Promise<boolean>;
   };
+}
+
+/**
+ * State of the loop `LocalApp.start()` runs (FEAT-037.1). A tick that throws (a store outage, a bug) is counted
+ * and reported, and the loop goes on; readiness probes read this to tell a live loop from a stalled one.
+ */
+export interface SchedulerStatus {
+  /** True between `start()` and the returned stop function settling. */
+  running: boolean;
+  startedAt?: string;
+  intervalMs?: number;
+  /** When the last tick completed without error. */
+  lastTickAt?: string;
+  /** Ticks that failed since the last successful one. */
+  consecutiveFailures: number;
+  /** Errors v1 code of the last failed tick, cleared by the next successful one. */
+  lastError?: string;
 }
 
 export interface LocalApp {
@@ -306,8 +325,17 @@ export interface LocalApp {
   }): Promise<boolean>;
   /** Poll wake-ups and run due work until nothing is left (bounded); for tests, examples and batch use. */
   runUntilIdle(maxRounds?: number): Promise<void>;
-  /** Periodic scheduler loop for a long-running process; returns a stop function. */
-  start(intervalMs?: number): () => Promise<void>;
+  /**
+   * Periodic scheduler loop for a long-running process; returns a stop function that waits for the current tick
+   * and the running executions and never rejects. A tick that throws is counted (`agentropy.scheduler.errors`),
+   * handed to `options.onError` and does not stop the loop (FEAT-037.1).
+   */
+  start(
+    intervalMs?: number,
+    options?: { onError?: (error: AgentropyError) => void },
+  ): () => Promise<void>;
+  /** Snapshot of the loop's health: last successful tick, failures in a row, last error code. */
+  schedulerStatus(): SchedulerStatus;
 }
 
 export function createLocalApp(o: LocalAppOptions): LocalApp {
@@ -497,6 +525,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
 
   if (o.workflow)
     bridgeWorkflowCompletions(o.workflow, (e) => wakeups.publish(e));
+  const scheduler: SchedulerStatus = { running: false, consecutiveFailures: 0 };
   const app: LocalApp = {
     store,
     definitions,
@@ -703,21 +732,48 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
         }
       }
     },
-    start(intervalMs = 250) {
+    schedulerStatus: () => ({ ...scheduler }),
+    start(intervalMs = 250, options = {}) {
       let stopped = false;
       let running: Promise<void> = Promise.resolve();
-      const timer = setInterval(() => {
-        if (stopped) return;
-        running = running.then(async () => {
+      scheduler.running = true;
+      scheduler.startedAt = now();
+      scheduler.intervalMs = intervalMs;
+      scheduler.consecutiveFailures = 0;
+      delete scheduler.lastError;
+      // One tick never rejects: a failing store or a bug in one tick is reported and the next tick runs, instead of
+      // the rejection poisoning the chain (every later tick skipped) and escaping as an unhandled rejection.
+      const tick = async () => {
+        try {
           await wakeups.poll();
           await runtime.tick();
-        });
+          scheduler.lastTickAt = now();
+          scheduler.consecutiveFailures = 0;
+          delete scheduler.lastError;
+        } catch (err) {
+          const error = toAgentropyError(err);
+          scheduler.consecutiveFailures++;
+          scheduler.lastError = error.code;
+          tasks.telemetry.count(METRICS.schedulerErrors, 1, {
+            'agentropy.error.code': error.code,
+          });
+          try {
+            options.onError?.(error);
+          } catch {
+            // A failing error hook must not take the loop down either.
+          }
+        }
+      };
+      const timer = setInterval(() => {
+        if (stopped) return;
+        running = running.then(tick);
       }, intervalMs);
       return async () => {
         stopped = true;
         clearInterval(timer);
         await running;
         await runtime.idle();
+        scheduler.running = false;
       };
     },
   };

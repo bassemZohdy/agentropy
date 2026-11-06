@@ -61,6 +61,8 @@ export const METRICS = {
   traceRejected: 'agentropy.trace.rejected',
   /** Store transactions that hit a serialization conflict or deadlock (FEAT-032.1). */
   storeConflicts: 'agentropy.store.conflicts',
+  /** Scheduler ticks (wake-up poll plus dispatch) that threw; the loop goes on (FEAT-037.1). */
+  schedulerErrors: 'agentropy.scheduler.errors',
 } as const;
 
 /** Span names (D-13). */

@@ -45,7 +45,7 @@
 - [ ] **FEAT-037** · P1 · high · Scheduler, pool and host resilience: no crash and no silent stall on a failing store, bounded activations, clean shutdown (R-27–R-31)
   - Done when: `pnpm exec vitest run packages/runtime/test/runtime.test.ts packages/examples/test/host.test.ts packages/testkit/test/recovery.test.ts`
   - Links: Ref: docs/review/2026-11-06-deep-review.md#resilience-of-the-scheduler-pool-and-host · Lane: runtime
-  - [ ] **FEAT-037.1** · mid · `LocalApp.start()` survives a failing poll or tick (per-tick catch, fault hook, `agentropy.scheduler.errors`), `stop()` never rejects, the last successful tick feeds `/readyz` (R-27)
+  - [x] **FEAT-037.1** · mid · `LocalApp.start()` survives a failing poll or tick (per-tick catch, fault hook, `agentropy.scheduler.errors`), `stop()` never rejects, the last successful tick feeds `/readyz` (R-27)
     - Done when: `pnpm exec vitest run packages/runtime/test/runtime.test.ts packages/testkit/test/recovery.test.ts`
   - [ ] **FEAT-037.2** · mid · `execute()` contains disposition-write failures (bounded retry, then lost execution, never an unhandled rejection) and `limits.maxActivationMs` aborts a hung handler (R-28, R-29)
     - Done when: `pnpm exec vitest run packages/runtime/test/runtime.test.ts packages/testkit/test/hardening.test.ts`

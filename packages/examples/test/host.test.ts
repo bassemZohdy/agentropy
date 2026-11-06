@@ -11,6 +11,7 @@ import {
   bearerTokens,
   defineAgents,
   healthHandler,
+  schedulerStalled,
 } from '../src/host.js';
 
 function call(
@@ -156,5 +157,52 @@ describe('container host (M3-08)', () => {
         resource: { type: 'task', id: 'x', tenantId: 't' },
       }),
     ).toEqual({ effect: 'allow' });
+  });
+
+  it('readiness drops when the scheduler loop is stalled or keeps failing', async () => {
+    const app = createLocalApp({
+      store: new SqliteStore({ path: ':memory:' }),
+      pdp: new AllowListPolicy(''),
+      profiles: BUILTIN_PROFILES,
+    });
+    const base = { running: true, consecutiveFailures: 0, intervalMs: 250 };
+    const t0 = Date.parse('2026-11-06T00:00:00Z');
+    expect(schedulerStalled({ ...base, running: false }, t0)).toBe(false);
+    expect(
+      schedulerStalled(
+        {
+          ...base,
+          startedAt: '2026-11-06T00:00:00Z',
+          lastTickAt: '2026-11-06T00:00:00Z',
+        },
+        t0 + 10_000,
+      ),
+    ).toBe(false);
+    expect(
+      schedulerStalled(
+        {
+          ...base,
+          startedAt: '2026-11-06T00:00:00Z',
+          lastTickAt: '2026-11-06T00:00:00Z',
+        },
+        t0 + 31_000,
+      ),
+    ).toBe(true);
+    expect(
+      schedulerStalled(
+        { ...base, consecutiveFailures: 3, lastTickAt: '2026-11-06T00:00:00Z' },
+        t0,
+      ),
+    ).toBe(true);
+    // An app whose loop never started is ready: only a started loop can be stalled.
+    expect(
+      (
+        await call(
+          healthHandler(app, { shuttingDown: false }),
+          'GET',
+          '/readyz',
+        )
+      ).status,
+    ).toBe(200);
   });
 });

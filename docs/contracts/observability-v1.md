@@ -1,4 +1,4 @@
-# Agentropy Observability Contract v1 — revision 2 (traces, metrics, propagation)
+# Agentropy Observability Contract v1 — revision 3 (traces, metrics, propagation)
 
 **Status:** Accepted for M2 implementation (2026-11-05). Resolves design follow-ups D-12, D-13 and D-14 ([design follow-ups](../plans/DESIGN-FOLLOWUPS.md)). Implemented by `Telemetry` in `@agentropy/core` and the OpenTelemetry adapter `openTelemetry()` in `@agentropy/runtime`; verified by `packages/testkit/test/telemetry.test.ts` against the OpenTelemetry SDK.
 
@@ -8,6 +8,7 @@
 |---|---|---|
 | 1 | 2026-11-05 | Vendor-neutral `Telemetry` port, span model and links, baseline metrics, W3C carrier sanitization and redaction rules (TASK-026.4, FEAT-027.6) |
 | 2 | 2026-11-06 | `agentropy.store.conflicts` counter for store serialization conflicts (FEAT-032.1) |
+| 3 | 2026-11-06 | `agentropy.scheduler.errors` counter for scheduler ticks that threw (FEAT-037.1) |
 
 ## Port (normative)
 
@@ -48,6 +49,7 @@ The default is a no-op. Telemetry never changes behavior: a failing exporter mus
 | `agentropy.outbox.delivery_lag` | histogram, ms | `agentropy.event.type` |
 | `agentropy.trace.rejected` | counter | `carrier` (`delegate`, `event`) |
 | `agentropy.store.conflicts` | counter | `agentropy.store.adapter` (`postgres`), `agentropy.store.outcome` (`retried`, `exhausted`), `agentropy.store.sqlstate` (`40001`, `40P01`) |
+| `agentropy.scheduler.errors` | counter | `agentropy.error.code` |
 
 Attribute values are identifiers, enums and codes with bounded cardinality per deployment; task and execution IDs appear on spans, never on metrics.
 
