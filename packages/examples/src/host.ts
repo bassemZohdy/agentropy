@@ -8,10 +8,16 @@
  * - PORT                  health port (default 8080)
  * - AGENTROPY_ALLOW       comma-separated policy actions the sample policy allows; everything else is denied
  * - AGENTROPY_TICK_MS     scheduler interval (default 250)
+ * - AGENTROPY_A2A_TOKENS  enables the A2A endpoint: comma-separated `token=principalId` bearer tokens (sample
+ *                         authentication; replace `bearerTokens` with your identity provider)
+ * - AGENTROPY_TENANT      tenant of those principals and of the exposed instance (default `default`)
+ * - AGENTROPY_PUBLIC_URL  external base URL written into the AgentCard (default http://localhost:PORT)
  *
- * Endpoints: GET /healthz (process alive), GET /readyz (store answers a transaction, not shutting down).
+ * Endpoints: GET /healthz (process alive), GET /readyz (store answers a transaction, not shutting down); with
+ * AGENTROPY_A2A_TOKENS also POST /a2a (A2A JSON-RPC, SSE streaming) and GET /.well-known/agent-card.json.
  * SIGTERM stops accepting new scheduler ticks, waits for running executions, closes the store and exits.
  */
+import { createHash, timingSafeEqual } from 'node:crypto';
 import {
   createServer,
   type IncomingMessage,
@@ -22,8 +28,17 @@ import {
   type PolicyDecision,
   type PolicyDecisionPoint,
   type PolicyRequest,
+  type TrustedPrincipal,
 } from '@agentropy/core';
-import { createLocalApp, type LocalApp } from '@agentropy/runtime';
+import {
+  agentCardForDefinition,
+  createA2AHttpHandler,
+  createA2AServer,
+  createLocalApp,
+  localAppTarget,
+  type A2AHttpHandler,
+  type LocalApp,
+} from '@agentropy/runtime';
 import { SqliteStore } from '@agentropy/store-sqlite';
 
 /** Sample policy: allow-list from configuration, deny by default. Replace with your PDP. */
@@ -73,6 +88,70 @@ export function healthHandler(app: LocalApp, state: HostState) {
   };
 }
 
+const digest = (s: string) => createHash('sha256').update(s).digest();
+
+/**
+ * Sample A2A authentication: static bearer tokens (`token=principalId`, comma-separated), all principals in one
+ * tenant. Tokens are compared in constant time. Replace with your identity provider (OIDC/JWT verification, mTLS,
+ * or headers from a trusted gateway).
+ */
+export function bearerTokens(
+  spec: string,
+  tenantId: string,
+): (req: IncomingMessage) => Promise<TrustedPrincipal | undefined> {
+  const entries = spec
+    .split(',')
+    .map((e) => e.trim())
+    .filter(Boolean)
+    .map((e) => {
+      const i = e.indexOf('=');
+      if (i <= 0 || i === e.length - 1)
+        throw new Error('AGENTROPY_A2A_TOKENS entries are token=principalId');
+      return { digest: digest(e.slice(0, i)), id: e.slice(i + 1) };
+    });
+  return async (req) => {
+    const m = /^Bearer (\S+)$/.exec(String(req.headers.authorization ?? ''));
+    if (!m) return undefined;
+    const d = digest(m[1]!);
+    const hit = entries.find((e) => timingSafeEqual(e.digest, d));
+    return hit ? { id: hit.id, type: 'service', tenantId } : undefined;
+  };
+}
+
+/** The A2A endpoint exposing the sample `echo` agent, or undefined when AGENTROPY_A2A_TOKENS is not set. */
+export async function a2aEndpoint(
+  app: LocalApp,
+  env: Record<string, string | undefined>,
+): Promise<A2AHttpHandler | undefined> {
+  if (!env.AGENTROPY_A2A_TOKENS) return undefined;
+  const tenantId = env.AGENTROPY_TENANT ?? 'default';
+  const host: TrustedPrincipal = { id: 'host', type: 'service', tenantId };
+  const def = app.definitions.get({ id: 'echo', version: '1.0.0' });
+  if (!def) throw new Error('echo agent is not defined');
+  const inst = await app.createInstance(
+    {
+      definition: { id: def.id, version: def.version },
+      ownerId: host.id,
+      idempotencyKey: 'host-a2a-echo',
+    },
+    host,
+  );
+  const url = `${env.AGENTROPY_PUBLIC_URL ?? `http://localhost:${env.PORT ?? 8080}`}/a2a`;
+  return createA2AHttpHandler(
+    createA2AServer(localAppTarget(app), { instanceId: inst.id }),
+    {
+      authenticate: bearerTokens(env.AGENTROPY_A2A_TOKENS, tenantId),
+      agentCard: agentCardForDefinition(def, url, {
+        securitySchemes: {
+          bearer: { httpAuthSecurityScheme: { scheme: 'Bearer' } },
+        },
+        security: [{ bearer: [] }],
+        streaming: true,
+      }),
+    },
+  );
+}
+
 /** Sample agent so the image does something; replace with your own definitions. */
 export function defineAgents(app: LocalApp): void {
   app.define(
@@ -103,8 +182,13 @@ export async function main(env = process.env): Promise<void> {
   defineAgents(app);
   const state: HostState = { shuttingDown: false };
   const stop = app.start(Number(env.AGENTROPY_TICK_MS ?? 250));
+  const a2a = await a2aEndpoint(app, env);
+  const health = healthHandler(app, state);
   const server = createServer((req, res) => {
-    void healthHandler(app, state)(req, res);
+    void (async () => {
+      if (a2a && (await a2a.handle(req, res))) return;
+      await health(req, res);
+    })();
   });
   server.listen(Number(env.PORT ?? 8080));
   const shutdown = async () => {

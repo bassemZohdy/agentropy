@@ -19,7 +19,7 @@
 - [ ] **FEAT-034** · P1 · high · A2A in production: HTTP/SSE binding, third-party interop, durable push, missing methods (R-08–R-10)
   - Done when: `pnpm exec vitest run packages/testkit/test/a2a.test.ts packages/testkit/test/a2a-streaming.test.ts packages/testkit/test/a2a-push.test.ts packages/testkit/test/a2a-http.test.ts`
   - Links: Ref: docs/review/2026-11-06-project-review.md#interoperability · Lane: runtime
-  - [ ] **FEAT-034.1** · mid · HTTP binding: JSON-RPC POST, SSE responses, principal mapping, well-known agent card; wired into the host (R-08)
+  - [x] **FEAT-034.1** · mid · HTTP binding: JSON-RPC POST, SSE responses, principal mapping, well-known agent card; wired into the host (R-08)
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts`
   - [ ] **FEAT-034.2** · mid · Interop test against the pinned reference A2A SDK, offline in CI (R-09)
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-interop.test.ts`

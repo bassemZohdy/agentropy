@@ -17,13 +17,18 @@
  * - Push notifications (FEAT-029.2): with `push` options the server serves the four TaskPushNotificationConfig
  *   methods and POSTs each `StreamResponse` update to allow-listed webhook URLs (best-effort, in-memory configs).
  *
+ * HTTP: `createA2AHttpHandler` (a2a-http) serves an A2AServer on a Node `http` server: JSON-RPC POST, SSE for the
+ * streaming methods, the AgentCard at `/.well-known/agent-card.json`, principal from the application's
+ * `authenticate`.
+ *
  * Not implemented: `ListTasks`, continuing a task with a follow-up message (`message.taskId`),
  * and file parts.
  * Agentropy-to-Agentropy envelopes (`send`) travel as a `SendMessage` whose `metadata["agentropy/envelope"]`
  * carries the AgentMessage; that key is an Agentropy extension, ignored by other peers.
  *
  * Modules (TASK-031): `a2a-protocol` (shapes and mappings), `a2a-server` (inbound), `a2a-push` (push
- * notifications), `a2a-sse` (SSE framing) and `a2a-client` (outbound, AgentCard). This file re-exports their
+ * notifications), `a2a-sse` (SSE framing), `a2a-http` (Node HTTP binding, FEAT-034.1) and `a2a-client` (outbound,
+ * AgentCard). This file re-exports their
  * public API.
  */
 export {
@@ -48,6 +53,12 @@ export type {
   A2APushOptions,
 } from './a2a-push.js';
 export { sseFrames } from './a2a-sse.js';
+export {
+  AGENT_CARD_PATH,
+  createA2AHttpHandler,
+  type A2AHttpHandler,
+  type A2AHttpOptions,
+} from './a2a-http.js';
 export {
   A2ACommunicationProvider,
   a2aAgentCard,

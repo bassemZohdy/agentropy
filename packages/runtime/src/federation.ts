@@ -32,6 +32,9 @@ export function agentCardForDefinition(
   extra: {
     securitySchemes?: Record<string, unknown>;
     security?: Record<string, string[]>[];
+    /** Advertise SSE streaming; set when the endpoint serves `A2AServer.stream` (e.g. `createA2AHttpHandler`). */
+    streaming?: boolean;
+    pushNotifications?: boolean;
   } = {},
 ): Record<string, unknown> {
   return a2aAgentCard({

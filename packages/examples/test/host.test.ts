@@ -5,7 +5,13 @@ import { createLocalApp } from '@agentropy/runtime';
 import { SqliteStore } from '@agentropy/store-sqlite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { describe, expect, it } from 'vitest';
-import { AllowListPolicy, defineAgents, healthHandler } from '../src/host.js';
+import {
+  AllowListPolicy,
+  a2aEndpoint,
+  bearerTokens,
+  defineAgents,
+  healthHandler,
+} from '../src/host.js';
 
 function call(
   handler: ReturnType<typeof healthHandler>,
@@ -50,6 +56,69 @@ describe('container host (M3-08)', () => {
       status: 503,
       body: { status: 'store-unavailable' },
     });
+  });
+
+  it('A2A endpoint: off without tokens; bearer tokens map to principals of one tenant; the card names the endpoint', async () => {
+    const app = createLocalApp({
+      store: new SqliteStore({ path: ':memory:' }),
+      pdp: new AllowListPolicy(''),
+      profiles: BUILTIN_PROFILES,
+    });
+    defineAgents(app);
+    expect(await a2aEndpoint(app, {})).toBeUndefined();
+    const auth = bearerTokens(' s3cret=peer-a, other=peer-b ', 'acme');
+    const req = (authorization?: string) =>
+      ({ headers: authorization ? { authorization } : {} }) as IncomingMessage;
+    expect(await auth(req('Bearer s3cret'))).toEqual({
+      id: 'peer-a',
+      type: 'service',
+      tenantId: 'acme',
+    });
+    expect(await auth(req('Bearer other'))).toMatchObject({ id: 'peer-b' });
+    expect(await auth(req('Bearer wrong'))).toBeUndefined();
+    expect(await auth(req('s3cret'))).toBeUndefined();
+    expect(await auth(req())).toBeUndefined();
+    expect(() => bearerTokens('no-principal', 't')).toThrow(
+      /token=principalId/,
+    );
+
+    const a2a = (await a2aEndpoint(app, {
+      AGENTROPY_A2A_TOKENS: 's3cret=peer-a',
+      AGENTROPY_PUBLIC_URL: 'https://agents.example',
+    }))!;
+    const card = await new Promise<{ status: number; body: unknown }>(
+      (resolve) => {
+        let status = 0;
+        const res = {
+          writeHead: (s: number) => {
+            status = s;
+            return res;
+          },
+          end: (body: string) => resolve({ status, body: JSON.parse(body) }),
+        } as unknown as ServerResponse;
+        void a2a.handle(
+          {
+            method: 'GET',
+            url: '/.well-known/agent-card.json',
+            headers: {},
+          } as IncomingMessage,
+          res,
+        );
+      },
+    );
+    expect(card.status).toBe(200);
+    expect(card.body).toMatchObject({
+      name: 'Echo',
+      supportedInterfaces: [{ url: 'https://agents.example/a2a' }],
+      security: [{ bearer: [] }],
+    });
+    // Paths it does not serve fall through to the health handler.
+    expect(
+      await a2a.handle(
+        { method: 'GET', url: '/healthz', headers: {} } as IncomingMessage,
+        {} as ServerResponse,
+      ),
+    ).toBe(false);
   });
 
   it('the sample policy denies everything not explicitly allowed', async () => {
