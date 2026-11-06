@@ -11,6 +11,9 @@
       "path": "./packages/store-sqlite"
     },
     {
+      "path": "./packages/store-postgres"
+    },
+    {
       "path": "./packages/testkit"
     },
     {

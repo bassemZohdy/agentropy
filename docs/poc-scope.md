@@ -79,6 +79,7 @@ packages/
   core/        # types, schemas, errors, transition tables, capability catalog, pure resolver — no I/O
   runtime/     # registries, TaskService, runtime, pool, scheduler, router, direct provider, tool executor, skill loader
   store-sqlite/
+  store-postgres/  # M3-07, driver-neutral (ADR-0028)
   testkit/     # fake clock/model, failure injection, conformance suites (reusable by provider authors)
 examples/
   price-watch/       # J1

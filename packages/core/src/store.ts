@@ -2,6 +2,9 @@
  * Driver-neutral Store port (ADR-0017): named collections of JSON documents with revision CAS, a small set of
  * indexed fields per collection, and an async unit of work. Adapters must make one `transaction` atomic and
  * serialize transactions that touch the same store. No SQL-specific semantics leak through this interface.
+ *
+ * An adapter may re-run a transaction callback after a serialization conflict (ADR-0028), so callbacks must only
+ * read and write through `tx` and have no other effects.
  */
 import { AgentropyError } from './errors.js';
 
