@@ -14,7 +14,7 @@
 |---|---|---|
 | Delegated grant (`delegatedAuthorityRef`) | Issuer-defined | Checked at acceptance, at every dispatch (gate) and before every protected effect; never cached |
 | Narrowed child grant | No longer than its parent | Derived per child task by `GrantVerifier.narrow` |
-| Policy decision | ≤ `ttlMs` (default 30 s) when `CachingPolicyDecisionPoint` is used | Invalidated by `revokeAuthority`, by a new policy version, or by expiry; failures never cached |
+| Policy decision | ≤ `ttlMs` (default 30 s) when `CachingPolicyDecisionPoint` is used; with `shared`, a revocation reaches other workers within `syncMs` (default 1 s) | Invalidated by `revokeAuthority` (on every worker sharing the store when `shared` is set), by a new policy version, or by expiry; failures never cached; a failed invalidation read clears the cache |
 | Credential (API keys, tokens) | Provider-defined | Resolved per invocation, never stored or cached by the runtime |
 | Human-action claim | 15 min default | Lapses back to `pending`; decisions re-check assignment, authority and revision |
 | Trace context | Per request | Correlation only; validated and never an authorization input |

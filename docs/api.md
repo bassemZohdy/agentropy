@@ -207,7 +207,7 @@ Types, schemas, errors, lifecycle tables and pure resolvers (no I/O). 196 export
 
 ## @agentropy/runtime
 
-Registries, task service, runtime, scheduler, providers and the local app facade. 147 exports.
+Registries, task service, runtime, scheduler, providers and the local app facade. 150 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
@@ -316,7 +316,9 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `packageName` | const | [runtime/src/index.ts](../packages/runtime/src/index.ts) |  |
 | `parseSkillMd` | function | [runtime/src/skills.ts](../packages/runtime/src/skills.ts) | Parse SKILL.md into standard metadata and the Markdown body. |
 | `PinnedSkillAccess` | class | [runtime/src/skills.ts](../packages/runtime/src/skills.ts) | AgentContext.skills: read-only access to a task's pinned skills; grants nothing and executes nothing. |
+| `POLICY_INVALIDATION_RETENTION_MS` | const | [runtime/src/policy-cache.ts](../packages/runtime/src/policy-cache.ts) | How long invalidation rows are kept. |
 | `PolicyCacheOptions` | interface | [runtime/src/policy-cache.ts](../packages/runtime/src/policy-cache.ts) |  |
+| `PolicyInvalidationFilter` | interface | [runtime/src/policy-cache.ts](../packages/runtime/src/policy-cache.ts) | Which cached decisions an invalidation drops; every given field must match. |
 | `PriorityPolicy` | interface | [runtime/src/priority.ts](../packages/runtime/src/priority.ts) |  |
 | `publicEntry` | function | [runtime/src/inbox.ts](../packages/runtime/src/inbox.ts) | Public shape: storage bookkeeping removed. |
 | `PublishedEvent` | interface | [runtime/src/outbox.ts](../packages/runtime/src/outbox.ts) | A published TaskEvent with routing context for consumers. |
@@ -326,6 +328,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `reasoningOperationHandlers` | function | [runtime/src/reasoning.ts](../packages/runtime/src/reasoning.ts) |  |
 | `recordAudit` | function | [runtime/src/tools.ts](../packages/runtime/src/tools.ts) | Writes mandatory audit intent; any failure is AuditCommitUnavailable and the protected operation must not proceed. |
 | `recordAuditIntent` | function | [runtime/src/audit.ts](../packages/runtime/src/audit.ts) | Writes one intent row inside `tx`; any failure (including an injected one) is AuditCommitUnavailable. |
+| `recordPolicyInvalidation` | function | [runtime/src/policy-cache.ts](../packages/runtime/src/policy-cache.ts) | Records an invalidation for every worker's shared cache inside `tx` (commit it with the change it reflects, e.g. |
 | `RemoteAgentEntry` | interface | [runtime/src/federation.ts](../packages/runtime/src/federation.ts) |  |
 | `RemoteDelegationService` | class | [runtime/src/remote.ts](../packages/runtime/src/remote.ts) |  |
 | `RemoteTaskRecord` | interface | [runtime/src/remote.ts](../packages/runtime/src/remote.ts) |  |
@@ -396,15 +399,17 @@ WorkflowEngine adapter for Conductor. 4 exports.
 
 ## @agentropy/testkit
 
-Offline fakes and reusable conformance suites. 20 exports.
+Offline fakes and reusable conformance suites. 22 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
+| `allowNetwork` | function | [testkit/src/network-guard.ts](../packages/testkit/src/network-guard.ts) | Lets TCP connects (and DNS lookups of the host) through to exactly these `host:port` endpoints while the guard stays installed. |
 | `blockNetwork` | function | [testkit/src/network-guard.ts](../packages/testkit/src/network-guard.ts) | Installs the guard once per process; returns a function that removes it. |
 | `CommunicationConformanceSetup` | interface | [testkit/src/communication.ts](../packages/testkit/src/communication.ts) |  |
 | `defineCommunicationConformance` | function | [testkit/src/communication.ts](../packages/testkit/src/communication.ts) |  |
 | `defineStoreConformance` | function | [testkit/src/store.ts](../packages/testkit/src/store.ts) |  |
 | `defineWorkflowEngineConformance` | function | [testkit/src/workflow-conformance.ts](../packages/testkit/src/workflow-conformance.ts) |  |
+| `endpointOf` | function | [testkit/src/network-guard.ts](../packages/testkit/src/network-guard.ts) | `host:port` of a database or service URL, for `allowNetwork`. |
 | `FakeAudit` | class | [testkit/src/fakes.ts](../packages/testkit/src/fakes.ts) |  |
 | `FakeClock` | class | [testkit/src/fake-clock.ts](../packages/testkit/src/fake-clock.ts) | Deterministic, synchronous fake clock for tests; no real timers or wall clock. |
 | `FakeDirectTarget` | class | [testkit/src/communication.ts](../packages/testkit/src/communication.ts) | Minimal in-memory target honoring idempotency keys and tenant scoping; stands in for a TaskService. |
@@ -414,7 +419,7 @@ Offline fakes and reusable conformance suites. 20 exports.
 | `FakeWorkflowEngine` | class | [testkit/src/fake-workflow.ts](../packages/testkit/src/fake-workflow.ts) |  |
 | `FaultInjector` | class | [testkit/src/fault-injector.ts](../packages/testkit/src/fault-injector.ts) | Deterministic, in-memory fault injection for provider/runtime contract tests. |
 | `isNetworkBlocked` | const | [testkit/src/network-guard.ts](../packages/testkit/src/network-guard.ts) |  |
-| `NetworkDisabledError` | class | [testkit/src/network-guard.ts](../packages/testkit/src/network-guard.ts) |  |
+| `NetworkDisabledError` | const | [testkit/src/network-guard.ts](../packages/testkit/src/network-guard.ts) | Thrown by every blocked network call; the same class across module instances. |
 | `packageName` | const | [testkit/src/index.ts](../packages/testkit/src/index.ts) |  |
 | `ScheduledCall` | interface | [testkit/src/fake-clock.ts](../packages/testkit/src/fake-clock.ts) |  |
 | `StoreConformanceOptions` | interface | [testkit/src/store.ts](../packages/testkit/src/store.ts) |  |

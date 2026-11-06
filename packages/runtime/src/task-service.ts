@@ -165,7 +165,14 @@ export interface GrantVerifier {
 }
 
 export type IdKind =
-  'task' | 'execution' | 'event' | 'wakeup' | 'action' | 'entry' | 'audit';
+  | 'task'
+  | 'execution'
+  | 'event'
+  | 'wakeup'
+  | 'action'
+  | 'entry'
+  | 'audit'
+  | 'invalidation';
 
 export interface TaskServiceOptions {
   store: Store;

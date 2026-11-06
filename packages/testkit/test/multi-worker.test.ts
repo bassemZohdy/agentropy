@@ -1,6 +1,7 @@
 // FEAT-028.2: multi-worker pool (M3-02, R-10) — several runtimes sharing one store. Exactly-once dispatch, lease
 // takeover from a stalled worker with fencing, cancel across workers, fair dispatch across tenants, a store-wide
-// per-tenant concurrency limit, and three real worker processes on one SQLite file.
+// per-tenant concurrency limit, three real worker processes on one SQLite file, and policy cache invalidation
+// shared by every worker (FEAT-033.1).
 import { PGlite } from '@electric-sql/pglite';
 import { spawn } from 'node:child_process';
 import { mkdtemp } from 'node:fs/promises';
@@ -10,11 +11,14 @@ import {
   BUILTIN_PROFILES,
   type Agent,
   type AgentDefinition,
+  type PolicyDecisionPoint,
+  type PolicyRequest,
   type Store,
   type TrustedPrincipal,
 } from '@agentropy/core';
 import { describe, expect, it } from 'vitest';
 import {
+  CachingPolicyDecisionPoint,
   createLocalApp,
   fairOrder,
   type LocalApp,
@@ -379,4 +383,50 @@ describe('worker processes sharing one SQLite file (M3-02)', () => {
     expect(tasks.every((t) => t.value.status === 'completed')).toBe(true);
     await check.close();
   }, 60_000);
+});
+
+describe('policy decision cache across workers (FEAT-033.1)', () => {
+  it('a grant revoked through one worker is not served from another worker cache', async () => {
+    const store = sqliteTempStore();
+    let revoked = false;
+    let calls = 0;
+    const inner: PolicyDecisionPoint = {
+      decide: async () => {
+        calls++;
+        return { effect: revoked ? 'deny' : 'allow' };
+      },
+    };
+    const caches = [1, 2].map(
+      () =>
+        new CachingPolicyDecisionPoint(inner, {
+          shared: { store, syncMs: 0 },
+        }),
+    );
+    const [w1] = caches.map((pdp) =>
+      createLocalApp({ store, pdp, profiles: BUILTIN_PROFILES }),
+    );
+    const agent: TrustedPrincipal = {
+      id: 'helper',
+      type: 'agent',
+      tenantId: 't-1',
+      delegatedAuthorityRef: 'grant-7',
+    };
+    const request: PolicyRequest = {
+      principal: agent,
+      action: 'tool:x:call',
+      resource: { type: 'capability', id: 'tool-use', tenantId: 't-1' },
+    };
+    await caches[1]!.decide(request);
+    await caches[1]!.decide(request);
+    expect(calls).toBe(1);
+    revoked = true;
+    await w1!.revokeAuthority('grant-7', {
+      id: 'ops',
+      type: 'service',
+      tenantId: 't-1',
+    });
+    expect((await caches[1]!.decide(request)).effect).toBe('deny');
+    expect(calls).toBe(2);
+    await store.close();
+  });
 });

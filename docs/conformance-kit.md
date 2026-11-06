@@ -40,6 +40,7 @@ What happens when a part fails, and which test shows it.
 | Process killed mid-transaction | Uncommitted writes are gone, committed ones survive | `packages/store-sqlite/test/sqlite-store.test.ts` |
 | Worker stalls past its lease | Another worker recovers and retries; the stalled worker's late result is fenced | `packages/testkit/test/multi-worker.test.ts` |
 | Several worker processes on one database | Each task dispatched exactly once | `packages/testkit/test/multi-worker.test.ts` |
+| A grant revoked through one worker | Another worker's shared decision cache stops serving its allow within `syncMs` | `packages/testkit/test/multi-worker.test.ts`, `packages/runtime/test/policy-cache.test.ts` |
 | Outbox relay holder crashes | Lease expires; another relay replays in order | `packages/testkit/test/delivery.test.ts` |
 | Tool or model provider outage | Retried with backoff on the same idempotency key | `packages/testkit/test/delivery.test.ts` |
 | Policy decision point unavailable | Fail closed; dispatch gate with bounded retries | `packages/testkit/test/security.test.ts` |

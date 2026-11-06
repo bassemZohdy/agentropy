@@ -17,7 +17,7 @@
 - [ ] **FEAT-033** · P1 · mid · Multi-worker correctness and scale: cross-worker policy invalidation, indexed wake-ups (R-05, R-06)
   - Done when: `pnpm exec vitest run packages/runtime/test packages/testkit/test`
   - Links: Ref: docs/review/2026-11-06-project-review.md#runtime-and-scale · Lane: runtime
-  - [ ] **FEAT-033.1** · mid · Propagate PolicyDecisionCache invalidation to every worker through the store (R-05)
+  - [x] **FEAT-033.1** · mid · Propagate PolicyDecisionCache invalidation to every worker through the store (R-05)
     - Done when: `pnpm exec vitest run packages/runtime/test/policy-cache.test.ts packages/testkit/test/multi-worker.test.ts`
   - [ ] **FEAT-033.2** · mid · Wake-up polling by due-time index instead of scanning every armed registration; benchmark 10k waiters (R-06)
     - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/testkit/test/benchmarks.test.ts`

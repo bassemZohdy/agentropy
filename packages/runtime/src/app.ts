@@ -62,7 +62,10 @@ import { OutboxRelay, TaskEventStream, type FaultHook } from './outbox.js';
 import { type InboxPreferences, type PriorityPolicy } from './priority.js';
 import { resolveLimits, type RuntimeLimits } from './limits.js';
 import type { QuotaResolver } from './quotas.js';
-import { CachingPolicyDecisionPoint } from './policy-cache.js';
+import {
+  CachingPolicyDecisionPoint,
+  recordPolicyInvalidation,
+} from './policy-cache.js';
 import { reasoningOperationHandlers } from './reasoning.js';
 import { RemoteDelegationService } from './remote.js';
 import {
@@ -634,16 +637,23 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
         o.pdp instanceof CachingPolicyDecisionPoint
           ? o.pdp.invalidate({ tenantId: caller.tenantId, grantRef })
           : 0;
-      await store.transaction((tx) =>
-        tasks.audit(tx, caller, {
+      await store.transaction(async (tx) => {
+        // Other workers' shared decision caches drop the grant's decisions on their next sync (FEAT-033.1).
+        await recordPolicyInvalidation(
+          tx,
+          tasks.newId('invalidation'),
+          { tenantId: caller.tenantId, grantRef },
+          now(),
+        );
+        await tasks.audit(tx, caller, {
           type: 'authority.revoke',
           action: 'grant:revoke',
           // The reference itself stays out of the audit trail; its digest identifies it.
           resource: { type: 'grant', id: digestOf(grantRef) },
           decision: 'allow',
           details: { signalled: signalled.length, invalidatedDecisions },
-        }),
-      );
+        });
+      });
       return { signalled, invalidatedDecisions };
     },
     async listEffects(taskId, caller) {
