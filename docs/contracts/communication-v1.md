@@ -1,4 +1,4 @@
-# Agentropy Communication Contract v1 — revision 6
+# Agentropy Communication Contract v1 — revision 7
 
 **Status:** Accepted for M1 implementation of the router and direct provider (2026-11-05). A2A and custom providers are M2 (C-03/C-04). Behavior is claimed only where executable tests exist.  
 **Decision:** [ADR-0015](../adr/0015-pluggable-agent-communication.md). **Errors:** [Errors v1](errors-v1.md).
@@ -13,6 +13,7 @@
 | 4 | 2026-11-05 | Readiness closure: `CommunicationFeatures.durability` uses the canonical durability levels (`provider-dependent` counts as `none` for guarantee checks); `extensions` declaration formalized; `RouteRequirements` passed to `selectRoute`; `AgentRef` ↔ `VersionedRef` mapping stated; `AgentEvent` documented as a projection of `TaskEvent` |
 | 5 | 2026-11-05 | FEAT-027.8 (C-03, C-04): A2A provider pinned to A2A protocol 1.0 (JSON-RPC binding) — outbound `A2ACommunicationProvider` and inbound `createA2AServer` — and the custom broker/RPC provider sample; both pass the shared conformance suite (see "M2 providers") |
 | 6 | 2026-11-06 | FEAT-027.9: `RemoteTaskState.output` carries a completed remote result; remote targets in `delegation.delegate` are wired through the router with local projection tasks |
+| 7 | 2026-11-06 | FEAT-028.9 (M3-09, R-18): federation and discovery through A2A agent cards — `agentCardForDefinition`, `AgentDirectoryFederation` (configured peers only, strict card validation, tenant and policy scoping, delegation target in each result) |
 
 ## Position in the call stack
 
@@ -181,3 +182,16 @@ Verified by `packages/testkit/test/a2a.test.ts` (shared conformance suite for bo
 - **A2A (C-03), protocol 1.0, JSON-RPC binding** (`packages/runtime/src/a2a.ts`, pinned from the A2A specification 1.0.0; its `a2a.proto` is normative). Outbound: `SendMessage` (one text part; JSON input as `mediaType: application/json`; `messageId` = idempotency key, `contextId` = correlation ID; `returnImmediately`), `GetTask`, `CancelTask`; `A2A-Version: 1.0` on every call; a Bearer credential for this runtime resolved per call; no grant reference or caller identity is sent. State mapping: `SUBMITTED`→`created`, `WORKING`→`running`, `INPUT_REQUIRED`/`AUTH_REQUIRED`→`waiting`, `COMPLETED`, `FAILED`/`REJECTED`→`failed`, `CANCELED`→`cancelled`. Errors: A2A codes −32001 (`NotFound`), −32002 (`InvalidState`), −32004 (`UnsupportedOperation`), −32005 (`SchemaViolation`), −32009 (`IncompatibleVersion`); an Agentropy peer also returns the Errors v1 shape in `error.data`. Inbound: `createA2AServer(target, { instanceId })` with the transport's authenticated principal (unauthenticated → HTTP 401), over `localAppTarget(app)` so every AgentService PEP applies; completed tasks carry the output as an artifact. `a2aAgentCard` builds the card. Not in v1: streaming and `SubscribeToTask` (`subscribe` polls `GetTask`), push notifications, `ListTasks`, task continuation, file parts.
 - **Custom provider sample (C-04)** (`packages/examples/src/broker-provider.ts`): the same SPI over any request/response broker, with an in-memory broker standing in for NATS, RabbitMQ, Kafka request-reply or gRPC; the serving side uses only the identity the broker stamps on a request.
 - **Remote targets in `delegation.delegate`** (FEAT-027.9, `packages/runtime/src/remote.ts`): a `target.remote` delegation runs authentication, grant status, the `delegation:delegate` policy (resource `remote-agent`) and route selection, then calls the provider with the delegation's idempotency key and without the caller's grant. The runtime stores a local projection (`remoteTasks`), refreshes it from `getTask` before every wake-up evaluation (an unreachable peer leaves it as last observed, with `lastError`), wakes `child-tasks` waiters when it becomes terminal, and forwards `cancel`. Verified by `packages/testkit/test/remote-delegation.test.ts` over A2A and the broker sample.
+
+## Federation and discovery (revision 7, FEAT-028.9)
+
+Remote registries are discovered through **A2A 1.0 agent cards**, not a registry protocol of Agentropy's own.
+
+- **Publish:** `agentCardForDefinition(def, url)` builds the card for the A2A endpoint that serves a definition; the definition ID is the first skill ID, its profile and capabilities are skill tags (`profile:<id>`, `capability:<id>`). Serve it at the endpoint's `/.well-known/agent-card.json`.
+- **Trust configuration:** `AgentDirectoryFederation({ peers: [{ id, cardUrl, tenants, allowedOrigins? }] })`. Only configured `https` card URLs are fetched; no URL comes from a caller or a card. Each peer is visible to its listed tenants only.
+- **Validation (cards are untrusted data):** at most `maxCardBytes` (64 KiB); `name`, `description`, `version` non-empty strings up to 1,000 characters; a `JSONRPC` interface at protocol `1.0` (version negotiation: other versions are refused); the interface URL must be `https` on the card's origin or an allowed origin. Only the needed fields are kept; text is never interpreted.
+- **Discovery:** `discover(query, caller)` uses the same filters as local discovery (`id`, `capability`, `profile`, `text`) and the same `definition:discover` policy check (resource `remote-agent`, id `<peer>/<definitionId>`), failing closed. Order is deterministic (peer, then definition). Each result carries `target: { remote: { endpoint, definitionId, version } }` for `delegate`.
+- **Freshness:** `refresh()` re-fetches cards older than `refreshMs` (5 min); a failed fetch keeps the last good card, marked `stale`, until `maxStaleMs` (24 h).
+
+Verified by `packages/testkit/test/federation.test.ts`, including discover-then-delegate between two runtimes over A2A.
+

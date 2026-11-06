@@ -25,7 +25,7 @@
     - Done when: benchmark suite records numbers and the SLO document cites them; `pnpm exec vitest run packages/testkit/test/benchmarks.test.ts`
   - [x] **FEAT-028.8** · mid · Self-hosting: container image, Kubernetes/OpenShift manifests and air-gapped install guide (M3-08)
     - Done when: deployment manifests validate offline; `node scripts/check-deploy.mjs`
-  - [ ] **FEAT-028.9** · mid · Registry federation and discovery through published agent cards (M3-09)
+  - [x] **FEAT-028.9** · mid · Registry federation and discovery through published agent cards (M3-09)
     - Done when: federation suite passes; `pnpm exec vitest run packages/testkit/test/federation.test.ts`
   - [ ] **FEAT-028.10** · low · API reference, quickstarts, compatibility matrix and the model-routing evaluation (M3-10, N-03)
     - Done when: docs build and link check pass; `node scripts/check-doc-links.mjs`

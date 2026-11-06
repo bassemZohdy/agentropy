@@ -26,7 +26,7 @@
 | R-15 | P1 | Observability | One trace spans user request → delegation → child tasks → inbox entry; logs redact prompts and secrets | Operations | M2 |
 | R-16 | P1 | Isolation and quotas | Tenant A cannot read/act on tenant B's registry, tasks, inbox or memory; per-tenant concurrency quota enforced | Operations | M2 |
 | R-17 | P0 | Deterministic (no-LLM) and AI-enabled agents share one model | J1 (rule-based conversational + monitoring agents) runs with no model provider configured; J2 uses the fake model through the same handler contract (AC-01) | Agent v1 | M1 |
-| R-18 | P2 | Registry federation across runtimes | Remote registries are discoverable under explicit trust configuration with version negotiation. *Was "federation and remote agent discovery"; A2A delegation itself moved to R-32* | ADR-0015 | M3 |
+| R-18 | P2 | Registry federation across runtimes | Remote registries are discoverable under explicit trust configuration with version negotiation. *Was "federation and remote agent discovery"; A2A delegation itself moved to R-32*. Implemented by FEAT-028.9 through A2A agent cards ([Communication v1](contracts/communication-v1.md) rev 7) | ADR-0015 | M3 |
 | R-19 | P2 | Advanced agent-team UX | Optional dashboard and configurable status notifications | Collaboration | M3 |
 | R-20 | P0 | Async-first delegation and accepted-task handles | Closing the originating session does not affect the task; a lost response is resolved by idempotency key without a duplicate task (AC-03) | Runtime contract, ADR-0010 | M1 |
 | R-21 | P0 | Single authoritative transition table and guarded operations | Generated test: every unlisted edge rejected with `InvalidState`; guard order prevents state leakage (AC-04) | Runtime contract | M1 |
