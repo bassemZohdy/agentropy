@@ -15,7 +15,7 @@
     - Done when: multi-worker suite passes on SQLite file and PGlite stores; `pnpm exec vitest run packages/testkit/test/multi-worker.test.ts`
   - [x] **FEAT-028.3** · high · Upgrades: store schema migrations, checkpoint codec versions, audited instance version migration and rollback (M3-03, D-07)
     - Done when: upgrade suite passes; `pnpm exec vitest run packages/testkit/test/upgrades.test.ts`
-  - [ ] **FEAT-028.4** · mid · Audit retention, legal hold, archive anchors and verified disposal (M3-04, D-21, D-22)
+  - [x] **FEAT-028.4** · mid · Audit retention, legal hold, archive anchors and verified disposal (M3-04, D-21, D-22)
     - Done when: audit-retention suite passes; `pnpm exec vitest run packages/testkit/test/audit-retention.test.ts`
   - [ ] **FEAT-028.5** · mid · Hardening: secret handling, delegated-authority and approval enforcement; decide D-24 items by ADR (M3-05, D-24)
     - Done when: hardening suite passes and the ADR is accepted; `pnpm exec vitest run packages/testkit/test/hardening.test.ts`

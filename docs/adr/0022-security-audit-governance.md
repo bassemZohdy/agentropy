@@ -1,6 +1,6 @@
 # ADR-0022: Security audit access, retention, legal hold and integrity
 
-- Status: Accepted (architecture direction, 2026-11-04); concrete mechanisms and retention values deferred
+- Status: Accepted (architecture direction, 2026-11-04); mechanisms implemented by FEAT-028.4 ([Security v1](../contracts/security-v1.md) rev 7, 2026-11-06); concrete retention values, storage, signing and dual control remain deployment decisions
 - Scope: Agentropy design/documentation only; no implementation authorized
 
 ## Context

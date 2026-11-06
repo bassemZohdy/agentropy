@@ -28,6 +28,9 @@ export const STORE_COLLECTIONS = {
   leases: ['kind'],
   usage: ['taskId'],
   remoteTasks: ['tenantId', 'status', 'parentTaskId'],
+  auditPolicies: ['tenantId'],
+  auditHolds: ['tenantId', 'status'],
+  auditReceipts: ['tenantId'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type CollectionName = keyof typeof STORE_COLLECTIONS;

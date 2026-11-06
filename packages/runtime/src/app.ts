@@ -38,7 +38,12 @@ import {
   type DelegationRequest,
   type VersionedRef,
 } from '@agentropy/core';
-import { AuditForwarder, AuditService } from './audit.js';
+import {
+  AuditForwarder,
+  AuditService,
+  type AuditAnchorSink,
+  type AuditRetention,
+} from './audit.js';
 import {
   HumanActionService,
   humanActionOperationHandlers,
@@ -90,6 +95,10 @@ export interface LocalAppOptions {
   grants?: GrantVerifier;
   /** Sink for committed audit intents; without one they stay in the Store's `audit` collection. */
   audit?: AuditIntentWriter;
+  /** Deployment audit retention and floor (ADR-0022 §4; default 365 days, floor 30). */
+  auditRetention?: AuditRetention;
+  /** Independently protected sink for audit chain anchors (ADR-0022 §7). */
+  auditAnchors?: AuditAnchorSink;
   now?: () => string;
   profiles?: readonly AgentProfile[];
   /** Tool registry, providers and executor backing `tool-use.listTools` / `tool-use.call`. */
@@ -491,7 +500,14 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     inbox,
     human,
     relay,
-    auditLog: new AuditService({ store, pdp: o.pdp }),
+    auditLog: new AuditService({
+      store,
+      pdp: o.pdp,
+      now,
+      newId: () => tasks.newId('audit'),
+      ...(o.auditRetention ? { retention: o.auditRetention } : {}),
+      ...(o.auditAnchors ? { anchorSink: o.auditAnchors } : {}),
+    }),
     limits,
     define(definition, handler) {
       const def = validateAgentDefinition(definition);
