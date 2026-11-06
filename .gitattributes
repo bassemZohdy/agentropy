@@ -1,0 +1,5 @@
+# Keep LF everywhere (Prettier, api-index --check and CI assume it), regardless of core.autocrlf (TASK-033.1).
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.tgz binary

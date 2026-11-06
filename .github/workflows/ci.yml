@@ -29,8 +29,8 @@ jobs:
         run: pnpm typecheck
       - name: Lint
         run: pnpm lint
-      - name: Tests (offline)
-        run: pnpm test
+      - name: Tests (offline) with V8 coverage summary
+        run: pnpm exec vitest run --coverage
       - name: Examples (J1 price watch, J2 expense approval)
         run: |
           node packages/examples/dist/price-watch.js
@@ -52,6 +52,23 @@ jobs:
         run: node scripts/api-index.mjs --check
       - name: Release packaging (pack, inspect, install tarballs, run a task)
         run: node scripts/check-pack.mjs
+
+  node-floor:
+    # TASK-033.5: the engines floor (Node 24.0.0) builds and passes the offline suite.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.34.9'
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.0.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
 
   postgres:
     # FEAT-031: Store conformance, contention cases and benchmarks on a PostgreSQL server.

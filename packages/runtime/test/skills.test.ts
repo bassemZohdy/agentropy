@@ -19,6 +19,19 @@ import {
 } from '../src/skills.js';
 
 const fixtures = fileURLToPath(new URL('./fixtures/skills/', import.meta.url));
+
+/** Windows without Developer Mode refuses symlinks (EPERM); CI must always be able to create them. */
+async function symlinksAllowed(): Promise<boolean> {
+  const dir = await mkdtemp(join(tmpdir(), 'agentropy-symlink-probe-'));
+  try {
+    await symlink(join(dir, 'missing'), join(dir, 'link'));
+    return true;
+  } catch (err) {
+    if (process.env['CI']) throw err;
+    return false;
+  }
+}
+const canSymlink = await symlinksAllowed();
 const admin: TrustedPrincipal = { id: 'admin', type: 'user', tenantId: 't-1' };
 
 function setup(opts: { denied?: string[]; pdpDown?: boolean } = {}) {
@@ -188,7 +201,7 @@ describe('progressive disclosure (CT-SKILL)', () => {
     ).toBe('IncompatibleVersion');
   });
 
-  it('denies path traversal and symlink escapes; missing files are NotFound', async () => {
+  it('denies path traversal; missing files are NotFound', async () => {
     const dir = await copyFixture();
     const { loader, pin } = await activeSkill(dir);
     for (const p of [
@@ -201,6 +214,10 @@ describe('progressive disclosure (CT-SKILL)', () => {
     expect(await code(loader.resource(pin, 'references/missing.md'))).toBe(
       'NotFound',
     );
+  });
+
+  it.skipIf(!canSymlink)('denies symlink escapes', async () => {
+    const dir = await copyFixture();
     await symlink('/etc/hostname', join(dir, 'assets', 'link'));
     expect(
       await code(

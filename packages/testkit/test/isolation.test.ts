@@ -3,7 +3,12 @@
 import type { Agent } from '@agentropy/core';
 import net from 'node:net';
 import { describe, expect, it } from 'vitest';
-import { NetworkDisabledError, isNetworkBlocked } from '../src/index.js';
+import {
+  NetworkDisabledError,
+  allowNetwork,
+  isNetworkBlocked,
+} from '../src/index.js';
+import * as distGuard from '../dist/network-guard.js';
 import { alice, code, completes, harness } from '../../runtime/test/harness.js';
 
 describe('AC-14: app-context isolation', () => {
@@ -62,5 +67,42 @@ describe('AC-14: app-context isolation', () => {
     await expect(dns.promises.lookup('example.com')).rejects.toBeInstanceOf(
       NetworkDisabledError,
     );
+  });
+
+  it('allowNetwork opens exactly the named endpoints, and the guard is one per process across module instances', async () => {
+    const server = net.createServer((c) => c.end());
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const { port } = server.address() as net.AddressInfo;
+    const tryConnect = () =>
+      new Promise<void>((resolve, reject) => {
+        const s = net.connect(port, '127.0.0.1', () => {
+          s.destroy();
+          resolve();
+        });
+        s.on('error', reject);
+      });
+    try {
+      expect(() => net.connect(port, '127.0.0.1')).toThrow(
+        NetworkDisabledError,
+      );
+      const revoke = allowNetwork([`127.0.0.1:${port}`]);
+      await tryConnect();
+      expect(() =>
+        net.connect(port + 1 > 65535 ? 1 : port + 1, '127.0.0.1'),
+      ).toThrow(NetworkDisabledError);
+      await expect(fetch(`http://127.0.0.1:${port}/`)).rejects.toBeInstanceOf(
+        NetworkDisabledError,
+      );
+      revoke();
+      expect(() => net.connect(port, '127.0.0.1')).toThrow(
+        NetworkDisabledError,
+      );
+      // The built package entry shares the same guard state (TASK-033.3).
+      expect(distGuard.isNetworkBlocked()).toBe(true);
+      expect(distGuard.NetworkDisabledError).toBe(NetworkDisabledError);
+      expect(() => allowNetwork(['no-port'])).toThrow(/host:port/);
+    } finally {
+      server.close();
+    }
   });
 });

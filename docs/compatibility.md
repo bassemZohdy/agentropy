@@ -6,7 +6,7 @@
 
 | Component | Supported | How verified |
 |---|---|---|
-| Node.js | 24 (`engines`); code avoids APIs newer than 22.13 | Tested: CI on Node 24; development on Node 22.23 |
+| Node.js | 24.0 or newer (`engines`) | Tested: CI on the latest Node 24 and on the floor, 24.0.0 (`node-floor` job); development on Node 24.16 |
 | TypeScript | 5.9, strict, ESM (`NodeNext`) | Tested: `tsc -b` in CI |
 | Package manager | pnpm 10.34 | Tested: CI and the image build |
 | Operating system | Linux (container image `node:24-bookworm-slim`) | Tested: CI runner and container smoke test |

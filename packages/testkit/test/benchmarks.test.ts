@@ -5,8 +5,8 @@
 // the suite; regressions are spotted by comparing the printed lines.
 //
 // FEAT-031: with AGENTROPY_PG_URL set (e.g. postgres://postgres:pw@127.0.0.1:55432/agentropy) the same cases also
-// run on a PostgreSQL server through node-postgres, each store in a fresh schema. That opt-in lifts the offline
-// network guard for this file only; without it nothing here touches the network.
+// run on a PostgreSQL server through node-postgres, each store in a fresh schema. That opt-in admits only the
+// database's host:port through the offline network guard (allowNetwork); without it nothing here touches the network.
 import { PGlite } from '@electric-sql/pglite';
 import pg from 'pg';
 import {
@@ -20,7 +20,12 @@ import { describe, expect, it } from 'vitest';
 import { createLocalApp, type LocalApp } from '../../runtime/src/index.js';
 import { sqliteTempStore } from '../../runtime/test/harness.js';
 import { PostgresStore } from '../../store-postgres/src/index.js';
-import { FakeClock, FakePolicy, blockNetwork } from '../src/index.js';
+import {
+  FakeClock,
+  FakePolicy,
+  allowNetwork,
+  endpointOf,
+} from '../src/index.js';
 
 const alice: TrustedPrincipal = { id: 'alice', type: 'user', tenantId: 't-1' };
 
@@ -95,7 +100,7 @@ const delegate = (app: LocalApp, inst: string, key: string) =>
   );
 
 const PG_URL = process.env['AGENTROPY_PG_URL'];
-if (PG_URL) blockNetwork()(); // explicit opt-in to a live database for this file
+if (PG_URL) allowNetwork([endpointOf(PG_URL, 5432)]); // explicit opt-in: only this database
 let schemas = 0;
 const pgServer = (): Store =>
   new PostgresStore({

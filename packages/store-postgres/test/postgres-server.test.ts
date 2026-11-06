@@ -2,15 +2,17 @@
 // node-postgres. Opt-in: set AGENTROPY_PG_URL (e.g. postgres://postgres:pw@127.0.0.1:55432/agentropy); without it
 // the suite is skipped and the offline guard stays in force. Every store gets its own schema, dropped afterwards.
 import type { Store } from '@agentropy/core';
-import { defineStoreConformance } from '@agentropy/testkit';
-// The same module instance vitest.setup.ts installed the guard from (the package entry resolves to dist).
-import { blockNetwork } from '../../testkit/src/network-guard.js';
+import {
+  allowNetwork,
+  defineStoreConformance,
+  endpointOf,
+} from '@agentropy/testkit';
 import pg from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
 import { PostgresStore, type PgPool } from '../src/index.js';
 
 const URL = process.env['AGENTROPY_PG_URL'];
-if (URL) blockNetwork()(); // explicit opt-in to a live database for this file
+if (URL) allowNetwork([endpointOf(URL, 5432)]); // explicit opt-in: only this database
 const live = URL ? describe : describe.skip;
 
 const created: string[] = [];
