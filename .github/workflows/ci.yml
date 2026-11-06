@@ -35,6 +35,7 @@ jobs:
         run: |
           node packages/examples/dist/price-watch.js
           node packages/examples/dist/expense-approval.js
+          node packages/examples/dist/quickstart.js
       - name: DCO script unit tests
         run: node --test scripts/check-dco.test.mjs
       - name: Verify documentation link targets
@@ -47,6 +48,8 @@ jobs:
         run: pnpm format:check
       - name: Deployment files (offline checks)
         run: node scripts/check-deploy.mjs
+      - name: API reference up to date
+        run: node scripts/api-index.mjs --check
 
   image:
     # FEAT-028.8: build the host image and smoke-test it the way Kubernetes/OpenShift run it.

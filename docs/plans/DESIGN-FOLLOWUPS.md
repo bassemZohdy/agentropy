@@ -55,7 +55,7 @@ Checked by `node scripts/check-readiness.mjs`: every item above has exactly one 
 | `D-22` | closed | packages/testkit/test/audit-retention.test.ts | — |
 | `D-24` | closed | packages/testkit/test/hardening.test.ts | — |
 | `N-02` | closed | packages/testkit/test/operations.test.ts | — |
-| `N-03` | deferred | — | FEAT-028 |
+| `N-03` | closed | docs/review/2026-11-06-model-routing-evaluation.md | — |
 | `T-04` | closed | docs/review/2026-11-05-tool-protocol-evaluation.md | — |
 
 Notes on the M1 evidence:
@@ -77,5 +77,6 @@ Notes on the M1 evidence:
 - **D-07** — closed by FEAT-028.3 ([ADR-0029](../adr/0029-upgrades-and-version-migration.md)): audited `upgradeInstance` for future tasks only, rollback as the same operation, `versionsInUse` as the retirement check, checkpoint codec versions, additive store schema evolution.
 - **D-21 / D-22** — closed by FEAT-028.4 ([Security v1](../contracts/security-v1.md) rev 7): independent audit permissions with audited use and denial, retention with a deployment floor, legal hold, prefix disposal with non-sensitive receipts, external anchors (truncation and rewrite detection), offline-verifiable export. Dual control and concrete retention values stay deployment policy (D-24).
 - **D-24** — decided by [ADR-0030](../adr/0030-hardening-and-d24-decisions.md) (FEAT-028.5): dual control and separation of duties built for approvals; administrative dual control and data residency left to the deployment; break-glass not adopted; quarantine composed from suspend + revoke; `AuditEvent` is the canonical audit schema.
+- **N-03** — evaluated by FEAT-028.10 ([model routing evaluation](../review/2026-11-06-model-routing-evaluation.md)): pinned model stays the default; an optional rule-based routing wrapper with hard residency/data-class floors and same-floor fallbacks is the recommended extension; gateway routing works today through the OpenAI-compatible adapter.
 - **D-12 / D-13 / D-14** — closed by [Observability v1](../contracts/observability-v1.md) (TASK-026.4) and its OpenTelemetry-backed suite (FEAT-027.6).
 - **N-02** — logical tenant/app-context isolation is tested (AC-14); workspace/credential boundaries and provider sandboxes are not claimed.
