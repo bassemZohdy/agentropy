@@ -222,6 +222,8 @@ export function toSnapshot(t: TaskRecord, revision: number): TaskSnapshot {
     ...(t.waitingOn ? { waitingOn: t.waitingOn } : {}),
     ...(t.outcome ? { outcome: t.outcome } : {}),
     authority: 'local',
+    correlationId: t.correlationId,
+    updatedAt: t.updatedAt,
   };
 }
 

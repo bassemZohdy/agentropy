@@ -88,6 +88,31 @@ const PUSH_METHODS = new Set([
   'DeleteTaskPushNotificationConfig',
 ]);
 
+/** A2A state of a task: waiting on a human action is `INPUT_REQUIRED`, other waits are `WORKING`. */
+export function a2aState(s: TaskSnapshot): A2ATaskState {
+  return s.status === 'waiting' &&
+    s.waitingOn?.anyOf.some((c) => c.kind === 'human-action')
+    ? 'TASK_STATE_INPUT_REQUIRED'
+    : TO_A2A[s.status];
+}
+
+/** `ListTasks` page size: default and maximum (A2A 1.0 section 3.1.4). */
+const LIST_DEFAULT = 50;
+const LIST_MAX = 100;
+/** Visible tasks scanned for one `ListTasks` call. */
+const LIST_SCAN = 10_000;
+
+const A2A_STATES = new Set<string>([
+  'TASK_STATE_SUBMITTED',
+  'TASK_STATE_WORKING',
+  'TASK_STATE_INPUT_REQUIRED',
+  'TASK_STATE_AUTH_REQUIRED',
+  'TASK_STATE_COMPLETED',
+  'TASK_STATE_FAILED',
+  'TASK_STATE_CANCELED',
+  'TASK_STATE_REJECTED',
+]);
+
 /** Progress rank: a stream never reports a state behind one it already reported. */
 const RANK = (s: A2ATaskState): number =>
   s === 'TASK_STATE_SUBMITTED' ? 0 : TERMINAL_A2A.has(s) ? 2 : 1;
@@ -102,8 +127,10 @@ export function createA2AServer(
     contextId?: string,
   ): A2ATask => ({
     id: s.taskId,
-    ...(contextId ? { contextId } : {}),
-    status: { state: TO_A2A[s.status], timestamp: now() },
+    ...((contextId ?? s.correlationId)
+      ? { contextId: contextId ?? s.correlationId }
+      : {}),
+    status: { state: a2aState(s), timestamp: s.updatedAt ?? now() },
     ...(s.status === 'completed' && s.output !== undefined
       ? {
           artifacts: [
@@ -178,12 +205,41 @@ export function createA2AServer(
         'SchemaViolation',
         'message with messageId and ROLE_USER required',
       );
-    if (m.taskId)
+    return m;
+  };
+  /**
+   * A message with `taskId` continues that task (A2A 1.0 section 3.4): it must exist and be visible, must not be
+   * terminal, its `contextId` (when given) must match the task's, and the task must be waiting for input.
+   */
+  const continueMessage = async (
+    m: A2AMessage,
+    principal: TrustedPrincipal,
+  ): Promise<TaskSnapshot> => {
+    const taskId = m.taskId!;
+    const snap = await target.getTask(taskId, principal);
+    if (TERMINAL_A2A.has(TO_A2A[snap.status]))
       throw new AgentropyError(
         'UnsupportedOperation',
-        'Continuing an existing task is not supported',
+        'Task is in a terminal state',
       );
-    return m;
+    if (m.contextId && snap.correlationId && m.contextId !== snap.correlationId)
+      throw new AgentropyError(
+        'SchemaViolation',
+        'contextId does not match the task',
+        { details: { reason: 'contextId' } },
+      );
+    if (!target.continueTask)
+      throw new AgentropyError(
+        'UnsupportedOperation',
+        'Continuing a task is not supported',
+      );
+    await target.continueTask(
+      taskId,
+      decodeParts(m.parts),
+      m.messageId,
+      principal,
+    );
+    return target.getTask(taskId, principal);
   };
   const delegateMessage = async (
     m: A2AMessage,
@@ -217,7 +273,7 @@ export function createA2AServer(
     const taskId = first.taskId;
     // TaskStatusUpdateEvent/TaskArtifactUpdateEvent require context_id; without one the task ID stands in.
     const ctx = { contextId: contextId ?? taskId };
-    let last = TO_A2A[first.status];
+    let last = a2aState(first);
     yield frame({ task: task(first, contextId) });
     if (TERMINAL_A2A.has(last)) return;
     /** Frames for a newly observed local status; none when it is not forward progress. */
@@ -225,7 +281,11 @@ export function createA2AServer(
       status: string | undefined,
     ): AsyncIterable<A2AStreamFrame> {
       if (!status || !(status in TO_A2A)) return;
-      const state = TO_A2A[status as TaskSnapshot['status']];
+      // A wait may be for input: the task tells which.
+      const state =
+        status === 'waiting'
+          ? a2aState(await target.getTask(taskId, principal))
+          : TO_A2A[status as TaskSnapshot['status']];
       if (state === last || RANK(state) < RANK(last)) return;
       last = state;
       if (state === 'TASK_STATE_COMPLETED') {
@@ -262,6 +322,110 @@ export function createA2AServer(
       yield mapped(id, err).body;
     }
   }
+  /**
+   * A2A `ListTasks` over the tasks the caller may see on this endpoint: filtered by `contextId`, `status` and
+   * `statusTimestampAfter`, newest status first, with a cursor (status timestamp and task ID of the last task).
+   * History is not kept, so `historyLength` has no effect; artifacts only with `includeArtifacts`.
+   */
+  const listTasks = async (
+    p: Record<string, unknown>,
+    caller: TrustedPrincipal,
+  ) => {
+    if (!target.listTasks)
+      throw new AgentropyError(
+        'UnsupportedOperation',
+        'ListTasks is not supported',
+      );
+    const bad = (field: string) =>
+      new AgentropyError('SchemaViolation', `Invalid ${field}`, {
+        details: { reason: field },
+      });
+    const size = p['pageSize'] === undefined ? LIST_DEFAULT : p['pageSize'];
+    if (
+      !Number.isInteger(size) ||
+      (size as number) < 1 ||
+      (size as number) > LIST_MAX
+    )
+      throw bad('pageSize');
+    const status = p['status'];
+    if (
+      status !== undefined &&
+      (typeof status !== 'string' || !A2A_STATES.has(status))
+    )
+      throw bad('status');
+    const contextId = p['contextId'];
+    if (contextId !== undefined && typeof contextId !== 'string')
+      throw bad('contextId');
+    const afterRaw = p['statusTimestampAfter'];
+    const after =
+      afterRaw === undefined ? undefined : Date.parse(String(afterRaw));
+    if (after !== undefined && Number.isNaN(after))
+      throw bad('statusTimestampAfter');
+    let from: [string, string] | undefined;
+    if (p['pageToken'] !== undefined && p['pageToken'] !== '') {
+      try {
+        from = JSON.parse(
+          Buffer.from(String(p['pageToken']), 'base64url').toString('utf8'),
+        ) as [string, string];
+        if (!Array.isArray(from) || from.some((x) => typeof x !== 'string'))
+          throw new Error();
+      } catch {
+        throw bad('pageToken');
+      }
+    }
+    const visible: TaskSnapshot[] = [];
+    let cursor: string | undefined;
+    while (visible.length < LIST_SCAN) {
+      const r = await target.listTasks(
+        {
+          ...(o.instanceId ? { instanceId: o.instanceId } : {}),
+          ...(cursor ? { cursor } : {}),
+          limit: 200,
+        },
+        caller,
+      );
+      visible.push(...r.tasks);
+      if (r.tasks.length < 200) break;
+      cursor = r.cursor;
+    }
+    const at = (t: TaskSnapshot) => t.updatedAt ?? '';
+    // Newest status first; ties by task ID, descending, so the cursor is a total order.
+    const newer = (a: [string, string], b: [string, string]) =>
+      a[0] !== b[0] ? a[0] > b[0] : a[1] > b[1];
+    const matching = visible
+      .filter(
+        (t) =>
+          (contextId === undefined || t.correlationId === contextId) &&
+          (status === undefined || a2aState(t) === status) &&
+          (after === undefined || Date.parse(at(t)) >= after),
+      )
+      .sort((a, b) => (newer([at(a), a.taskId], [at(b), b.taskId]) ? -1 : 1));
+    const rest = from
+      ? matching.filter((t) => newer(from!, [at(t), t.taskId]))
+      : matching;
+    const page = rest.slice(0, size as number);
+    const tasks = await Promise.all(
+      page.map(async (t) => {
+        if (p['includeArtifacts'] === true && t.status === 'completed')
+          return task(await target.getTask(t.taskId, caller));
+        const { artifacts: _omit, ...plain } = task(t);
+        void _omit;
+        return plain;
+      }),
+    );
+    const last = page.at(-1);
+    return {
+      tasks,
+      nextPageToken:
+        last && rest.length > page.length
+          ? Buffer.from(JSON.stringify([at(last), last.taskId])).toString(
+              'base64url',
+            )
+          : '',
+      pageSize: size,
+      totalSize: matching.length,
+    };
+  };
   const notifications = createPushNotifications(target, o.push, follow);
   return {
     pushIdle: () => notifications.idle(),
@@ -312,8 +476,9 @@ export function createA2AServer(
                 },
               };
             }
-            const taskId = await delegateMessage(m, caller);
-            const snap = await target.getTask(taskId, caller);
+            const snap = m.taskId
+              ? await continueMessage(m, caller)
+              : await target.getTask(await delegateMessage(m, caller), caller);
             return {
               status: 200,
               body: {
@@ -332,6 +497,11 @@ export function createA2AServer(
               body: { jsonrpc: '2.0', id, result: task(snap) },
             };
           }
+          case 'ListTasks':
+            return {
+              status: 200,
+              body: { jsonrpc: '2.0', id, result: await listTasks(p, caller) },
+            };
           case 'CancelTask': {
             if (typeof p['id'] !== 'string')
               throw new AgentropyError('SchemaViolation', 'id required');
@@ -387,8 +557,9 @@ export function createA2AServer(
                 'UnsupportedOperation',
                 'Agentropy envelopes travel as SendMessage',
               );
-            const taskId = await delegateMessage(m, caller);
-            const first = await target.getTask(taskId, caller);
+            const first = m.taskId
+              ? await continueMessage(m, caller)
+              : await target.getTask(await delegateMessage(m, caller), caller);
             return {
               kind: 'stream',
               status: 200,
@@ -445,6 +616,26 @@ export function localAppTarget(app: LocalApp): DirectTarget {
       } as TaskSnapshot;
     },
     cancel: (taskId, caller) => app.cancel(taskId, caller),
+    listTasks: (query, caller) => app.listTasks(query, caller),
+    continueTask: async (taskId, input, messageId, caller) => {
+      const snap = await app.getTask(taskId, caller);
+      const wait = snap.waitingOn?.anyOf.find((c) => c.kind === 'human-action');
+      if (snap.status !== 'waiting' || !wait || wait.kind !== 'human-action')
+        throw new AgentropyError(
+          'UnsupportedOperation',
+          'Task is not waiting for input',
+        );
+      const action = await app.getHumanAction(wait.requestId, caller);
+      await app.provideHumanInput(
+        {
+          requestId: wait.requestId,
+          expectedRevision: action.revision,
+          input,
+          idempotencyKey: messageId,
+        },
+        caller,
+      );
+    },
     subscribe: (taskId, caller, options) => {
       const stream = app.subscribe(taskId, caller, undefined, options);
       return (async function* () {

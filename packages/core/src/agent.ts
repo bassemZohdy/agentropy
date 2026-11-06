@@ -245,6 +245,10 @@ export interface TaskSnapshot {
   waitingOn?: WakeupRequest;
   outcome?: { code: string; message: string };
   authority: 'local' | 'remote';
+  /** The caller's correlation ID (A2A `contextId`). */
+  correlationId?: string;
+  /** When the task last changed state (A2A status timestamp). */
+  updatedAt?: string;
 }
 
 export interface ExecutionRecord {

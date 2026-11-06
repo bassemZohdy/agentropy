@@ -25,7 +25,7 @@
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-interop.test.ts`
   - [x] **FEAT-034.3** · mid · Persist push configs in the store, resume watchers on start, release a deleted config's subscription (R-10)
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push.test.ts`
-  - [ ] **FEAT-034.4** · mid · `ListTasks`, task continuation (`message.taskId`) and file parts (R-10)
+  - [x] **FEAT-034.4** · mid · `ListTasks`, task continuation (`message.taskId`) and file parts (R-10)
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a.test.ts`
 - [ ] **FEAT-035** · P2 · high · Provider integrations: MCP tools, live opt-in model and Conductor suites, model routing (R-11–R-13)
   - Done when: `pnpm exec vitest run packages/runtime/test/tools.test.ts packages/testkit/test`

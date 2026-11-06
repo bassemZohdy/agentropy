@@ -165,6 +165,18 @@ export interface DirectTarget {
     message: AgentMessage,
     caller: TrustedPrincipal,
   ): Promise<{ accepted: boolean }>;
+  /** Tasks the caller may see, oldest first with an opaque cursor (A2A `ListTasks`, FEAT-034.4). */
+  listTasks?(
+    query: { instanceId?: string; cursor?: string; limit?: number },
+    caller: TrustedPrincipal,
+  ): Promise<{ tasks: TaskSnapshot[]; cursor: string }>;
+  /** Hands a follow-up message to a task waiting for input (A2A `message.taskId`, FEAT-034.4). */
+  continueTask?(
+    taskId: string,
+    input: unknown,
+    messageId: string,
+    caller: TrustedPrincipal,
+  ): Promise<void>;
 }
 
 export class DirectCommunicationProvider implements AgentCommunicationProvider {

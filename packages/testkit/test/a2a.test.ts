@@ -313,7 +313,7 @@ describe('A2A end to end between two Agentropy runtimes', () => {
       ).body.error?.code,
     ).toBe(-32009);
     expect(
-      (await call({ jsonrpc: '2.0', id: 1, method: 'ListTasks', params: {} }))
+      (await call({ jsonrpc: '2.0', id: 1, method: 'ListTask', params: {} }))
         .body.error?.code,
     ).toBe(-32601);
     expect(
@@ -326,13 +326,13 @@ describe('A2A end to end between two Agentropy runtimes', () => {
             message: {
               role: 'ROLE_USER',
               messageId: 'm',
-              taskId: 'existing',
+              taskId: 'missing',
               parts: [{ text: 'more' }],
             },
           },
         })
       ).body.error?.code,
-    ).toBe(-32004);
+    ).toBe(-32001); // continuing a task that does not exist: TaskNotFoundError
     expect(
       (
         await call({
@@ -376,5 +376,263 @@ describe('A2A end to end between two Agentropy runtimes', () => {
       ],
       capabilities: { streaming: false, pushNotifications: false },
     });
+  });
+});
+
+describe('A2A 1.0: ListTasks, task continuation and file parts (FEAT-034.4)', () => {
+  async function endpoint() {
+    const b = createLocalApp({
+      store: sqliteTempStore(),
+      pdp: new FakePolicy(),
+      now: new FakeClock('2026-11-06T00:00:00.000Z').iso,
+      profiles: BUILTIN_PROFILES,
+    });
+    // Asks its caller a question (INPUT_REQUIRED), then answers with what it was told.
+    b.define(
+      {
+        ...def('asker'),
+        capabilities: [{ id: 'human-input', versionRange: '^1.0.0' }],
+      },
+      {
+        handle: async (inv, ctx) => {
+          if (inv.activation > 1)
+            return { kind: 'completed', output: { told: inv.wakeReason } };
+          const { requestId } = await ctx.capabilities.invoke<
+            unknown,
+            { requestId: string }
+          >(
+            'human-input',
+            'requestAction',
+            {
+              kind: 'text',
+              prompt: 'Which colour?',
+              inputSchema: { type: 'string' },
+              assignees: { principalIds: [caller.id] },
+              onExpiry: 'fail-task',
+            },
+            { stepKey: 'ask' },
+          );
+          return {
+            kind: 'waiting',
+            wakeup: { anyOf: [{ kind: 'human-action', requestId }] },
+            checkpoint: { requestId },
+          };
+        },
+      },
+    );
+    b.define(def('echo'), {
+      handle: async (inv) => ({ kind: 'completed', output: inv.input }),
+    });
+    const bob: TrustedPrincipal = { id: 'bob', type: 'user', tenantId: 't-1' };
+    const server = async (id: string) => {
+      const inst = await b.createInstance(
+        {
+          definition: { id, version: '1.0.0' },
+          ownerId: 'bob',
+          idempotencyKey: id,
+        },
+        bob,
+      );
+      return createA2AServer(localAppTarget(b), { instanceId: inst.id });
+    };
+    return { b, asker: await server('asker'), echo: await server('echo') };
+  }
+
+  const rpc = async (
+    server: A2AServer,
+    method: string,
+    params: Record<string, unknown>,
+    who: TrustedPrincipal = caller,
+  ) =>
+    (await server.handle({ jsonrpc: '2.0', id: 1, method, params }, who)).body;
+
+  const message = (
+    messageId: string,
+    parts: unknown[],
+    extra: Record<string, unknown> = {},
+  ) => ({ message: { role: 'ROLE_USER', messageId, parts, ...extra } });
+
+  type Task = {
+    id: string;
+    contextId?: string;
+    status: { state: string; timestamp: string };
+    artifacts?: { parts: { text?: string }[] }[];
+  };
+  const eve: TrustedPrincipal = { id: 'eve', type: 'user', tenantId: 't-1' };
+
+  it('a message with taskId answers a task waiting for input; contextId must match; terminal tasks refuse', async () => {
+    const e = await endpoint();
+    const sent = (
+      await rpc(
+        e.asker,
+        'SendMessage',
+        message('m-1', [{ text: 'start' }], { contextId: 'ctx-1' }),
+      )
+    ).result as { task: Task };
+    const taskId = sent.task.id;
+    // Not waiting for input yet (it has not run): refused.
+    expect(
+      (
+        await rpc(
+          e.asker,
+          'SendMessage',
+          message('m-early', [{ text: 'x' }], { taskId }),
+        )
+      ).error?.code,
+    ).toBe(-32004);
+    await e.b.runUntilIdle();
+    const waiting = (await rpc(e.asker, 'GetTask', { id: taskId }))
+      .result as Task;
+    expect(waiting).toMatchObject({
+      contextId: 'ctx-1',
+      status: {
+        state: 'TASK_STATE_INPUT_REQUIRED',
+        timestamp: '2026-11-06T00:00:00.000Z',
+      },
+    });
+    expect(
+      (
+        await rpc(
+          e.asker,
+          'SendMessage',
+          message('m-2', [{ text: 'blue' }], { taskId, contextId: 'other' }),
+        )
+      ).error?.code,
+    ).toBe(-32602);
+    // Another principal cannot continue it: the task is not visible to them.
+    expect(
+      (
+        await rpc(
+          e.asker,
+          'SendMessage',
+          message('m-3', [{ text: 'x' }], { taskId }),
+          eve,
+        )
+      ).error?.code,
+    ).toBe(-32001);
+    const answered = (
+      await rpc(
+        e.asker,
+        'SendMessage',
+        message('m-4', [{ text: 'blue' }], { taskId, contextId: 'ctx-1' }),
+      )
+    ).result as { task: Task };
+    expect(answered.task.id).toBe(taskId);
+    await e.b.runUntilIdle();
+    const done = (await rpc(e.asker, 'GetTask', { id: taskId })).result as Task;
+    expect(done.status.state).toBe('TASK_STATE_COMPLETED');
+    expect(done.artifacts![0]!.parts[0]!.text).toContain('blue');
+    expect(
+      (
+        await rpc(
+          e.asker,
+          'SendMessage',
+          message('m-5', [{ text: 'again' }], { taskId }),
+        )
+      ).error?.code,
+    ).toBe(-32004);
+  });
+
+  it('ListTasks pages the caller’s tasks newest first, filters by context and state, and hides others’ tasks', async () => {
+    const e = await endpoint();
+    for (const [i, ctx] of ['a', 'b', 'a'].entries())
+      await rpc(
+        e.echo,
+        'SendMessage',
+        message(`m-${i}`, [{ text: `t${i}` }], { contextId: ctx }),
+      );
+    const first = (await rpc(e.echo, 'ListTasks', { pageSize: 2 })).result as {
+      tasks: Task[];
+      nextPageToken: string;
+      pageSize: number;
+      totalSize: number;
+    };
+    expect([first.tasks.length, first.pageSize, first.totalSize]).toEqual([
+      2, 2, 3,
+    ]);
+    expect(first.nextPageToken).not.toBe('');
+    const second = (
+      await rpc(e.echo, 'ListTasks', {
+        pageSize: 2,
+        pageToken: first.nextPageToken,
+      })
+    ).result as { tasks: Task[]; nextPageToken: string };
+    expect(second.tasks).toHaveLength(1);
+    expect(second.nextPageToken).toBe('');
+    const ids = [...first.tasks, ...second.tasks].map((t) => t.id);
+    expect(new Set(ids).size).toBe(3);
+    expect(ids).toEqual([...ids].sort().reverse()); // equal timestamps: task ID breaks the tie
+    const inA = (await rpc(e.echo, 'ListTasks', { contextId: 'a' })).result as {
+      tasks: Task[];
+    };
+    expect(inA.tasks.map((t) => t.contextId)).toEqual(['a', 'a']);
+
+    await e.b.runUntilIdle();
+    const completed = (
+      await rpc(e.echo, 'ListTasks', { status: 'TASK_STATE_COMPLETED' })
+    ).result as { tasks: Task[] };
+    expect(completed.tasks).toHaveLength(3);
+    expect(completed.tasks[0]!.artifacts).toBeUndefined();
+    const withArtifacts = (
+      await rpc(e.echo, 'ListTasks', { includeArtifacts: true, pageSize: 1 })
+    ).result as { tasks: Task[] };
+    expect(withArtifacts.tasks[0]!.artifacts).toHaveLength(1);
+    const later = (
+      await rpc(e.echo, 'ListTasks', {
+        statusTimestampAfter: '2026-11-07T00:00:00Z',
+      })
+    ).result as { tasks: Task[] };
+    expect(later.tasks).toEqual([]);
+
+    expect(
+      ((await rpc(e.echo, 'ListTasks', {}, eve)).result as { tasks: Task[] })
+        .tasks,
+    ).toEqual([]);
+    for (const bad of [
+      { pageSize: 101 },
+      { pageSize: 0 },
+      { status: 'DONE' },
+      { pageToken: '!!' },
+    ])
+      expect((await rpc(e.echo, 'ListTasks', bad)).error?.code).toBe(-32602);
+  });
+
+  it('file and data parts reach the agent as data; malformed parts are refused', async () => {
+    const e = await endpoint();
+    const raw = Buffer.from('hello file').toString('base64');
+    const send = (id: string, parts: unknown[]) =>
+      rpc(e.echo, 'SendMessage', message(id, parts));
+    const multi = (
+      await send('m-1', [
+        { text: 'see attached' },
+        { raw, filename: 'a.txt', mediaType: 'text/plain' },
+        { url: 'https://files.example/b.pdf', mediaType: 'application/pdf' },
+      ])
+    ).result as { task: Task };
+    const data = (await send('m-2', [{ data: { amount: 42 } }])).result as {
+      task: Task;
+    };
+    await e.b.runUntilIdle();
+    expect(await e.b.getResult(multi.task.id, caller)).toEqual({
+      parts: [
+        { kind: 'text', text: 'see attached' },
+        { kind: 'file', raw, filename: 'a.txt', mediaType: 'text/plain' },
+        {
+          kind: 'file',
+          url: 'https://files.example/b.pdf',
+          mediaType: 'application/pdf',
+        },
+      ],
+    });
+    expect(await e.b.getResult(data.task.id, caller)).toEqual({ amount: 42 });
+    const bad: unknown[][] = [
+      [{ raw: 'not base64!' }],
+      [{ url: 'file:///etc/passwd' }],
+      [{ text: 'a', data: 1 }],
+      [],
+      Array.from({ length: 17 }, () => ({ text: 'x' })),
+    ];
+    for (const [i, parts] of bad.entries())
+      expect((await send(`bad-${i}`, parts)).error?.code).toBe(-32602);
   });
 });

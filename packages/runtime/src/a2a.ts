@@ -15,14 +15,16 @@
  *   `SubscribeToTask` over SSE and falls back to polling `GetTask` when the peer declines or the stream breaks.
  *
  * - Push notifications (FEAT-029.2): with `push` options the server serves the four TaskPushNotificationConfig
- *   methods and POSTs each `StreamResponse` update to allow-listed webhook URLs (best-effort, in-memory configs).
+ *   methods and POSTs each `StreamResponse` update to allow-listed webhook URLs (best-effort; configs in memory or,
+ *   with `push.store`, stored and resumed, FEAT-034.3).
  *
  * HTTP: `createA2AHttpHandler` (a2a-http) serves an A2AServer on a Node `http` server: JSON-RPC POST, SSE for the
  * streaming methods, the AgentCard at `/.well-known/agent-card.json`, principal from the application's
  * `authenticate`.
  *
- * Not implemented: `ListTasks`, continuing a task with a follow-up message (`message.taskId`),
- * and file parts.
+ * FEAT-034.4: `ListTasks` (the caller's tasks on this endpoint, newest status first, cursor pages), continuing a
+ * task waiting for input with a `message.taskId` (answers its human action), and A2A 1.0 parts (`text`, `raw`,
+ * `url`, `data`; several parts or file parts reach the agent as `{ parts }`, URLs are never fetched).
  * Agentropy-to-Agentropy envelopes (`send`) travel as a `SendMessage` whose `metadata["agentropy/envelope"]`
  * carries the AgentMessage; that key is an Agentropy extension, ignored by other peers.
  *

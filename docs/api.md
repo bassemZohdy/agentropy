@@ -218,7 +218,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `A2AHttpOptions` | interface | [runtime/src/a2a-http.ts](../packages/runtime/src/a2a-http.ts) |  |
 | `A2AHttpResponse` | interface | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) |  |
 | `A2AMessage` | interface | [runtime/src/a2a-protocol.ts](../packages/runtime/src/a2a-protocol.ts) |  |
-| `A2APart` | interface | [runtime/src/a2a-protocol.ts](../packages/runtime/src/a2a-protocol.ts) |  |
+| `A2APart` | interface | [runtime/src/a2a-protocol.ts](../packages/runtime/src/a2a-protocol.ts) | A2A 1.0 `Part`: exactly one of `text`, `raw` (base64 bytes), `url` or `data`. |
 | `A2AProviderOptions` | interface | [runtime/src/a2a-client.ts](../packages/runtime/src/a2a-client.ts) |  |
 | `A2APushConfig` | interface | [runtime/src/a2a-push.ts](../packages/runtime/src/a2a-push.ts) | A2A `TaskPushNotificationConfig` (credentials are write-only: reads return the scheme alone). |
 | `A2APushFetch` | type | [runtime/src/a2a-push.ts](../packages/runtime/src/a2a-push.ts) | Push delivery transport; `redirect: 'manual'` keeps a webhook from bouncing deliveries elsewhere. |
