@@ -23,7 +23,7 @@
 
 | Integration | Version | How verified |
 |---|---|---|
-| A2A | 1.0, JSON-RPC binding, `A2A-Version: 1.0` header; agent cards | Tested: provider and server conformance, two-runtime delegation, federation |
+| A2A | 1.0, JSON-RPC binding, `A2A-Version: 1.0` header; agent cards; SSE streaming (`SendStreamingMessage`, `SubscribeToTask`) | Tested: provider and server conformance (unary and streaming), two-runtime delegation and streaming, polling fallback, federation. Not implemented: push notifications |
 | Model API | OpenAI-compatible `POST /chat/completions` with tools | Tested against recorded fixtures (no live endpoint) |
 | OpenTelemetry | `@opentelemetry/api` 1.9; SDK 2.0 (traces, metrics) | Tested: span and metric export to in-memory exporters |
 | Conductor | REST API (`/api/workflow`), Conductor OSS and Orkes | Tested against an in-process fake of the REST API; no live server |

@@ -10,8 +10,12 @@
  * - Inbound: `createA2AServer` maps the same methods onto a `DirectTarget` (e.g. `localAppTarget(app, …)`), with the
  *   principal produced by the transport's authentication. It reuses the AgentService PEPs.
  *
- * Not implemented in v1: streaming (`SendStreamingMessage`, `SubscribeToTask`; `subscribe` polls `GetTask`), push
- * notifications, `ListTasks`, continuing a task with a follow-up message (`message.taskId`), and file parts.
+ * - Streaming (FEAT-029.1): `A2AServer.stream` serves `SendStreamingMessage` and `SubscribeToTask` as JSON-RPC
+ *   `StreamResponse` frames (serialize with `sseFrames`). With `streaming: true` the provider's `subscribe` reads
+ *   `SubscribeToTask` over SSE and falls back to polling `GetTask` when the peer declines or the stream breaks.
+ *
+ * Not implemented: push notifications, `ListTasks`, continuing a task with a follow-up message (`message.taskId`),
+ * and file parts.
  * Agentropy-to-Agentropy envelopes (`send`) travel as a `SendMessage` whose `metadata["agentropy/envelope"]`
  * carries the AgentMessage; that key is an Agentropy extension, ignored by other peers.
  */
@@ -182,12 +186,43 @@ export interface A2AHttpResponse {
   };
 }
 
+/** One frame of a streaming response: a JSON-RPC response whose `result` is an A2A `StreamResponse`. */
+export type A2AStreamFrame = A2AHttpResponse['body'];
+
+/** A streaming call either fails up front (a plain JSON-RPC response) or opens an event stream. */
+export type A2AStreamResult =
+  | { kind: 'error'; response: A2AHttpResponse }
+  | { kind: 'stream'; status: 200; frames: AsyncIterable<A2AStreamFrame> };
+
 export interface A2AServer {
+  /** Unary methods: `SendMessage`, `GetTask`, `CancelTask`. */
   handle(
     request: unknown,
     principal: TrustedPrincipal | undefined,
     headers?: { 'a2a-version'?: string },
   ): Promise<A2AHttpResponse>;
+  /**
+   * Streaming methods: `SendStreamingMessage` and `SubscribeToTask`. The first frame is the task; status and
+   * artifact updates follow, and the stream ends after the terminal status. Serve the frames with `sseFrames`.
+   */
+  stream(
+    request: unknown,
+    principal: TrustedPrincipal | undefined,
+    headers?: { 'a2a-version'?: string },
+  ): Promise<A2AStreamResult>;
+}
+
+const STREAMING_METHODS = new Set(['SendStreamingMessage', 'SubscribeToTask']);
+
+/** Progress rank: a stream never reports a state behind one it already reported. */
+const RANK = (s: A2ATaskState): number =>
+  s === 'TASK_STATE_SUBMITTED' ? 0 : TERMINAL_A2A.has(s) ? 2 : 1;
+
+/** Server-Sent Events serialization of stream frames (`text/event-stream`). */
+export async function* sseFrames(
+  frames: AsyncIterable<A2AStreamFrame>,
+): AsyncIterable<string> {
+  for await (const f of frames) yield `data: ${JSON.stringify(f)}\n\n`;
 }
 
 export function createA2AServer(
@@ -210,67 +245,161 @@ export function createA2AServer(
         }
       : {}),
   });
+  type Req = {
+    jsonrpc?: string;
+    id?: unknown;
+    method?: string;
+    params?: Record<string, unknown>;
+  };
+  const failure = (
+    id: unknown,
+    status: number,
+    code: number,
+    err: AgentropyError,
+  ): A2AHttpResponse => ({
+    status,
+    body: {
+      jsonrpc: '2.0',
+      id,
+      error: { code, message: err.message, data: err.toJSON() },
+    },
+  });
+  const mapped = (id: unknown, err: unknown): A2AHttpResponse => {
+    const e = toAgentropyError(err);
+    const a2a = (e.details?.['a2a'] as number | undefined) ?? toA2ACode(e.code);
+    return failure(id, 200, a2a, e);
+  };
+  /** Authentication, version and request-shape checks shared by unary and streaming calls. */
+  const precheck = (
+    req: Req,
+    principal: TrustedPrincipal | undefined,
+    headers: { 'a2a-version'?: string },
+  ): A2AHttpResponse | undefined => {
+    const id = req?.id ?? null;
+    if (!principal?.id || !principal.tenantId)
+      return failure(
+        id,
+        401,
+        -32600,
+        new AgentropyError('Unauthenticated', 'Authentication required'),
+      );
+    const version = headers['a2a-version'];
+    if (version !== undefined && version !== A2A_PROTOCOL_VERSION)
+      return failure(
+        id,
+        200,
+        -32009,
+        new AgentropyError(
+          'IncompatibleVersion',
+          `A2A version ${version} is not supported`,
+          { details: { supported: A2A_PROTOCOL_VERSION } },
+        ),
+      );
+    if (req?.jsonrpc !== '2.0' || typeof req.method !== 'string')
+      return failure(
+        id,
+        200,
+        -32600,
+        new AgentropyError('SchemaViolation', 'Invalid JSON-RPC request'),
+      );
+    return undefined;
+  };
+  const userMessage = (p: Record<string, unknown>): A2AMessage => {
+    const m = p['message'] as A2AMessage | undefined;
+    if (!m?.messageId || m.role !== 'ROLE_USER')
+      throw new AgentropyError(
+        'SchemaViolation',
+        'message with messageId and ROLE_USER required',
+      );
+    if (m.taskId)
+      throw new AgentropyError(
+        'UnsupportedOperation',
+        'Continuing an existing task is not supported',
+      );
+    return m;
+  };
+  const delegateMessage = async (
+    m: A2AMessage,
+    principal: TrustedPrincipal,
+  ): Promise<string> => {
+    const input = decodeParts(m.parts);
+    const { taskId } = await target.delegate(
+      {
+        target: o.instanceId ? { instanceId: o.instanceId } : {},
+        input,
+        idempotencyKey: m.messageId,
+        correlationId: m.contextId ?? m.messageId,
+      },
+      principal,
+    );
+    return taskId;
+  };
+  /** Task frame, then forward-only status updates (the output artifact precedes `completed`) until terminal. */
+  async function* follow(
+    id: unknown,
+    first: TaskSnapshot,
+    principal: TrustedPrincipal,
+    contextId?: string,
+  ): AsyncIterable<A2AStreamFrame> {
+    const frame = (result: unknown): A2AStreamFrame => ({
+      jsonrpc: '2.0',
+      id,
+      result,
+    });
+    const taskId = first.taskId;
+    const ctx = contextId ? { contextId } : {};
+    let last = TO_A2A[first.status];
+    yield frame({ task: task(first, contextId) });
+    if (TERMINAL_A2A.has(last)) return;
+    /** Frames for a newly observed local status; none when it is not forward progress. */
+    async function* advance(
+      status: string | undefined,
+    ): AsyncIterable<A2AStreamFrame> {
+      if (!status || !(status in TO_A2A)) return;
+      const state = TO_A2A[status as TaskSnapshot['status']];
+      if (state === last || RANK(state) < RANK(last)) return;
+      last = state;
+      if (state === 'TASK_STATE_COMPLETED') {
+        const done = task(await target.getTask(taskId, principal), contextId);
+        for (const artifact of done.artifacts ?? [])
+          yield frame({
+            artifactUpdate: {
+              taskId,
+              ...ctx,
+              artifact,
+              append: false,
+              lastChunk: true,
+            },
+          });
+      }
+      yield frame({
+        statusUpdate: { taskId, ...ctx, status: { state, timestamp: now() } },
+      });
+    }
+    try {
+      for await (const e of target.subscribe(taskId, principal)) {
+        yield* advance((e.payload as { status?: string } | undefined)?.status);
+        if (TERMINAL_A2A.has(last)) return;
+      }
+      // The event stream can end without its terminal event (e.g. compacted events): reconcile with the task.
+      yield* advance((await target.getTask(taskId, principal)).status);
+    } catch (err) {
+      // An error after the stream opened ends it with a JSON-RPC error frame.
+      yield mapped(id, err).body;
+    }
+  }
   return {
     async handle(raw, principal, headers = {}) {
-      const req = raw as {
-        jsonrpc?: string;
-        id?: unknown;
-        method?: string;
-        params?: Record<string, unknown>;
-      };
+      const req = raw as Req;
       const id = req?.id ?? null;
-      const fail = (
-        status: number,
-        code: number,
-        err: AgentropyError,
-      ): A2AHttpResponse => ({
-        status,
-        body: {
-          jsonrpc: '2.0',
-          id,
-          error: { code, message: err.message, data: err.toJSON() },
-        },
-      });
+      const rejected = precheck(req, principal, headers);
+      if (rejected) return rejected;
+      const caller = principal!;
       try {
-        if (!principal?.id || !principal.tenantId)
-          return fail(
-            401,
-            -32600,
-            new AgentropyError('Unauthenticated', 'Authentication required'),
-          );
-        const version = headers['a2a-version'];
-        if (version !== undefined && version !== A2A_PROTOCOL_VERSION)
-          return fail(
-            200,
-            -32009,
-            new AgentropyError(
-              'IncompatibleVersion',
-              `A2A version ${version} is not supported`,
-              {
-                details: { supported: A2A_PROTOCOL_VERSION },
-              },
-            ),
-          );
-        if (req?.jsonrpc !== '2.0' || typeof req.method !== 'string')
-          return fail(
-            200,
-            -32600,
-            new AgentropyError('SchemaViolation', 'Invalid JSON-RPC request'),
-          );
         const p = req.params ?? {};
         switch (req.method) {
           case 'SendMessage': {
-            const m = p['message'] as A2AMessage | undefined;
-            if (!m?.messageId || m.role !== 'ROLE_USER')
-              throw new AgentropyError(
-                'SchemaViolation',
-                'message with messageId and ROLE_USER required',
-              );
-            if (m.taskId)
-              throw new AgentropyError(
-                'UnsupportedOperation',
-                'Continuing an existing task is not supported',
-              );
+            const m = userMessage(p);
             const envelope = m.metadata?.['agentropy/envelope'];
             if (envelope !== undefined) {
               // Agentropy envelope: identity always comes from the transport principal.
@@ -278,13 +407,13 @@ export function createA2AServer(
               const { accepted } = await target.receive(
                 {
                   ...msg,
-                  tenantId: principal.tenantId,
+                  tenantId: caller.tenantId,
                   actor: {
-                    principalId: principal.id,
-                    principalType: principal.type,
+                    principalId: caller.id,
+                    principalType: caller.type,
                   },
                 },
-                principal,
+                caller,
               );
               return {
                 status: 200,
@@ -306,17 +435,8 @@ export function createA2AServer(
                 },
               };
             }
-            const input = decodeParts(m.parts);
-            const { taskId } = await target.delegate(
-              {
-                target: o.instanceId ? { instanceId: o.instanceId } : {},
-                input,
-                idempotencyKey: m.messageId,
-                correlationId: m.contextId ?? m.messageId,
-              },
-              principal,
-            );
-            const snap = await target.getTask(taskId, principal);
+            const taskId = await delegateMessage(m, caller);
+            const snap = await target.getTask(taskId, caller);
             return {
               status: 200,
               body: {
@@ -329,7 +449,7 @@ export function createA2AServer(
           case 'GetTask': {
             if (typeof p['id'] !== 'string')
               throw new AgentropyError('SchemaViolation', 'id required');
-            const snap = await target.getTask(p['id'], principal);
+            const snap = await target.getTask(p['id'], caller);
             return {
               status: 200,
               body: { jsonrpc: '2.0', id, result: task(snap) },
@@ -338,14 +458,20 @@ export function createA2AServer(
           case 'CancelTask': {
             if (typeof p['id'] !== 'string')
               throw new AgentropyError('SchemaViolation', 'id required');
-            const snap = await target.cancel(p['id'], principal);
+            const snap = await target.cancel(p['id'], caller);
             return {
               status: 200,
               body: { jsonrpc: '2.0', id, result: task(snap) },
             };
           }
           default:
-            return fail(
+            if (STREAMING_METHODS.has(req.method!))
+              throw new AgentropyError(
+                'UnsupportedOperation',
+                `Method ${req.method} needs the streaming transport`,
+              );
+            return failure(
+              id,
               200,
               -32601,
               new AgentropyError(
@@ -355,10 +481,66 @@ export function createA2AServer(
             );
         }
       } catch (err) {
-        const e = toAgentropyError(err);
-        const a2a =
-          (e.details?.['a2a'] as number | undefined) ?? toA2ACode(e.code);
-        return fail(200, a2a, e);
+        return mapped(id, err);
+      }
+    },
+
+    async stream(raw, principal, headers = {}) {
+      const req = raw as Req;
+      const id = req?.id ?? null;
+      const rejected = precheck(req, principal, headers);
+      if (rejected) return { kind: 'error', response: rejected };
+      const caller = principal!;
+      try {
+        const p = req.params ?? {};
+        switch (req.method) {
+          case 'SendStreamingMessage': {
+            const m = userMessage(p);
+            if (m.metadata?.['agentropy/envelope'] !== undefined)
+              throw new AgentropyError(
+                'UnsupportedOperation',
+                'Agentropy envelopes travel as SendMessage',
+              );
+            const taskId = await delegateMessage(m, caller);
+            const first = await target.getTask(taskId, caller);
+            return {
+              kind: 'stream',
+              status: 200,
+              frames: follow(id, first, caller, m.contextId),
+            };
+          }
+          case 'SubscribeToTask': {
+            if (typeof p['id'] !== 'string')
+              throw new AgentropyError('SchemaViolation', 'id required');
+            const first = await target.getTask(p['id'], caller);
+            // Spec: subscribing to a task in a terminal state is UnsupportedOperationError.
+            if (TERMINAL_A2A.has(TO_A2A[first.status]))
+              throw new AgentropyError(
+                'UnsupportedOperation',
+                'Task is in a terminal state',
+              );
+            return {
+              kind: 'stream',
+              status: 200,
+              frames: follow(id, first, caller),
+            };
+          }
+          default:
+            return {
+              kind: 'error',
+              response: failure(
+                id,
+                200,
+                -32601,
+                new AgentropyError(
+                  'UnsupportedOperation',
+                  `Method ${req.method} is not a streaming method`,
+                ),
+              ),
+            };
+        }
+      } catch (err) {
+        return { kind: 'error', response: mapped(id, err) };
       }
     },
   };
@@ -397,6 +579,14 @@ export function localAppTarget(app: LocalApp): DirectTarget {
 // ---------------------------------------------------------------------------------------------------------------
 // Outbound
 
+/** The part of a fetch Response the provider reads; `headers` and `body` are needed only for streaming. */
+interface FetchResponse {
+  status: number;
+  json(): Promise<unknown>;
+  headers?: { get(name: string): string | null };
+  body?: AsyncIterable<Uint8Array | string> | null;
+}
+
 type FetchLike = (
   url: string,
   init: {
@@ -405,7 +595,51 @@ type FetchLike = (
     body: string;
     signal?: AbortSignal;
   },
-) => Promise<{ status: number; json(): Promise<unknown> }>;
+) => Promise<FetchResponse>;
+
+/** Largest single SSE event accepted from a peer. */
+const MAX_SSE_EVENT = 1 << 20;
+
+/** `data:` payloads of a `text/event-stream` body, one per event. */
+async function* sseData(
+  body: AsyncIterable<Uint8Array | string>,
+): AsyncIterable<string> {
+  const decoder = new TextDecoder();
+  let buf = '';
+  for await (const chunk of body) {
+    buf +=
+      typeof chunk === 'string'
+        ? chunk
+        : decoder.decode(chunk, { stream: true });
+    buf = buf.replace(/\r\n/g, '\n');
+    for (let i = buf.indexOf('\n\n'); i >= 0; i = buf.indexOf('\n\n')) {
+      const data = buf
+        .slice(0, i)
+        .split('\n')
+        .filter((l) => l.startsWith('data:'))
+        .map((l) => l.slice(5).replace(/^ /, ''))
+        .join('\n');
+      buf = buf.slice(i + 2);
+      if (data) yield data;
+    }
+    if (buf.length > MAX_SSE_EVENT)
+      throw new AgentropyError(
+        'SchemaViolation',
+        'A2A stream event too large',
+        {
+          details: { protocol: 'a2a', limit: MAX_SSE_EVENT },
+        },
+      );
+  }
+}
+
+/** A2A `StreamResponse`: exactly one of the members is set. */
+interface A2AStreamResponse {
+  task?: A2ATask;
+  message?: A2AMessage;
+  statusUpdate?: { taskId: string; status: { state: A2ATaskState } };
+  artifactUpdate?: { taskId: string };
+}
 
 export interface A2AProviderOptions {
   fetch?: FetchLike;
@@ -413,7 +647,12 @@ export interface A2AProviderOptions {
   credentialRef?: string;
   credentials?: CredentialProvider;
   now?: () => string;
-  /** `subscribe` polls GetTask (no streaming in v1). */
+  /**
+   * Use `SubscribeToTask` over SSE for `subscribe` (the peer's AgentCard advertises `capabilities.streaming`).
+   * A peer that declines, or a stream that ends before a terminal state, falls back to polling GetTask.
+   */
+  streaming?: boolean;
+  /** Interval between GetTask polls when `subscribe` polls. */
   pollMs?: number;
   /** Polls after the first snapshot before `subscribe` ends without a terminal state (default unlimited). */
   maxPolls?: number;
@@ -421,17 +660,19 @@ export interface A2AProviderOptions {
 
 export class A2ACommunicationProvider implements AgentCommunicationProvider {
   readonly id = 'a2a';
-  readonly features: CommunicationFeatures = {
-    operations: ['delegate', 'send', 'getTask', 'cancel', 'subscribe'],
-    streaming: false,
-    pushNotifications: false,
-    durability: 'provider-dependent',
-    protocol: 'a2a',
-    protocolVersion: A2A_PROTOCOL_VERSION,
-  };
+  readonly features: CommunicationFeatures;
   private seq = 0;
 
-  constructor(private readonly o: A2AProviderOptions = {}) {}
+  constructor(private readonly o: A2AProviderOptions = {}) {
+    this.features = {
+      operations: ['delegate', 'send', 'getTask', 'cancel', 'subscribe'],
+      streaming: o.streaming === true,
+      pushNotifications: false,
+      durability: 'provider-dependent',
+      protocol: 'a2a',
+      protocolVersion: A2A_PROTOCOL_VERSION,
+    };
+  }
 
   supports(target: AgentRef, operation: CommunicationOperation): boolean {
     return !!target.endpoint && this.features.operations.includes(operation);
@@ -443,8 +684,20 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
     params: unknown,
     ctx: CallContext,
   ): Promise<T> {
+    const res = await this.post(endpoint, method, params, ctx);
+    return this.result<T>(await res.json());
+  }
+
+  private async post(
+    endpoint: string,
+    method: string,
+    params: unknown,
+    ctx: CallContext,
+    accept = 'application/json',
+  ): Promise<FetchResponse> {
     const headers: Record<string, string> = {
       'content-type': 'application/json',
+      accept,
       'a2a-version': A2A_PROTOCOL_VERSION,
     };
     if (this.o.credentialRef) {
@@ -468,9 +721,12 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
         );
       headers.authorization = `Bearer ${cred.token}`;
     }
-    let res: { status: number; json(): Promise<unknown> };
+    let res: FetchResponse;
     try {
-      res = await (this.o.fetch ?? ((u, i) => fetch(u, i)))(endpoint, {
+      res = await (
+        this.o.fetch ??
+        ((u, i) => fetch(u, i) as unknown as Promise<FetchResponse>)
+      )(endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -499,7 +755,12 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
       throw new AgentropyError('RemoteUnavailable', 'A2A peer error', {
         details: { status: res.status },
       });
-    const body = (await res.json()) as {
+    return res;
+  }
+
+  /** The JSON-RPC result, or the peer's error mapped to a typed code. */
+  private result<T>(raw: unknown): T {
+    const body = raw as {
       result?: T;
       error?: {
         code?: number;
@@ -644,6 +905,29 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
   ): AsyncIterable<AgentEvent> {
     let last: A2ATaskState | undefined;
     let revision = 0;
+    const observe = (state: A2ATaskState): AgentEvent | undefined => {
+      if (state === last) return undefined;
+      last = state;
+      revision++;
+      return {
+        eventId: `${ref.remoteTaskId}:${revision}`,
+        taskId: ref.remoteTaskId,
+        type: 'taskStatusChanged',
+        revision,
+        payload: {
+          status: FROM_A2A[state] ?? 'unknown',
+          remoteState: state,
+        },
+      };
+    };
+    if (this.o.streaming) {
+      for await (const state of this.streamStates(ref, ctx)) {
+        const e = observe(state);
+        if (e) yield e;
+        if (TERMINAL_A2A.has(state)) return;
+      }
+      // Declined or ended early: the polling loop below continues from the last observed state.
+    }
     for (let polls = 0; ; polls++) {
       const t = await this.call<A2ATask>(
         ref.route.target.endpoint!,
@@ -651,26 +935,60 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
         { id: ref.remoteTaskId },
         ctx,
       );
-      if (t.status.state !== last) {
-        last = t.status.state;
-        revision++;
-        yield {
-          eventId: `${ref.remoteTaskId}:${revision}`,
-          taskId: ref.remoteTaskId,
-          type: 'taskStatusChanged',
-          revision,
-          payload: {
-            status: FROM_A2A[t.status.state] ?? 'unknown',
-            remoteState: t.status.state,
-          },
-        };
-      }
+      const e = observe(t.status.state);
+      if (e) yield e;
       if (
         TERMINAL_A2A.has(t.status.state) ||
         polls >= (this.o.maxPolls ?? Infinity)
       )
         return;
       await new Promise((r) => setTimeout(r, this.o.pollMs ?? 1_000));
+    }
+  }
+
+  /**
+   * Task states from `SubscribeToTask` over SSE. Ends without a terminal state when the peer does not stream
+   * (UnsupportedOperation, or a non-SSE reply) or the stream breaks; typed peer errors (NotFound, …) are thrown.
+   */
+  private async *streamStates(
+    ref: RemoteTaskRef,
+    ctx: CallContext,
+  ): AsyncIterable<A2ATaskState> {
+    let res: FetchResponse;
+    try {
+      res = await this.post(
+        ref.route.target.endpoint!,
+        'SubscribeToTask',
+        { id: ref.remoteTaskId },
+        ctx,
+        'text/event-stream',
+      );
+      if (
+        !res.body ||
+        !(res.headers?.get('content-type') ?? '').includes('text/event-stream')
+      ) {
+        this.result(await res.json()); // a JSON reply is an error (or a peer that ignored the method)
+        return;
+      }
+    } catch (err) {
+      if (isAgentropyError(err) && err.code === 'UnsupportedOperation') return;
+      throw err;
+    }
+    try {
+      for await (const data of sseData(res.body)) {
+        let frame: unknown;
+        try {
+          frame = JSON.parse(data);
+        } catch {
+          return; // malformed frame: stop trusting the stream, poll instead
+        }
+        const r = this.result<A2AStreamResponse>(frame);
+        const state = r?.task?.status?.state ?? r?.statusUpdate?.status?.state;
+        if (state && state in FROM_A2A) yield state;
+      }
+    } catch (err) {
+      if (isAgentropyError(err)) throw err;
+      // Transport break mid-stream: fall back to polling.
     }
   }
 }
@@ -684,6 +1002,8 @@ export function a2aAgentCard(o: {
   securitySchemes?: Record<string, unknown>;
   security?: Record<string, string[]>[];
   skills?: { id: string; name: string; description: string; tags?: string[] }[];
+  /** Advertise SSE streaming (`SendStreamingMessage`, `SubscribeToTask`); serve `A2AServer.stream` when set. */
+  streaming?: boolean;
 }): Record<string, unknown> {
   return {
     name: o.name,
@@ -696,7 +1016,7 @@ export function a2aAgentCard(o: {
         protocolVersion: A2A_PROTOCOL_VERSION,
       },
     ],
-    capabilities: { streaming: false, pushNotifications: false },
+    capabilities: { streaming: o.streaming === true, pushNotifications: false },
     defaultInputModes: ['text/plain', 'application/json'],
     defaultOutputModes: ['text/plain', 'application/json'],
     ...(o.securitySchemes ? { securitySchemes: o.securitySchemes } : {}),

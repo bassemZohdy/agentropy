@@ -4,7 +4,7 @@
 // is out of date, so CI keeps the reference in step with the code.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -52,7 +52,7 @@ for (const [name, dir, about] of packages) {
   for (const ex of exports) {
     const sym = ex.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(ex) : ex;
     const decl = sym.declarations?.[0];
-    const file = decl ? relative(root, decl.getSourceFile().fileName) : '';
+    const file = decl ? relative(root, decl.getSourceFile().fileName).split(sep).join('/') : '';
     out += `| \`${ex.name}\` | ${kindOf(decl)} | ${file ? `[${file.replace(/^packages\//, '')}](../${file})` : ''} | ${summary(sym)} |\n`;
     total++;
   }

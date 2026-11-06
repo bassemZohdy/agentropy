@@ -207,7 +207,7 @@ Types, schemas, errors, lifecycle tables and pure resolvers (no I/O). 196 export
 
 ## @agentropy/runtime
 
-Registries, task service, runtime, scheduler, providers and the local app facade. 141 exports.
+Registries, task service, runtime, scheduler, providers and the local app facade. 144 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
@@ -220,6 +220,8 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `A2AProviderOptions` | interface | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
 | `A2AServer` | interface | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
 | `A2AServerOptions` | interface | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
+| `A2AStreamFrame` | type | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) | One frame of a streaming response: a JSON-RPC response whose `result` is an A2A `StreamResponse`. |
+| `A2AStreamResult` | type | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) | A streaming call either fails up front (a plain JSON-RPC response) or opens an event stream. |
 | `A2ATask` | interface | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
 | `A2ATaskState` | type | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) |  |
 | `actionEntryId` | const | [runtime/src/inbox.ts](../packages/runtime/src/inbox.ts) |  |
@@ -331,6 +333,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `SecurityServices` | interface | [runtime/src/tools.ts](../packages/runtime/src/tools.ts) |  |
 | `SEVERITY_ORDER` | const | [runtime/src/priority.ts](../packages/runtime/src/priority.ts) |  |
 | `SkillRegistration` | interface | [runtime/src/skills.ts](../packages/runtime/src/skills.ts) |  |
+| `sseFrames` | function | [runtime/src/a2a.ts](../packages/runtime/src/a2a.ts) | Server-Sent Events serialization of stream frames (`text/event-stream`). |
 | `StoredExecution` | interface | [runtime/src/task-service.ts](../packages/runtime/src/task-service.ts) |  |
 | `StoredHumanAction` | interface | [runtime/src/human-actions.ts](../packages/runtime/src/human-actions.ts) | Stored form; `revision` is the store document revision (the value the user must echo back). |
 | `StoredInboxEntry` | interface | [runtime/src/inbox.ts](../packages/runtime/src/inbox.ts) |  |
