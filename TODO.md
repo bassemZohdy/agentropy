@@ -42,3 +42,65 @@
     - Blocked: owner decision → no command can make it → owner records the decision in docs/plans/DESIGN-FOLLOWUPS.md
   - [x] **TASK-034.3** · mid · STRIDE rows for multi-worker and PostgreSQL flows, including cross-worker cache staleness (R-25)
     - Done when: `node scripts/check-readiness.mjs`
+- [ ] **FEAT-037** · P1 · high · Scheduler, pool and host resilience: no crash and no silent stall on a failing store, bounded activations, clean shutdown (R-27–R-31)
+  - Done when: `pnpm exec vitest run packages/runtime/test/runtime.test.ts packages/examples/test/host.test.ts packages/testkit/test/recovery.test.ts`
+  - Links: Ref: docs/review/2026-11-06-deep-review.md#resilience-of-the-scheduler-pool-and-host · Lane: runtime
+  - [ ] **FEAT-037.1** · mid · `LocalApp.start()` survives a failing poll or tick (per-tick catch, fault hook, `agentropy.scheduler.errors`), `stop()` never rejects, the last successful tick feeds `/readyz` (R-27)
+    - Done when: `pnpm exec vitest run packages/runtime/test/runtime.test.ts packages/testkit/test/recovery.test.ts`
+  - [ ] **FEAT-037.2** · mid · `execute()` contains disposition-write failures (bounded retry, then lost execution, never an unhandled rejection) and `limits.maxActivationMs` aborts a hung handler (R-28, R-29)
+    - Done when: `pnpm exec vitest run packages/runtime/test/runtime.test.ts packages/testkit/test/hardening.test.ts`
+  - [ ] **FEAT-037.3** · mid · Host shutdown order (stop accepting, abort streams, stop scheduler, drain, close store), unref'd grace timers, structured lifecycle and error log lines, optional OTLP wiring (R-30, R-31)
+    - Done when: `pnpm exec vitest run packages/examples/test/host.test.ts packages/testkit/test/telemetry.test.ts`
+- [ ] **FEAT-038** · P1 · high · Lifecycle correctness: deadlines while waiting, activation budget, subscription re-activation, timestamp validation, remote error codes, envelopes (R-32–R-38)
+  - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/runtime/test/task-service.test.ts packages/testkit/test/a2a.test.ts packages/testkit/test/providers.test.ts`
+  - Links: Ref: docs/review/2026-11-06-deep-review.md#lifecycle-correctness · Lane: runtime
+  - [ ] **FEAT-038.1** · mid · A `waiting` task past its deadline fails with T9 (deadline folded into the wake-up `dueAt`/`checkAt`); `budget.maxActivations` enforced at T5 with `BudgetExceeded` (R-32, R-35)
+    - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts`
+  - [ ] **FEAT-038.2** · low · `subscribe()` re-activates a revoked subscription; workflow completions are retried when publishing fails and engine polls can run as scheduler sweeps (R-33, R-38)
+    - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/testkit/test/providers.test.ts`
+  - [ ] **FEAT-038.3** · mid · Deadline, timer `at` and `timeoutAt` validated and normalized to UTC ISO-8601 at acceptance and at the waiting disposition (R-34)
+    - Done when: `pnpm exec vitest run packages/runtime/test/task-service.test.ts packages/runtime/test/runtime.test.ts`
+  - [ ] **FEAT-038.4** · mid · A2A client downgrades peer-supplied authorization-category error codes and guards the acknowledgement parse (threat-model row); `localAppTarget.receive` routes envelopes through the activation ingress (R-36, R-37)
+    - Done when: `pnpm exec vitest run packages/testkit/test/a2a.test.ts packages/testkit/test/remote-delegation.test.ts`
+- [ ] **FEAT-039** · P1 · high · Store access on hot paths: bounded scans, indexes and backoff so per-operation cost stays flat as data grows (R-39–R-44)
+  - Done when: `pnpm exec vitest run packages/testkit/test/scale.test.ts packages/testkit/test/benchmarks.test.ts`
+  - Links: Ref: docs/review/2026-11-06-deep-review.md#store-access-on-hot-paths · Lane: runtime
+  - [ ] **FEAT-039.1** · mid · `AuditForwarder` keeps a forwarding cursor instead of reading the whole audit log per tick; stuck outbox rows get `agentropy.outbox.stuck`, bounded attempts and a readiness detail (R-39, R-44)
+    - Done when: `pnpm exec vitest run packages/testkit/test/audit-retention.test.ts packages/runtime/test/outbox-inbox.test.ts packages/testkit/test/scale.test.ts`
+  - [ ] **FEAT-039.2** · high · Remote projections sync with per-projection backoff and a rate cap, a `taskId` index, and the peer's SSE stream when it offers one (R-40)
+    - Done when: `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
+  - [ ] **FEAT-039.3** · high · Due executions, `listTasks`, human-action sweep, quotas, briefing, event numbering and audit queries use pushed-down limits and new indexes (`executions.runAt`, `humanActions.dueAt`/`claimExpiresAt`, `tasks.createdAt`/`callerId`/`ownerId`, descending `FindOptions`) (R-41, R-42)
+    - Done when: `pnpm exec vitest run packages/testkit/test/scale.test.ts packages/testkit/test/multi-worker.test.ts packages/store-postgres/test packages/store-sqlite/test`
+  - [ ] **FEAT-039.4** · mid · Publish evaluates only poked registrations, bounded pending counts, batched compaction, relay follow cursor at max seq, paged task-event streams (R-43)
+    - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/runtime/test/outbox-inbox.test.ts`
+- [ ] **FEAT-040** · P2 · mid · Retention and bounds: `compact()` covers every collection (retention table in operations.md) and `RuntimeLimits` bounds input, output, event and prompt sizes with a threat-model row (R-45, R-46)
+  - Done when: `pnpm exec vitest run packages/testkit/test/operations.test.ts packages/testkit/test/hardening.test.ts`
+  - Links: Ref: docs/review/2026-11-06-deep-review.md#retention-and-bounds · Lane: runtime
+- [ ] **TASK-035** · P1 · mid · A2A production hardening: peer principals, SSE keep-alive, webhook timeouts, error mapping, manifests (R-47–R-51)
+  - Done when: `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts packages/testkit/test/a2a-push.test.ts packages/examples/test/host.test.ts`
+  - Links: Ref: docs/review/2026-11-06-deep-review.md#a2a-production-hardening · Lane: runtime
+  - [ ] **TASK-035.1** · mid · A2A peers are not tenant-wide `service` principals: the sample host maps tokens to `user` principals (or the endpoint applies an explicit visibility rule); deployment.md and TM-43 (R-47)
+    - Done when: `pnpm exec vitest run packages/examples/test/host.test.ts packages/testkit/test/a2a-http.test.ts`
+  - [ ] **TASK-035.2** · low · Transport hardening: SSE keep-alive comments, authentication before the body is read, write backpressure, webhook delivery timeout with abort, unread response bodies cancelled (R-48, R-49)
+    - Done when: `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts packages/testkit/test/a2a-push.test.ts packages/testkit/test/providers.test.ts`
+  - [ ] **TASK-035.3** · low · Failed tasks carry their outcome in `status.message`, documented code mapping and `ListTasks` scan bound; manifests expose the endpoint (`Service`, peer ingress rule, Secret-backed tokens, public URL) with `check-deploy` updated (R-50, R-51)
+    - Done when: `pnpm exec vitest run packages/testkit/test/a2a.test.ts`
+- [ ] **FEAT-041** · P2 · mid · Composition gaps: skills in `createLocalApp`, a PostgreSQL host mode, reasoning budget reservation, loader and federation details (R-52–R-55)
+  - Done when: `pnpm exec vitest run packages/runtime/test/skills.test.ts packages/testkit/test/providers.test.ts packages/examples/test/host.test.ts`
+  - Links: Ref: docs/review/2026-11-06-deep-review.md#composition-gaps · Lane: runtime
+  - [ ] **FEAT-041.1** · mid · `LocalAppOptions.skills` wires the registry and loader into acceptance and `AgentContext.skills`; quickstart section (R-52)
+    - Done when: `pnpm exec vitest run packages/runtime/test/skills.test.ts`
+  - [ ] **FEAT-041.2** · mid · Host PostgreSQL mode (`AGENTROPY_PG_URL`, relay lease, worker ID, driver as an optional dependency), image run against the CI PostgreSQL service, a `Deployment` manifest variant (R-53)
+    - Done when: `pnpm exec vitest run packages/examples/test/host.test.ts`
+  - [ ] **FEAT-041.3** · low · Reasoning budget reserved before the model call and settled after, tool-name collisions refused; skill digest cache and size bounds, one federation entry per card skill, abort signal through the direct provider, worker definition-set check (R-54, R-55)
+    - Done when: `pnpm exec vitest run packages/testkit/test/providers.test.ts packages/runtime/test/skills.test.ts packages/testkit/test/federation.test.ts packages/runtime/test/router.test.ts`
+- [ ] **TASK-036** · P2 · low · Documentation and governance: compatibility.md and README.md reflect FEAT-032/034, documented `Internal` retry and cron day-field semantics (or aligned code), stale M1 wording removed, `SECURITY.md` with a reporting channel (R-56, R-57)
+  - Done when: `node scripts/check-doc-links.mjs`
+  - Links: Ref: docs/review/2026-11-06-deep-review.md#documentation-and-governance · Lane: docs
+- [ ] **TASK-037** · P2 · mid · Tests and tooling: cron and scheduler-loop tests, source-resolved coverage, type-aware lint, store adapter hygiene (R-58, R-59)
+  - Done when: `pnpm check`
+  - Links: Ref: docs/review/2026-11-06-deep-review.md#tests-and-tooling · Lane: test
+  - [ ] **TASK-037.1** · mid · Tests for the cron parser, `LocalApp.start()` (including a failing tick) and the missing store conformance cases; vitest resolves workspace packages to `src` so coverage is attributed, with the corrected baseline recorded (R-58)
+    - Done when: `pnpm exec vitest run --coverage`
+  - [ ] **TASK-037.2** · low · ESLint type-aware rules (`no-floating-promises`, `no-misused-promises`) with the resulting fixes; PostgreSQL server-side backfill and configurable statement/lock timeouts; SQLite statement cache and `journal_size_limit` (R-59)
+    - Done when: `pnpm lint`
