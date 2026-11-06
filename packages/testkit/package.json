@@ -2,6 +2,16 @@
   "name": "@agentropy/testkit",
   "version": "0.0.0",
   "private": true,
+  "description": "Agentropy testkit: offline fakes and reusable conformance suites for provider authors.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bassemZohdy/agentropy.git",
+    "directory": "packages/testkit"
+  },
+  "engines": {
+    "node": ">=24"
+  },
   "type": "module",
   "exports": {
     ".": {
@@ -10,11 +20,13 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepack": "node -e \"require('node:fs').copyFileSync('../../LICENSE','LICENSE')\""
   },
   "dependencies": {
     "@agentropy/core": "workspace:*"

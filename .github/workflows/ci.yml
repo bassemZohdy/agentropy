@@ -50,6 +50,8 @@ jobs:
         run: node scripts/check-deploy.mjs
       - name: API reference up to date
         run: node scripts/api-index.mjs --check
+      - name: Release packaging (pack, inspect, install tarballs, run a task)
+        run: node scripts/check-pack.mjs
 
   image:
     # FEAT-028.8: build the host image and smoke-test it the way Kubernetes/OpenShift run it.

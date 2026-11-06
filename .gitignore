@@ -4,3 +4,4 @@ coverage/
 *.tsbuildinfo
 .pnpm-store/
 .DS_Store
+packages/*/LICENSE
