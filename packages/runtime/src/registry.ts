@@ -380,6 +380,58 @@ export class InstanceDirectory {
     });
   }
 
+  /**
+   * Audited definition upgrade or rollback (FEAT-028.3, D-07): the instance uses `version` for **future** tasks only;
+   * accepted tasks keep their acceptance snapshot. The target must be registered and of the same definition; the
+   * caller passes the instance revision it saw (compare-and-swap). Owner or trusted service only.
+   */
+  async upgrade(
+    instanceId: string,
+    change: { version: string; expectedRevision: number },
+    caller: TrustedPrincipal,
+    audit: (tx: StoreTx, from: VersionedRef, to: VersionedRef) => Promise<void>,
+  ): Promise<AgentInstance> {
+    if (typeof change?.version !== 'string' || !change.version)
+      throw new AgentropyError('SchemaViolation', 'version is required');
+    return this.store.transaction(async (tx) => {
+      const doc = await this.owned(tx, instanceId, caller);
+      const inst = doc.value;
+      if (inst.state === 'retired')
+        throw new AgentropyError('InvalidState', 'Instance is retired');
+      if (inst.revision !== change.expectedRevision)
+        throw new AgentropyError(
+          'StaleRevision',
+          'Instance changed since it was read',
+          {
+            details: {
+              expected: change.expectedRevision,
+              actual: inst.revision,
+            },
+          },
+        );
+      const to: VersionedRef = {
+        id: inst.definition.id,
+        version: change.version,
+      };
+      if (!this.definitions.get(to))
+        throw new AgentropyError(
+          'IncompatibleVersion',
+          `Definition ${to.id}@${to.version} is not registered`,
+          { details: { kind: 'definition' } },
+        );
+      if (to.version === inst.definition.version) return inst;
+      await audit(tx, inst.definition, to);
+      return (
+        await tx.update<AgentInstance>('instances', instanceId, doc.revision, {
+          ...inst,
+          definition: to,
+          previousDefinition: { ...inst.definition },
+          revision: inst.revision + 1,
+        })
+      ).value;
+    });
+  }
+
   private async owned(
     tx: StoreTx,
     instanceId: string,

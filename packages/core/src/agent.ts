@@ -88,6 +88,8 @@ export interface AgentInstance {
   draining?: boolean;
   /** Principals (users or services) the owner allows to delegate to this instance; see D-08 governance rules. */
   sharedWith?: string[];
+  /** Definition version before the last upgrade (FEAT-028.3), for an audited rollback. */
+  previousDefinition?: VersionedRef;
 }
 
 export interface TrustedPrincipal {
@@ -174,6 +176,19 @@ export interface Agent<I = unknown, O = unknown> {
     invocation: AgentInvocation<I>,
     context: AgentContext,
   ): Promise<AgentDisposition<O>>;
+  /**
+   * Checkpoint codec (FEAT-028.3, M3-03). Checkpoints are stored with the codec version that wrote them (default 1).
+   * Resuming an older checkpoint calls `upgrade`; without it, or for a checkpoint newer than this handler, the
+   * activation fails with `IncompatibleVersion` — never a silent reinterpretation.
+   */
+  checkpointCodec?: CheckpointCodec;
+}
+
+export interface CheckpointCodec {
+  /** Positive integer; increase it whenever the checkpoint shape changes. */
+  version: number;
+  /** Converts a checkpoint written by `fromVersion` (< version) to the current shape. */
+  upgrade?(checkpoint: unknown, fromVersion: number): unknown;
 }
 
 export interface HandlerRegistry {

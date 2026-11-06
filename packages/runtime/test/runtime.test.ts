@@ -201,7 +201,11 @@ describe('dispositions and retries (runtime contract T4/T6/T7/T8)', () => {
           await tx.find('wakeups', { where: { taskId: t.taskId } }),
         ] as const,
     );
-    expect(cp?.value).toEqual({ taskId: t.taskId, data: { seen: 1 } });
+    expect(cp?.value).toEqual({
+      taskId: t.taskId,
+      data: { seen: 1 },
+      version: 1,
+    });
     expect(wakeups.map((w) => w.value)).toMatchObject([
       { status: 'armed', dueAt: '2026-11-06T00:00:00.000Z' },
     ]);

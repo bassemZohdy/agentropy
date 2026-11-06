@@ -38,7 +38,7 @@ Checked by `node scripts/check-readiness.mjs`: every item above has exactly one 
 | `D-03` | closed | packages/testkit/test/governance.test.ts | — |
 | `D-04` | closed | packages/testkit/test/operations.test.ts | — |
 | `D-05` | closed | packages/testkit/test/operations.test.ts | — |
-| `D-07` | deferred | — | FEAT-028 |
+| `D-07` | closed | packages/testkit/test/upgrades.test.ts | — |
 | `D-08` | closed | packages/testkit/test/governance.test.ts | — |
 | `D-09` | deferred | docs/plans/PROJECT.md | Deferred |
 | `D-11` | closed | packages/testkit/test/delivery.test.ts | — |
@@ -74,6 +74,7 @@ Notes on the M1 evidence:
 - **D-20** — `revokeAuthority` signals running executions under the grant (cooperative `AuthorityExpired` abort), drops cached decisions and audits the revocation by digest; the task waits behind the gate; committed effects are listed by `listEffects` for an authorized compensation, which stays an application action.
 - **D-17** — SEC-06: credentials resolve just in time per invocation through `CredentialProvider` (opaque, tenant-scoped refs); a missing, expired or revoked credential fails `AuthorityExpired` (`kind: credential`), which holds the task behind the ADR-0024 gate without deleting it or persisting the secret; authorized `reauthorize` resumes, and journaled or keyed steps are not repeated ([Security v1](../contracts/security-v1.md) rev 3).
 - **D-21** — per-tenant hash chain on audit intents, `AuditService.query`/`verify` with independent `audit:read`/`audit:verify` permissions and no cross-tenant disclosure (SEC-05 M2 part). Retention, legal hold and archive integrity remain (M3, with D-22).
+- **D-07** — closed by FEAT-028.3 ([ADR-0029](../adr/0029-upgrades-and-version-migration.md)): audited `upgradeInstance` for future tasks only, rollback as the same operation, `versionsInUse` as the retirement check, checkpoint codec versions, additive store schema evolution.
 - **D-24** — break-glass, operational quarantine, dual control, a canonical audit schema and data residency are explicitly *not* adopted as policy; they are deferred to M3 production hardening and need an accepted ADR before implementation.
 - **D-12 / D-13 / D-14** — closed by [Observability v1](../contracts/observability-v1.md) (TASK-026.4) and its OpenTelemetry-backed suite (FEAT-027.6).
 - **N-02** — logical tenant/app-context isolation is tested (AC-14); workspace/credential boundaries and provider sandboxes are not claimed.

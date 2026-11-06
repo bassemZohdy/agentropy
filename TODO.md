@@ -13,7 +13,7 @@
     - Done when: Postgres store suite passes on embedded PGlite; `pnpm exec vitest run packages/store-postgres/test`
   - [x] **FEAT-028.2** · high · Multi-worker pool: several runtimes on one store with lease fencing, no double dispatch, fairness and back-pressure (M3-02)
     - Done when: multi-worker suite passes on SQLite file and PGlite stores; `pnpm exec vitest run packages/testkit/test/multi-worker.test.ts`
-  - [ ] **FEAT-028.3** · high · Upgrades: store schema migrations, checkpoint codec versions, audited instance version migration and rollback (M3-03, D-07)
+  - [x] **FEAT-028.3** · high · Upgrades: store schema migrations, checkpoint codec versions, audited instance version migration and rollback (M3-03, D-07)
     - Done when: upgrade suite passes; `pnpm exec vitest run packages/testkit/test/upgrades.test.ts`
   - [ ] **FEAT-028.4** · mid · Audit retention, legal hold, archive anchors and verified disposal (M3-04, D-21, D-22)
     - Done when: audit-retention suite passes; `pnpm exec vitest run packages/testkit/test/audit-retention.test.ts`

@@ -82,7 +82,9 @@ export class NativeImplementationProvider implements AgentImplementationProvider
 
   /** The handler is looked up per activation, so an unregistered artifact fails that activation with IncompatibleVersion (AC-10). */
   createAgent(binding: ImplementationBinding): Agent {
+    const codec = this.handlers.get(binding.artifact)?.checkpointCodec;
     return {
+      ...(codec ? { checkpointCodec: codec } : {}),
       handle: (invocation, context) => {
         const handler = this.handlers.get(binding.artifact);
         if (!handler) {

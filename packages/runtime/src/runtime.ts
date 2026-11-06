@@ -14,6 +14,7 @@ import {
   validateAgainst,
   type AgentContext,
   type AgentDisposition,
+  type CheckpointCodec,
   type AgentInvocation,
   type CapabilityAccess,
   type CapabilityProvider,
@@ -116,6 +117,31 @@ export function fairOrder<T extends { value: { tenantId?: string } }>(
   for (let i = 0; out.length < due.length; i++)
     for (const q of queues.values()) if (i < q.length) out.push(q[i]!);
   return out;
+}
+
+/** Applies the handler's checkpoint codec to a stored checkpoint (FEAT-028.3); never reinterprets silently. */
+export function decodeCheckpoint(
+  codec: CheckpointCodec | undefined,
+  data: unknown,
+  storedVersion: number | undefined,
+): unknown {
+  if (data === undefined) return undefined;
+  const current = codec?.version ?? 1;
+  const stored = storedVersion ?? 1;
+  if (stored === current) return data;
+  const fail = (message: string) =>
+    new AgentropyError('IncompatibleVersion', message, {
+      details: { kind: 'checkpoint', stored, current },
+    });
+  if (stored > current || !codec?.upgrade)
+    throw fail(
+      `Checkpoint version ${stored} cannot be read by a handler at version ${current}`,
+    );
+  try {
+    return codec.upgrade(structuredClone(data), stored);
+  } catch {
+    throw fail(`Checkpoint upgrade from version ${stored} failed`);
+  }
 }
 
 const addMs = (iso: string, ms: number) =>
@@ -570,14 +596,21 @@ export class AgentRuntime {
     let disposition:
       AgentDisposition<unknown> | { kind: 'threw'; error: AgentropyError };
     let span: TelemetrySpan | undefined;
+    let codecVersion = 1;
     try {
       const provider = this.o.implementations.get(
         t.snapshot.implementation.providerId,
         t.snapshot.implementation.providerVersion,
       );
       const agent = provider.createAgent(t.snapshot.implementation);
-      const { checkpoint, wakeReason, causeTraceparent } =
-        await this.resumeState(t.taskId, exec.value.trigger);
+      const resumed = await this.resumeState(t.taskId, exec.value.trigger);
+      const { wakeReason, causeTraceparent } = resumed;
+      codecVersion = agent.checkpointCodec?.version ?? 1;
+      const checkpoint = decodeCheckpoint(
+        agent.checkpointCodec,
+        resumed.checkpoint,
+        resumed.checkpointVersion,
+      );
       span = telemetry.startSpan(SPANS.execute, {
         kind: 'consumer',
         ...(t.traceparent ? { parent: t.traceparent } : {}),
@@ -665,10 +698,12 @@ export class AgentRuntime {
       'agentropy.agent.id': t.snapshot.definition.id,
       'agentropy.disposition': disposition.kind,
     });
-    await this.applyDisposition(exec, disposition).catch((err) => {
-      // A fenced (stale-epoch) write is expected after lease loss or cancel grace expiry: the result is discarded.
-      if (!isAgentropyError(err, 'StaleRevision')) throw err;
-    });
+    await this.applyDisposition(exec, disposition, codecVersion).catch(
+      (err) => {
+        // A fenced (stale-epoch) write is expected after lease loss or cancel grace expiry: the result is discarded.
+        if (!isAgentropyError(err, 'StaleRevision')) throw err;
+      },
+    );
   }
 
   private async resumeState(
@@ -676,19 +711,29 @@ export class AgentRuntime {
     trigger: AgentInvocation['trigger'],
   ): Promise<{
     checkpoint?: unknown;
+    checkpointVersion?: number;
     wakeReason?: WakeReason;
     causeTraceparent?: string;
   }> {
     return this.store.transaction(async (tx) => {
-      const cp = await tx.get<{ data: unknown }>('checkpoints', taskId);
-      if (trigger !== 'resume') return { checkpoint: cp?.value.data };
+      const cp = await tx.get<{ data: unknown; version?: number }>(
+        'checkpoints',
+        taskId,
+      );
+      const stored = cp
+        ? {
+            checkpoint: cp.value.data,
+            checkpointVersion: cp.value.version ?? 1,
+          }
+        : {};
+      if (trigger !== 'resume') return stored;
       const fired = (
         await tx.find<WakeupRecord>('wakeups', {
           where: { taskId, status: 'fired' },
         })
       ).at(-1);
       return {
-        checkpoint: cp?.value.data,
+        ...stored,
         ...(fired?.value.reason ? { wakeReason: fired.value.reason } : {}),
         ...(fired?.value.causeTraceparent
           ? { causeTraceparent: fired.value.causeTraceparent }
@@ -701,6 +746,7 @@ export class AgentRuntime {
   private async applyDisposition(
     exec: StoredDocument<StoredExecution>,
     d: AgentDisposition<unknown> | { kind: 'threw'; error: AgentropyError },
+    codecVersion = 1,
   ): Promise<void> {
     await this.store.transaction(async (tx) => {
       const e = await tx.get<StoredExecution>('executions', exec.id);
@@ -766,11 +812,13 @@ export class AgentRuntime {
           await tx.update('checkpoints', t.taskId, cp.revision, {
             taskId: t.taskId,
             data: d.checkpoint,
+            version: codecVersion,
           });
         else
           await tx.insert('checkpoints', t.taskId, {
             taskId: t.taskId,
             data: d.checkpoint,
+            version: codecVersion,
           });
         for (const old of await tx.find<WakeupRecord>('wakeups', {
           where: { taskId: t.taskId, status: 'fired' },

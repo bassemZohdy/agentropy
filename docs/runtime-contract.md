@@ -1,6 +1,6 @@
 # Agent task lifecycle, durability and version compatibility
 
-**Status:** proposed contract design, **revision 4 (2026-11-06)**. Revision 4 (FEAT-028.2) specifies several workers sharing one store. Revision 3 (FEAT-022) adds the T6 gate-deferral case, records the implemented ADR-0024 gate and the checkpoint size bound. Revision 2 replaces the prose state sketches with explicit transition tables, adopts the *one execution per activation* model ([ADR-0018](adr/0018-execution-per-activation.md)), and fixes the retry ambiguity. This document is the **single authoritative source** for lifecycle states and edges; other documents link here instead of restating them.
+**Status:** proposed contract design, **revision 5 (2026-11-06)**. Revision 5 (FEAT-028.3) adds instance upgrade/rollback, checkpoint codecs and store schema evolution. Revision 4 (FEAT-028.2) specifies several workers sharing one store. Revision 3 (FEAT-022) adds the T6 gate-deferral case, records the implemented ADR-0024 gate and the checkpoint size bound. Revision 2 replaces the prose state sketches with explicit transition tables, adopts the *one execution per activation* model ([ADR-0018](adr/0018-execution-per-activation.md)), and fixes the retry ambiguity. This document is the **single authoritative source** for lifecycle states and edges; other documents link here instead of restating them.
 
 Adapted from langgraph-flows' fixed FlowRun transition rules, async-first run semantics and version-pinned durable execution. It does **not** copy the Flow type system.
 
@@ -155,6 +155,8 @@ A definition requiring `durable-execution` cannot be bound to a weaker runtime (
 ## Version pinning and upgrade
 
 On acceptance (T1), snapshot **definition version, profile version, exact capability contract versions, provider id/version, input schema version and policy version**, plus (Agent v1 revision 7) the implementation binding, tool pins and skill pins — all recorded as one [`AcceptanceSnapshot`](contracts/agent-v1.md#acceptance-snapshot-revision-7). Each new Execution of the task runs against the snapshot. Instances may adopt newer definitions for **future** tasks only. If the runtime cannot load a compatible handler for a snapshot (removed version, incompatible checkpoint codec), the execution fails with `IncompatibleVersion` and the task follows T8 — never a silent upgrade. Replay-based providers additionally need worker version routing; pinning a string does not guarantee replay safety.
+
+**Upgrades (revision 5, [ADR-0029](adr/0029-upgrades-and-version-migration.md)):** `upgradeInstance` moves an instance to another registered version of its definition for future tasks only (audited `instance.upgrade`, compare-and-swap on the instance revision); rollback is the same call with an earlier version. `versionsInUse` shows when a version has no live instances or non-terminal tasks left. Checkpoints carry the writing handler's codec version; an older checkpoint is passed through `checkpointCodec.upgrade`, and a missing or failing upgrade, or a newer checkpoint, fails the activation with `IncompatibleVersion` (T8). Store adapters add missing collections and index columns on start and backfill them; a newer database schema is refused. Verified by `packages/testkit/test/upgrades.test.ts`.
 
 ## Required contract tests
 

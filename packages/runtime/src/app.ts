@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import {
   AgentropyError,
   digestOf,
+  enforcePolicy,
   BUILTIN_PROFILES,
   CAPABILITY_CATALOG,
   TASK_MACHINE,
@@ -175,6 +176,23 @@ export interface LocalApp {
     principalIds: string[],
     caller: TrustedPrincipal,
   ): Promise<AgentInstance>;
+  /**
+   * Audited upgrade or rollback of the definition version an instance uses for future tasks (FEAT-028.3). Accepted
+   * tasks stay pinned to their snapshot. Policy action `agent:upgrade`.
+   */
+  upgradeInstance(
+    instanceId: string,
+    change: { version: string; expectedRevision: number },
+    caller: TrustedPrincipal,
+  ): Promise<AgentInstance>;
+  /**
+   * Trusted services: which versions of a definition are still referenced in the caller's tenant, by live instances
+   * and by non-terminal tasks — a version can be removed once both counts are zero (D-07 retirement constraint).
+   */
+  versionsInUse(
+    definitionId: string,
+    caller: TrustedPrincipal,
+  ): Promise<{ version: string; instances: number; activeTasks: number }[]>;
   /** Stop accepting new tasks; retire once the last task ends. */
   drainInstance(
     instanceId: string,
@@ -498,6 +516,60 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     listTasks: (q, c) => tasks.listTasks(q, c),
     listInstances: (c, ownerId) => instances.list(c, ownerId),
     drainInstance: (id, c) => instances.drain(id, c),
+    async upgradeInstance(id, change, c) {
+      await tasks.checkGrant(c);
+      await enforcePolicy(o.pdp, {
+        principal: c,
+        action: 'agent:upgrade',
+        resource: { type: 'agent-instance', id, tenantId: c?.tenantId },
+      });
+      return instances.upgrade(id, change, c, (tx, from, to) =>
+        tasks.audit(tx, c, {
+          type: 'instance.upgrade',
+          action: 'agent:upgrade',
+          resource: { type: 'agent-instance', id },
+          decision: 'allow',
+          details: { from: from.version, to: to.version, definition: to.id },
+        }),
+      );
+    },
+    async versionsInUse(definitionId, c) {
+      if (c?.type !== 'service')
+        throw new AgentropyError(
+          'PermissionDenied',
+          'Only trusted services can list version usage',
+        );
+      const usage = new Map<
+        string,
+        { instances: number; activeTasks: number }
+      >();
+      const bump = (v: string, k: 'instances' | 'activeTasks') => {
+        const u = usage.get(v) ?? { instances: 0, activeTasks: 0 };
+        u[k]++;
+        usage.set(v, u);
+      };
+      await o.store.transaction(async (tx) => {
+        for (const i of await tx.find<AgentInstance>('instances', {
+          where: { tenantId: c.tenantId },
+        }))
+          if (
+            i.value.definition.id === definitionId &&
+            i.value.state !== 'retired'
+          )
+            bump(i.value.definition.version, 'instances');
+        for (const t of await tx.find<TaskRecord>('tasks', {
+          where: { tenantId: c.tenantId },
+        }))
+          if (
+            t.value.snapshot.definition.id === definitionId &&
+            !isTerminal(TASK_MACHINE, t.value.status)
+          )
+            bump(t.value.snapshot.definition.version, 'activeTasks');
+      });
+      return [...usage]
+        .map(([version, u]) => ({ version, ...u }))
+        .sort((a, b) => a.version.localeCompare(b.version));
+    },
     shareInstance: (id, ids, c) => instances.share(id, ids, c),
     getTaskByIdempotencyKey: (k, c) => tasks.getTaskByIdempotencyKey(k, c),
     getResult: async <O>(id: string, c: TrustedPrincipal): Promise<O> => {

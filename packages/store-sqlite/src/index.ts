@@ -37,23 +37,60 @@ function migrate(db: DatabaseSync): void {
       { details: { kind: 'store-schema' } },
     );
   }
-  for (const [c, fields] of Object.entries(STORE_COLLECTIONS) as [
-    CollectionName,
-    readonly string[],
-  ][]) {
-    const indexCols = fields.map((f) => `${col(f)}`).join(', ');
-    db.exec(
-      `CREATE TABLE IF NOT EXISTS ${table(c)} (id TEXT PRIMARY KEY, revision INTEGER NOT NULL, seq INTEGER NOT NULL, value TEXT NOT NULL${indexCols ? `, ${indexCols}` : ''})`,
-    );
-    db.exec(`CREATE INDEX IF NOT EXISTS "x_${c}_seq" ON ${table(c)} (seq)`);
-    for (const f of fields)
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    for (const [c, fields] of Object.entries(STORE_COLLECTIONS) as [
+      CollectionName,
+      readonly string[],
+    ][]) {
+      const indexCols = fields.map((f) => `${col(f)}`).join(', ');
       db.exec(
-        `CREATE INDEX IF NOT EXISTS "x_${c}_${f}" ON ${table(c)} (${col(f)}, seq)`,
+        `CREATE TABLE IF NOT EXISTS ${table(c)} (id TEXT PRIMARY KEY, revision INTEGER NOT NULL, seq INTEGER NOT NULL, value TEXT NOT NULL${indexCols ? `, ${indexCols}` : ''})`,
       );
+      evolve(db, c, fields);
+      db.exec(`CREATE INDEX IF NOT EXISTS "x_${c}_seq" ON ${table(c)} (seq)`);
+      for (const f of fields)
+        db.exec(
+          `CREATE INDEX IF NOT EXISTS "x_${c}_${f}" ON ${table(c)} (${col(f)}, seq)`,
+        );
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
   }
   db.exec(
     `INSERT OR IGNORE INTO schema_migrations (version) VALUES (${SCHEMA_VERSION})`,
   );
+}
+
+/**
+ * Additive schema evolution (FEAT-028.3): an index field added to an existing collection gets its column, and the
+ * column is backfilled from the stored JSON, so a database written by an older release keeps answering queries.
+ */
+function evolve(
+  db: DatabaseSync,
+  c: CollectionName,
+  fields: readonly string[],
+): void {
+  const have = new Set(
+    (
+      db.prepare(`PRAGMA table_info(${table(c)})`).all() as { name: string }[]
+    ).map((r) => r.name),
+  );
+  const missing = fields.filter((f) => !have.has(`i_${f}`));
+  if (!missing.length) return;
+  for (const f of missing)
+    db.exec(`ALTER TABLE ${table(c)} ADD COLUMN ${col(f)}`);
+  const update = db.prepare(
+    `UPDATE ${table(c)} SET ${missing.map((f) => `${col(f)} = ?`).join(', ')} WHERE id = ?`,
+  );
+  for (const r of db
+    .prepare(`SELECT id, value FROM ${table(c)}`)
+    .all() as unknown as { id: string; value: string }[]) {
+    const idx = indexValues(c, JSON.parse(r.value));
+    update.run(...missing.map((f) => idx[f] as SQLInputValue), r.id);
+  }
 }
 
 interface Row {

@@ -158,6 +158,7 @@ export class PostgresStore implements Store {
             { details: { kind: 'store-schema' } },
           );
         if ((applied ?? 0) < 1) await this.createV1(db);
+        await this.evolve(db);
         await db.query('COMMIT');
       } catch (err) {
         await db.query('ROLLBACK').catch(() => undefined);
@@ -179,20 +180,81 @@ export class PostgresStore implements Store {
     for (const [c, fields] of Object.entries(STORE_COLLECTIONS) as [
       CollectionName,
       readonly string[],
+    ][])
+      await this.createCollection(db, c, fields);
+    await db.query(`INSERT INTO ${s}.schema_migrations (version) VALUES (1)`);
+  }
+
+  /**
+   * Additive schema evolution (FEAT-028.3): collections and index fields added by newer releases get their tables
+   * and columns on start, and new columns are backfilled from the stored JSON. Runs under the migration lock.
+   */
+  private async evolve(db: PgClient) {
+    const existing = new Map<string, Set<string>>();
+    for (const r of (
+      await db.query<{ table_name: string; column_name: string }>(
+        'SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = $1',
+        [this.schema],
+      )
+    ).rows) {
+      const cols = existing.get(r.table_name) ?? new Set<string>();
+      cols.add(r.column_name);
+      existing.set(r.table_name, cols);
+    }
+    for (const [c, fields] of Object.entries(STORE_COLLECTIONS) as [
+      CollectionName,
+      readonly string[],
     ][]) {
-      const cols = fields
-        .map((f) => `"n_${f}" DOUBLE PRECISION, "s_${f}" TEXT COLLATE "C"`)
-        .join(', ');
-      await db.query(
-        `CREATE TABLE ${this.t(c)} (id TEXT COLLATE "C" PRIMARY KEY, revision INTEGER NOT NULL, seq BIGINT NOT NULL, value TEXT NOT NULL${cols ? `, ${cols}` : ''})`,
-      );
-      await db.query(`CREATE INDEX "x_${c}_seq" ON ${this.t(c)} (seq)`);
-      for (const f of fields)
+      const have = existing.get(`c_${c}`);
+      if (!have) {
+        await this.createCollection(db, c, fields);
+        continue;
+      }
+      const missing = fields.filter((f) => !have.has(`n_${f}`));
+      if (!missing.length) continue;
+      for (const f of missing) {
+        await db.query(
+          `ALTER TABLE ${this.t(c)} ADD COLUMN "n_${f}" DOUBLE PRECISION, ADD COLUMN "s_${f}" TEXT COLLATE "C"`,
+        );
         await db.query(
           `CREATE INDEX "x_${c}_${f}" ON ${this.t(c)} ("n_${f}", "s_${f}", seq)`,
         );
+      }
+      const rows = (
+        await db.query<{ id: string; value: string }>(
+          `SELECT id, value FROM ${this.t(c)}`,
+        )
+      ).rows;
+      for (const r of rows) {
+        const idx = indexValues(c, JSON.parse(r.value));
+        const params = missing.flatMap((f): unknown[] => {
+          const v = idx[f] ?? null;
+          return typeof v === 'number' ? [v, null] : [null, v];
+        });
+        await db.query(
+          `UPDATE ${this.t(c)} SET ${missing.map((f, i) => `"n_${f}" = $${2 * i + 1}, "s_${f}" = $${2 * i + 2}`).join(', ')} WHERE id = $${2 * missing.length + 1}`,
+          [...params, r.id],
+        );
+      }
     }
-    await db.query(`INSERT INTO ${s}.schema_migrations (version) VALUES (1)`);
+  }
+
+  private async createCollection(
+    db: PgClient,
+    c: CollectionName,
+    fields: readonly string[],
+  ) {
+    const cols = fields
+      .map((f) => `"n_${f}" DOUBLE PRECISION, "s_${f}" TEXT COLLATE "C"`)
+      .join(', ');
+    await db.query(
+      `CREATE TABLE ${this.t(c)} (id TEXT COLLATE "C" PRIMARY KEY, revision INTEGER NOT NULL, seq BIGINT NOT NULL, value TEXT NOT NULL${cols ? `, ${cols}` : ''})`,
+    );
+    await db.query(`CREATE INDEX "x_${c}_seq" ON ${this.t(c)} (seq)`);
+    for (const f of fields)
+      await db.query(
+        `CREATE INDEX "x_${c}_${f}" ON ${this.t(c)} ("n_${f}", "s_${f}", seq)`,
+      );
   }
 
   private async withConnection<T>(fn: (db: PgClient) => Promise<T>) {

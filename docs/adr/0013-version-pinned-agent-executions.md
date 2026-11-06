@@ -1,6 +1,6 @@
 # ADR-0013: Version-pinned tasks and provider compatibility
 
-- Status: Proposed (2026-11-04)
+- Status: Proposed (2026-11-04); pinning, audited migration, rollback and retirement accepted for the native runtime by [ADR-0029](0029-upgrades-and-version-migration.md) (2026-11-06)
 - Inspiration: [langgraph-flows ADR-0009](https://github.com/bassemZohdy/langgraph-flows/blob/main/docs/adr/ADR-0009-version-pinned-flow-runs.md).
 
 ## Context
