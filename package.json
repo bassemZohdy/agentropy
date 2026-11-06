@@ -12,7 +12,7 @@
     "test": "vitest run",
     "lint": "eslint .",
     "format:check": "prettier --check \"packages/**/*.{ts,json}\" \"*.{json,mjs,ts}\"",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm format:check",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm format:check && node scripts/api-index.mjs --check",
     "example:price-watch": "tsc -b && node packages/examples/dist/price-watch.js",
     "example:expense-approval": "tsc -b && node packages/examples/dist/expense-approval.js",
     "example:quickstart": "tsc -b && node packages/examples/dist/quickstart.js",

@@ -51,6 +51,7 @@ export type {
   A2APushConfig,
   A2APushFetch,
   A2APushOptions,
+  A2ASecretSealer,
 } from './a2a-push.js';
 export { sseFrames } from './a2a-sse.js';
 export {

@@ -241,13 +241,21 @@ export class TaskEventStream implements EventConsumer {
     for (const wake of this.listeners.get(event.taskId) ?? []) wake();
   }
 
-  /** Events of one visible task after `from`, ending after its terminal event. */
+  /**
+   * Events of one visible task after `from`, ending after its terminal event, or as soon as `abort` fires (the
+   * subscription is released at once, not at the task's next event).
+   */
   async *subscribe(
     taskId: string,
     caller: TrustedPrincipal,
     from?: { revision: number; sequence: number },
+    abort?: AbortSignal,
   ): AsyncIterable<TaskEvent> {
     await this.tasks.visible(taskId, caller);
+    const aborted = new Promise<void>((r) => {
+      if (abort?.aborted) r();
+      else abort?.addEventListener('abort', () => r(), { once: true });
+    });
     let last = from;
     let signal = this.signal(taskId);
     try {
@@ -282,7 +290,9 @@ export class TaskEventStream implements EventConsumer {
           );
           if (t && isTerminal(TASK_MACHINE, t.value.status as never)) return;
         }
-        await signal.promise;
+        if (abort?.aborted) return;
+        await Promise.race([signal.promise, aborted]);
+        if (abort?.aborted) return;
         signal = this.signal(taskId);
       }
     } finally {

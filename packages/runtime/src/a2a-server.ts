@@ -67,9 +67,16 @@ export interface A2AServer {
     request: unknown,
     principal: TrustedPrincipal | undefined,
     headers?: { 'a2a-version'?: string },
+    /** Aborting ends the stream and releases its subscription (e.g. when the HTTP client goes away). */
+    options?: { signal?: AbortSignal },
   ): Promise<A2AStreamResult>;
   /** Resolves once every push watcher has finished (their tasks reached a terminal state or configs were deleted). */
   pushIdle(): Promise<void>;
+  /**
+   * With `push.store`: restarts delivery for stored configs whose tasks are still live (call once at start).
+   * Returns how many watchers were started.
+   */
+  resumePush(): Promise<number>;
 }
 
 const STREAMING_METHODS = new Set(['SendStreamingMessage', 'SubscribeToTask']);
@@ -200,6 +207,7 @@ export function createA2AServer(
     first: TaskSnapshot,
     principal: TrustedPrincipal,
     contextId?: string,
+    signal?: AbortSignal,
   ): AsyncIterable<A2AStreamFrame> {
     const frame = (result: unknown): A2AStreamFrame => ({
       jsonrpc: '2.0',
@@ -238,10 +246,15 @@ export function createA2AServer(
       });
     }
     try {
-      for await (const e of target.subscribe(taskId, principal)) {
+      for await (const e of target.subscribe(
+        taskId,
+        principal,
+        signal ? { signal } : undefined,
+      )) {
         yield* advance((e.payload as { status?: string } | undefined)?.status);
         if (TERMINAL_A2A.has(last)) return;
       }
+      if (signal?.aborted) return;
       // The event stream can end without its terminal event (e.g. compacted events): reconcile with the task.
       yield* advance((await target.getTask(taskId, principal)).status);
     } catch (err) {
@@ -252,6 +265,7 @@ export function createA2AServer(
   const notifications = createPushNotifications(target, o.push, follow);
   return {
     pushIdle: () => notifications.idle(),
+    resumePush: () => notifications.resume(),
     async handle(raw, principal, headers = {}) {
       const req = raw as Req;
       const id = req?.id ?? null;
@@ -357,7 +371,7 @@ export function createA2AServer(
       }
     },
 
-    async stream(raw, principal, headers = {}) {
+    async stream(raw, principal, headers = {}, options = {}) {
       const req = raw as Req;
       const id = req?.id ?? null;
       const rejected = precheck(req, principal, headers);
@@ -378,7 +392,7 @@ export function createA2AServer(
             return {
               kind: 'stream',
               status: 200,
-              frames: follow(id, first, caller, m.contextId),
+              frames: follow(id, first, caller, m.contextId, options.signal),
             };
           }
           case 'SubscribeToTask': {
@@ -394,7 +408,7 @@ export function createA2AServer(
             return {
               kind: 'stream',
               status: 200,
-              frames: follow(id, first, caller),
+              frames: follow(id, first, caller, undefined, options.signal),
             };
           }
           default:
@@ -431,8 +445,8 @@ export function localAppTarget(app: LocalApp): DirectTarget {
       } as TaskSnapshot;
     },
     cancel: (taskId, caller) => app.cancel(taskId, caller),
-    subscribe: (taskId, caller) => {
-      const stream = app.subscribe(taskId, caller);
+    subscribe: (taskId, caller, options) => {
+      const stream = app.subscribe(taskId, caller, undefined, options);
       return (async function* () {
         for await (const e of stream)
           yield {

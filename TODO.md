@@ -23,7 +23,7 @@
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts`
   - [ ] **FEAT-034.2** · mid · Interop test against the pinned reference A2A SDK, offline in CI (R-09)
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-interop.test.ts`
-  - [ ] **FEAT-034.3** · mid · Persist push configs in the store, resume watchers on start, release a deleted config's subscription (R-10)
+  - [x] **FEAT-034.3** · mid · Persist push configs in the store, resume watchers on start, release a deleted config's subscription (R-10)
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push.test.ts`
   - [ ] **FEAT-034.4** · mid · `ListTasks`, task continuation (`message.taskId`) and file parts (R-10)
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a.test.ts`

@@ -299,7 +299,7 @@ describe('A2A HTTP binding (FEAT-034.1)', () => {
     expect(h.http.openStreams()).toBe(0);
   });
 
-  it('bounds open streams; a stream whose client left is released at the task’s next event', async () => {
+  it('bounds open streams; a stream is released as soon as its client leaves', async () => {
     const h = await host({ maxStreams: 1 });
     const abort = new AbortController();
     const first = await fetch(`${h.base}/a2a`, {
@@ -321,11 +321,22 @@ describe('A2A HTTP binding (FEAT-034.1)', () => {
     expect(refused.status).toBe(503);
     expect(refused.headers.get('retry-after')).toBe('1');
     abort.abort();
-    await new Promise((r) => setTimeout(r, 20));
-    expect(h.http.openStreams()).toBe(1); // still waiting for the task's next event
+    // Released at once, while the task is still running (its handler waits on the gate).
+    await new Promise((r) => setTimeout(r, 50));
+    expect(h.http.openStreams()).toBe(0);
+    const again = await fetch(`${h.base}/a2a`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer tok-a',
+        accept: 'text/event-stream',
+      },
+      body: rpc('SendStreamingMessage', message('m-3', 'c')),
+    });
+    expect(again.status).toBe(200);
     h.release();
     await h.app.runUntilIdle();
-    await new Promise((r) => setTimeout(r, 50));
+    await again.text();
     expect(h.http.openStreams()).toBe(0);
   });
 

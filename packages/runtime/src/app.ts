@@ -220,10 +220,12 @@ export interface LocalApp {
     caller: TrustedPrincipal,
     reason?: string,
   ): Promise<TaskSnapshot>;
+  /** Ends after the terminal event, or when `options.signal` aborts. */
   subscribe(
     taskId: string,
     caller: TrustedPrincipal,
     from?: { revision: number; sequence: number },
+    options?: { signal?: AbortSignal },
   ): AsyncIterable<TaskEvent>;
   submitTurn(
     turn: ConversationTurn,
@@ -608,7 +610,8 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     },
     cancel: (id, c, reason) =>
       isRemote(id) ? remoteOrFail().cancel(id, c) : tasks.cancel(id, c, reason),
-    subscribe: (id, c, from) => stream.subscribe(id, c, from),
+    subscribe: (id, c, from, options) =>
+      stream.subscribe(id, c, from, options?.signal),
     submitTurn: (t, c) => tasks.submitTurn(t, c),
     createInstance: (req, c) => instances.create(req, c),
     suspendInstance: (id, c) => instances.suspend(id, c),

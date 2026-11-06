@@ -35,6 +35,8 @@ export const STORE_COLLECTIONS = {
   auditHeads: ['tenantId'],
   /** Policy decision cache invalidations shared by every worker on the store (FEAT-033.1); pruned after 10 min. */
   policyInvalidations: ['tenantId'],
+  /** A2A push notification configs (FEAT-034.3); webhook secrets are stored only sealed. */
+  pushConfigs: ['tenantId', 'taskId'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type CollectionName = keyof typeof STORE_COLLECTIONS;

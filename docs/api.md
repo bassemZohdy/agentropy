@@ -207,7 +207,7 @@ Types, schemas, errors, lifecycle tables and pure resolvers (no I/O). 196 export
 
 ## @agentropy/runtime
 
-Registries, task service, runtime, scheduler, providers and the local app facade. 154 exports.
+Registries, task service, runtime, scheduler, providers and the local app facade. 155 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
@@ -223,6 +223,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `A2APushConfig` | interface | [runtime/src/a2a-push.ts](../packages/runtime/src/a2a-push.ts) | A2A `TaskPushNotificationConfig` (credentials are write-only: reads return the scheme alone). |
 | `A2APushFetch` | type | [runtime/src/a2a-push.ts](../packages/runtime/src/a2a-push.ts) | Push delivery transport; `redirect: 'manual'` keeps a webhook from bouncing deliveries elsewhere. |
 | `A2APushOptions` | interface | [runtime/src/a2a-push.ts](../packages/runtime/src/a2a-push.ts) |  |
+| `A2ASecretSealer` | interface | [runtime/src/a2a-push.ts](../packages/runtime/src/a2a-push.ts) | Seals and opens webhook secrets at rest (FEAT-034.3). |
 | `A2AServer` | interface | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) |  |
 | `A2AServerOptions` | interface | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) |  |
 | `A2AStreamFrame` | type | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) | One frame of a streaming response: a JSON-RPC response whose `result` is an A2A `StreamResponse`. |

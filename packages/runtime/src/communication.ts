@@ -155,9 +155,11 @@ export interface DirectTarget {
   ): Promise<{ taskId: string }>;
   getTask(taskId: string, caller: TrustedPrincipal): Promise<TaskSnapshot>;
   cancel(taskId: string, caller: TrustedPrincipal): Promise<TaskSnapshot>;
+  /** Ends after the terminal event, or when `options.signal` aborts. */
   subscribe(
     taskId: string,
     caller: TrustedPrincipal,
+    options?: { signal?: AbortSignal },
   ): AsyncIterable<AgentEvent>;
   receive(
     message: AgentMessage,

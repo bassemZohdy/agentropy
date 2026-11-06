@@ -30,8 +30,7 @@ export interface A2AHttpOptions {
   /** Largest request body accepted, in bytes (default 1 MiB); larger requests get `413`. */
   maxBodyBytes?: number;
   /**
-   * Streams open at once (default 100); more get `503`. A stream whose client went away is released at the task's
-   * next event, so it counts until then.
+   * Streams open at once (default 100); more get `503`. A stream is released as soon as its client goes away.
    */
   maxStreams?: number;
 }
@@ -39,7 +38,7 @@ export interface A2AHttpOptions {
 export interface A2AHttpHandler {
   /** Serves the request when its path belongs to the binding; `false` leaves the response untouched. */
   handle(req: IncomingMessage, res: ServerResponse): Promise<boolean>;
-  /** Streams currently open (including ones whose client left and that wait for the task's next event). */
+  /** Streams currently open. */
   openStreams(): number;
 }
 
@@ -173,14 +172,17 @@ export function createA2AHttpHandler(
           });
           return true;
         }
-        const r = await server.stream(request, principal, headers);
+        // The client going away ends the stream and releases its task subscription.
+        const gone = new AbortController();
+        res.on('close', () => gone.abort());
+        const r = await server.stream(request, principal, headers, {
+          signal: gone.signal,
+        });
         if (r.kind === 'error') {
           send(res, r.response);
           return true;
         }
         streams++;
-        let gone = false;
-        res.on('close', () => (gone = true));
         try {
           res.writeHead(200, {
             'content-type': 'text/event-stream',
@@ -188,7 +190,7 @@ export function createA2AHttpHandler(
             connection: 'keep-alive',
           });
           for await (const event of sseFrames(r.frames)) {
-            if (gone) break;
+            if (gone.signal.aborted) break;
             res.write(event);
           }
         } finally {
