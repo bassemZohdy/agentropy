@@ -50,6 +50,11 @@ export interface WakeupRecord {
   conditionDue: (string | null)[];
   /** Earliest time-based trigger (timer, schedule or timeout), for the polling scheduler. */
   dueAt: string | null;
+  /**
+   * When the scheduler next evaluates it (FEAT-033.2): `dueAt`, or the time something it waits for happened
+   * (`pokeWakeups`); null when only a poke can make it fire. Absent on registrations armed before the index.
+   */
+  checkAt?: string | null;
   /** Set by whoever fires it; delivered to the next activation. */
   reason?: WakeReason;
   /** Sanitized traceparent of the inbound event that fired it; linked from the next execution span. */
@@ -850,6 +855,10 @@ export class AgentRuntime {
           onTimeout: d.wakeup.onTimeout ?? 'resume',
           status: 'armed',
           dueAt: times[0] ?? null,
+          // Non-time conditions may already hold (an event in the mailbox, a finished child): check once now.
+          checkAt: conditionDue.includes(null)
+            ? this.now()
+            : (times[0] ?? null),
         });
         await this.o.tasks.transition(tx, cur, 'waiting', 'T4', {
           waitingOn: d.wakeup,

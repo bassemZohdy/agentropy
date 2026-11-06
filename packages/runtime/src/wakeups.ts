@@ -25,6 +25,7 @@ import type { StoredHumanAction } from './human-actions.js';
 import type { InstanceDirectory } from './registry.js';
 import type { RemoteDelegationService, RemoteTaskRecord } from './remote.js';
 import type { WakeupRecord } from './runtime.js';
+import { pokeWakeups } from './wake-index.js';
 import {
   toSnapshot,
   type TaskRecord,
@@ -65,6 +66,11 @@ const matches = (
 export interface WakeupServiceOptions {
   /** Unconsumed events kept per subscription; further events are dropped and counted (default 1000). */
   mailboxLimit?: number;
+  /**
+   * A poll evaluates only registrations due by `checkAt` (FEAT-033.2); every `fullScanMs` (default 60 s, and on
+   * the first poll) it evaluates every armed registration instead, as a backstop.
+   */
+  fullScanMs?: number;
 }
 
 export interface OfferResult {
@@ -78,6 +84,7 @@ export interface OfferResult {
 
 export class WakeupService {
   private readonly sweeps: (() => Promise<unknown>)[] = [];
+  private lastFullScan = -Infinity;
 
   constructor(
     private readonly tasks: TaskService,
@@ -100,8 +107,15 @@ export class WakeupService {
   /** Evaluate every armed registration once; returns how many fired. Safe to call repeatedly and concurrently. */
   async poll(): Promise<number> {
     for (const sweep of this.sweeps) await sweep();
+    const now = this.now();
+    const at = Date.parse(now);
+    const full = at - this.lastFullScan >= (this.options.fullScanMs ?? 60_000);
+    if (full) this.lastFullScan = at;
     const armed = await this.store.transaction((tx) =>
-      tx.find<WakeupRecord>('wakeups', { where: { status: 'armed' } }),
+      tx.find<WakeupRecord>('wakeups', {
+        where: { status: 'armed' },
+        ...(full ? {} : { range: { field: 'checkAt', lte: now } }),
+      }),
     );
     let fired = 0;
     for (const w of armed) if (await this.tryFire(w.id)) fired++;
@@ -211,6 +225,7 @@ export class WakeupService {
           consumed: 0,
           ...(traceparent ? { traceparent } : {}),
         });
+        await pokeWakeups(tx, s.value.taskId, this.now());
         r.appended++;
       }
       return r;
@@ -284,7 +299,15 @@ export class WakeupService {
         return false;
       const now = this.now();
       const hit = await this.evaluate(tx, w.value, now);
-      if (!hit) return false;
+      if (!hit) {
+        // Nothing holds yet: wait for the next due time or a poke.
+        if (w.value.checkAt !== w.value.dueAt)
+          await tx.update<WakeupRecord>('wakeups', w.id, w.revision, {
+            ...w.value,
+            checkAt: w.value.dueAt,
+          });
+        return false;
+      }
       // An expired human action whose request says fail-task fails the task (T9) instead of resuming it.
       if (
         hit.reason.kind === 'human-action' &&

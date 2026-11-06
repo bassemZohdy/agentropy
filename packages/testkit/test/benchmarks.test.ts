@@ -254,3 +254,41 @@ describe.each(scaling)(
     }, 120_000);
   },
 );
+
+describe('wake-up polling with 10k waiters (FEAT-033.2)', () => {
+  it('an indexed poll does not grow with the number of armed registrations', async () => {
+    const W = 10_000;
+    const store = sqliteTempStore();
+    const clock = new FakeClock('2026-11-06T00:00:00.000Z');
+    const [app] = workers(store, 1, clock);
+    // Registrations armed on far timers; their tasks are not needed to measure what a poll has to read.
+    await store.transaction(async (tx) => {
+      for (let i = 0; i < W; i++)
+        await tx.insert('wakeups', `wk-${i}`, {
+          id: `wk-${i}`,
+          taskId: `task-${i}`,
+          conditions: [{ kind: 'timer', at: '2027-01-01T00:00:00.000Z' }],
+          conditionDue: ['2027-01-01T00:00:00.000Z'],
+          onTimeout: 'resume',
+          status: 'armed',
+          dueAt: '2027-01-01T00:00:00.000Z',
+          checkAt: '2027-01-01T00:00:00.000Z',
+        });
+    });
+    const time = async (n: number) => {
+      const t0 = performance.now();
+      for (let i = 0; i < n; i++) await app!.wakeups.poll();
+      return (performance.now() - t0) / n;
+    };
+    const fullScanMs = await time(1); // the first poll of a process scans everything
+    const indexedMs = await time(20);
+    bench('wakeup-poll', {
+      store: 'sqlite',
+      armed: W,
+      fullScanMs: round(fullScanMs),
+      indexedPollMs: round(indexedMs),
+    });
+    expect(indexedMs).toBeLessThan(fullScanMs / 5);
+    await store.close();
+  }, 120_000);
+});

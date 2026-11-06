@@ -24,6 +24,7 @@ import {
   type TrustedPrincipal,
 } from '@agentropy/core';
 import { journaled } from './inbox.js';
+import { pokeWakeups } from './wake-index.js';
 import {
   actionUsers,
   type TaskRecord,
@@ -342,6 +343,7 @@ export class HumanActionService {
         'resolved',
         'H-resolve',
       );
+      await pokeWakeups(tx, live.value.taskId, this.now());
       const resolved = await tx.update<StoredHumanAction>(
         'humanActions',
         live.id,
@@ -519,6 +521,7 @@ export class HumanActionService {
       doc.revision,
       { ...a, status: 'expired' },
     );
+    await pokeWakeups(tx, a.taskId, this.now());
     const task = await tx.get<TaskRecord>('tasks', a.taskId);
     if (task)
       await this.tasks.emit(

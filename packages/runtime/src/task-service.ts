@@ -48,6 +48,7 @@ import {
 } from '@agentropy/core';
 import { recordAuditIntent } from './audit.js';
 import { checkTaskQuota, type QuotaResolver } from './quotas.js';
+import { pokeWakeups } from './wake-index.js';
 import type { FaultHook } from './outbox.js';
 import type { DefinitionRegistry, InstanceDirectory } from './registry.js';
 
@@ -954,6 +955,9 @@ export class TaskService {
         });
       }
     }
+    // A parent waiting on this child checks its wake-up on the next poll (FEAT-033.2).
+    if (cur.value.parentTaskId)
+      await pokeWakeups(tx, cur.value.parentTaskId, this.o.now());
     for (const w of await tx.find<{ status: string }>('wakeups', {
       where: { taskId: cur.id, status: 'armed' },
     })) {

@@ -8,7 +8,13 @@ import {
   BuiltinCapabilityProvider,
   coreOperationHandlers,
 } from '../src/index.js';
-import type { Agent, AgentDisposition, WakeReason } from '@agentropy/core';
+import type {
+  Agent,
+  AgentDisposition,
+  Store,
+  StoreTx,
+  WakeReason,
+} from '@agentropy/core';
 import { SqliteStore } from '@agentropy/store-sqlite';
 import { describe, expect, it, vi } from 'vitest';
 import { alice, code, harness, sqliteTempStore } from './harness.js';
@@ -21,6 +27,88 @@ const settle = async (h: ReturnType<typeof harness>) => {
     await h.runtime.runUntilIdle();
   }
 };
+
+/** A store that counts wake-up reads by ID: one per registration a poll evaluates. */
+function countingStore() {
+  const inner = sqliteTempStore();
+  const seen = { evaluated: 0 };
+  const store: Store = {
+    durability: inner.durability,
+    close: () => inner.close(),
+    transaction: (fn) =>
+      inner.transaction((tx) =>
+        fn({
+          ...tx,
+          get: (c, id) => {
+            if (c === 'wakeups') seen.evaluated++;
+            return tx.get(c, id);
+          },
+          find: (c, o) => tx.find(c, o),
+          insert: (c, id, v) => tx.insert(c, id, v),
+          update: (c, id, r, v) => tx.update(c, id, r, v),
+          remove: (c, id, r) => tx.remove(c, id, r),
+        } as StoreTx),
+      ),
+  };
+  return { store, seen };
+}
+
+describe('wake-up evaluation index (FEAT-033.2)', () => {
+  it('a poll evaluates only due or poked registrations; a periodic full scan backs up a missed poke', async () => {
+    const { store, seen } = countingStore();
+    const h = harness({ builtin: true, store });
+    h.define('sleeper', {
+      handle: async (inv) =>
+        inv.activation === 1
+          ? {
+              kind: 'waiting',
+              wakeup: {
+                anyOf: [{ kind: 'timer', at: '2027-01-01T00:00:00.000Z' }],
+              },
+              checkpoint: null,
+            }
+          : { kind: 'completed', output: null },
+    });
+    h.define('listener', {
+      handle: async (inv) =>
+        inv.activation === 1
+          ? {
+              kind: 'waiting',
+              wakeup: { anyOf: [{ kind: 'event', subscription: 'manual' }] },
+              checkpoint: null,
+            }
+          : { kind: 'completed', output: inv.wakeReason },
+    });
+    const sleepers = (await h.instance('sleeper')).id;
+    for (let i = 0; i < 20; i++) await h.delegate(sleepers, {}, `s${i}`);
+    const t = await h.delegate((await h.instance('listener')).id, {}, 'l');
+    await settle(h);
+    expect(await status(h, t.taskId)).toBe('waiting');
+
+    seen.evaluated = 0;
+    await h.wakeups.poll();
+    expect(seen.evaluated).toBe(0); // 21 armed registrations, none due or poked
+
+    // A mailbox row written without a poke (as by an older writer) is found by the next full scan only.
+    await h.store.transaction((tx) =>
+      tx.insert('mailbox', 'manual:e1', {
+        taskId: t.taskId,
+        subscriptionId: 'manual',
+        eventId: 'e1',
+        payload: { n: 1 },
+        consumed: 0,
+      }),
+    );
+    await settle(h);
+    expect(await status(h, t.taskId)).toBe('waiting');
+    h.clock.advanceBy(60_000);
+    await settle(h);
+    expect(await h.tasks.getResult(t.taskId, alice)).toMatchObject({
+      kind: 'event',
+      eventId: 'e1',
+    });
+  });
+});
 
 describe('timer, schedule and timeout wake-ups', () => {
   it('a timer wakes the task as a new activation with a timer reason (T5)', async () => {

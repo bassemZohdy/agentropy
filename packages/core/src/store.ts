@@ -12,7 +12,7 @@ export const STORE_COLLECTIONS = {
   tasks: ['tenantId', 'status', 'instanceId', 'parentTaskId'],
   executions: ['taskId', 'state'],
   checkpoints: ['taskId'],
-  wakeups: ['taskId', 'status', 'dueAt'],
+  wakeups: ['taskId', 'status', 'dueAt', 'checkAt'],
   subscriptions: ['taskId', 'source', 'status'],
   mailbox: ['taskId', 'subscriptionId', 'consumed'],
   inboundEvents: ['source'],

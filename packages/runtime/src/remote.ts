@@ -25,6 +25,7 @@ import {
   type TrustedPrincipal,
 } from '@agentropy/core';
 import { hashKey, type TaskService } from './task-service.js';
+import { pokeWakeups } from './wake-index.js';
 
 export interface RemoteTaskRecord {
   taskId: string;
@@ -361,6 +362,7 @@ export class RemoteDelegationService {
         doc.revision,
         next,
       );
+      if (r.parentTaskId) await pokeWakeups(tx, r.parentTaskId, this.now());
       return next;
     });
   }
