@@ -4,9 +4,9 @@
 
 | Objective | Target | Measured (benchmarks) | Notes |
 |---|---|---|---|
-| Acceptance latency (`delegate` returns a handle), p95 | ≤ 10 ms | 2.8 ms | Includes policy, grant and audit-intent writes |
-| Accept-to-complete overhead, trivial handler, idle runtime, p95 | ≤ 50 ms | 8.4–9.7 ms | Scheduler interval not included (`runUntilIdle` in the benchmark; add `start(intervalMs)` latency in production) |
-| Sustained completion throughput per node | ≥ 150 tasks/s | 293–313 tasks/s | One worker, pool 8; bound by fsync |
+| Acceptance latency (`delegate` returns a handle), p95 | ≤ 10 ms | 2.8 ms (CI 4.5 ms) | Includes policy, grant and audit-intent writes |
+| Accept-to-complete overhead, trivial handler, idle runtime, p95 | ≤ 50 ms | 8.4–9.7 ms (CI 8.8 ms) | Scheduler interval not included (`runUntilIdle` in the benchmark; add `start(intervalMs)` latency in production) |
+| Sustained completion throughput per node | ≥ 150 tasks/s | 293–313 tasks/s (CI 296) | One worker, pool 8; bound by fsync |
 | Recovery after a worker crash | work resumes within `leaseMs` + one scheduler interval + 1 s | 58–61 ms after lease expiry | Default `leaseMs` 60 s; lower it for faster detection |
 | Accepted tasks lost on a durable store | 0 | 0 in every recovery and crash test | `durability: none` runtimes disclose loss instead |
 | Duplicate dispatch of one execution | 0 | 0 across workers and processes | Effects use step keys; providers must honor idempotency keys |

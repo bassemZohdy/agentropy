@@ -28,4 +28,14 @@
 
 ## CI
 
-GitHub-hosted runners (Node 24) print their own `[bench]` lines in the test log of every push.
+GitHub-hosted runners (Node 24) print their own `[bench]` lines in the test log of every push. First CI run (run 42144524246, Node 24.22):
+
+| Case | SQLite | PostgreSQL (PGlite) |
+|---|---|---|
+| Acceptance / completion throughput | 407 / 296 tasks/s | 60 / 49 tasks/s |
+| Acceptance latency p50 / p95 | 1.6 / 4.5 ms | 13.2 / 18 ms |
+| Accept-to-complete p50 / p95 | 5.3 / 8.8 ms | 47 / 58 ms |
+| Recovery drain after lease expiry | 64 ms | 463 ms |
+| 1 / 2 / 4 in-process workers | 320 / 277 / 279 tasks/s | — |
+
+The CI numbers are within the development-container ranges, and every [SLO](../slo.md) target holds on both machines.
