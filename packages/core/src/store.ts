@@ -10,7 +10,8 @@ import { AgentropyError } from './errors.js';
 
 export const STORE_COLLECTIONS = {
   tasks: ['tenantId', 'status', 'instanceId', 'parentTaskId'],
-  executions: ['taskId', 'state'],
+  /** `runAt` and `tenantId` let a worker read what is due, and a tenant's running count, without scanning (FEAT-039.3). */
+  executions: ['taskId', 'state', 'runAt', 'tenantId'],
   checkpoints: ['taskId'],
   wakeups: ['taskId', 'status', 'dueAt', 'checkAt'],
   subscriptions: ['taskId', 'source', 'status'],
@@ -19,7 +20,8 @@ export const STORE_COLLECTIONS = {
   effects: ['taskId'],
   outbox: ['published', 'aggregateId'],
   inbox: ['tenantId', 'ownerId', 'status'],
-  humanActions: ['taskId', 'status'],
+  /** `dueAt` and `claimExpiresAt` let the expiry sweep read only what lapsed (FEAT-039.3). */
+  humanActions: ['taskId', 'status', 'dueAt', 'claimExpiresAt'],
   idempotency: ['tenantId'],
   /** `forwarded` (0/1) lets the forwarder read only rows still to send instead of the whole log (FEAT-039.1). */
   audit: ['tenantId', 'type', 'forwarded'],

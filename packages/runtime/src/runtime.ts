@@ -239,14 +239,17 @@ export class AgentRuntime {
     const free = this.o.poolSize - this.running.size;
     if (free <= 0) return 0;
     const now = this.now();
+    // Only what is due, from the `runAt` index (a backlog of retries waiting out their backoff costs nothing).
     const due = fairOrder(
       (
         await this.store.transaction((tx) =>
           tx.find<StoredExecution>('executions', {
             where: { state: 'queued' },
+            range: { field: 'runAt', lte: now },
+            limit: 1_000,
           }),
         )
-      ).filter((e) => e.value.runAt <= now && !this.running.has(e.id)),
+      ).filter((e) => !this.running.has(e.id)),
     );
     // Cheap pre-check so tenants at their concurrency limit are not re-admitted every tick; lease() re-checks.
     const busy = new Map<string, number>();
@@ -568,9 +571,9 @@ export class AgentRuntime {
     if (limit === undefined) return false;
     const running = (
       await tx.find<StoredExecution>('executions', {
-        where: { state: 'running' },
+        where: { state: 'running', tenantId },
       })
-    ).filter((x) => x.value.tenantId === tenantId).length;
+    ).length;
     return running >= limit;
   }
 

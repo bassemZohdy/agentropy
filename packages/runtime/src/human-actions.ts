@@ -375,16 +375,26 @@ export class HumanActionService {
 
   /** Expire requests past `dueAt` and return lapsed claims to `pending`. Safe to call repeatedly. */
   async sweep(): Promise<number> {
-    const open = await this.store.transaction(async (tx) => [
+    const now = this.now();
+    // Only what lapsed, from the `dueAt` and `claimExpiresAt` indexes: open requests that are not due cost nothing.
+    const lapsedRows = await this.store.transaction(async (tx) => [
       ...(await tx.find<StoredHumanAction>('humanActions', {
-        where: { status: 'pending' },
+        range: { field: 'dueAt', lte: now },
       })),
       ...(await tx.find<StoredHumanAction>('humanActions', {
-        where: { status: 'claimed' },
+        range: { field: 'claimExpiresAt', lte: now },
       })),
     ]);
+    const open = [
+      ...new Map(
+        lapsedRows
+          .filter(
+            (a) => a.value.status === 'pending' || a.value.status === 'claimed',
+          )
+          .map((a) => [a.id, a]),
+      ).values(),
+    ];
     let changed = 0;
-    const now = this.now();
     for (const a of open) {
       const due = a.value.dueAt && a.value.dueAt <= now;
       const lapsed =

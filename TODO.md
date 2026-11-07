@@ -58,8 +58,8 @@
     - Done when: `pnpm exec vitest run packages/runtime/test/audit-forwarder.test.ts packages/testkit/test/audit-retention.test.ts`
   - [x] **FEAT-039.2** · high · Remote projections sync with per-projection backoff and a `taskId` index (R-40; the peer's SSE stream instead of polling stays a follow-up)
     - Done when: `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
-  - [ ] **FEAT-039.3** · high · Due executions, `listTasks`, human-action sweep, quotas, briefing, event numbering and audit queries use pushed-down limits and new indexes (`executions.runAt`, `humanActions.dueAt`/`claimExpiresAt`, `tasks.createdAt`/`callerId`/`ownerId`, descending `FindOptions`) (R-41, R-42)
-    - Done when: `pnpm exec vitest run packages/testkit/test/scale.test.ts packages/testkit/test/multi-worker.test.ts packages/store-postgres/test packages/store-sqlite/test`
+  - [ ] **FEAT-039.3** · high · `listTasks`, quotas, briefing, event numbering and audit queries use pushed-down limits and new indexes (`tasks.createdAt`/`callerId`/`ownerId`, descending `FindOptions`) (R-42; due executions, tenant running counts and the human-action sweep done: R-41)
+    - Done when: `pnpm exec vitest run packages/runtime/test/hot-paths.test.ts packages/testkit/test/scale.test.ts packages/testkit/test/multi-worker.test.ts packages/store-postgres/test packages/store-sqlite/test`
   - [ ] **FEAT-039.4** · mid · Publish evaluates only poked registrations, bounded pending counts, batched compaction, relay follow cursor at max seq, paged task-event streams; stuck outbox rows get `agentropy.outbox.stuck`, bounded attempts and a readiness detail (R-43, R-44)
     - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/runtime/test/outbox-inbox.test.ts`
 - [ ] **FEAT-040** · P2 · mid · Retention and bounds: `compact()` covers every collection (retention table in operations.md) and `RuntimeLimits` bounds input, output, event and prompt sizes with a threat-model row (R-45, R-46)
