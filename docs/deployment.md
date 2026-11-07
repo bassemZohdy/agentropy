@@ -26,7 +26,7 @@ kubectl apply -k deploy/kubernetes
 
 - `StatefulSet` with **one replica** and a 1 GiB `ReadWriteOnce` volume at `/data`: SQLite is single-writer (ADR-0017). Do not raise replicas on SQLite.
 - Pod security matches the Pod Security "restricted" profile: non-root, `RuntimeDefault` seccomp, no privilege escalation, all capabilities dropped, read-only root filesystem with writable `/data` and `/tmp`, no service-account token.
-- `NetworkPolicy` denies all ingress (probes come from the kubelet) and all egress except DNS. Add egress rules for every provider the deployment uses (PostgreSQL, policy point, model and tool endpoints, A2A peers, Conductor).
+- `NetworkPolicy` denies all ingress (probes come from the kubelet) and all egress except DNS; a second policy (`networkpolicy-a2a.yaml`) opens only the A2A port to namespaces labelled `agentropy.io/a2a-peer=true`, and `service.yaml` gives the pod a cluster address. The A2A endpoint is off until you create the Secret `agentropy-a2a` with a `tokens` key (`token=principalId,…`); `tenant` and `publicUrl` are optional ConfigMap keys. Add egress rules for every provider the deployment uses (PostgreSQL, policy point, model and tool endpoints, A2A peers, Conductor).
 - Liveness `/healthz`, readiness `/readyz`; requests 250m/256Mi, limits 1 CPU/512Mi (the [SLOs](slo.md) were measured at 2 vCPU).
 
 ## OpenShift

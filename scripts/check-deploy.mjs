@@ -27,7 +27,7 @@ for (const file of readdirSync(dir).filter((f) => f.endsWith('.yaml'))) {
 }
 
 const kinds = new Set(docs.map((d) => d.obj?.kind));
-for (const k of ['StatefulSet', 'NetworkPolicy', 'ConfigMap', 'Kustomization'])
+for (const k of ['StatefulSet', 'NetworkPolicy', 'ConfigMap', 'Kustomization', 'Service'])
   if (!kinds.has(k)) fail(`deploy/kubernetes: no ${k}`);
 
 const kustomization = docs.find((d) => d.obj?.kind === 'Kustomization')?.obj;
@@ -66,12 +66,22 @@ for (const { file, obj } of docs) {
   }
 }
 
-const np = docs.find((d) => d.obj?.kind === 'NetworkPolicy')?.obj;
-if (np) {
+const policies = docs.filter((d) => d.obj?.kind === 'NetworkPolicy');
+const np = policies.find((d) => d.obj.metadata?.name === 'agentropy')?.obj;
+if (!np) fail('deploy/kubernetes: no default-deny NetworkPolicy named agentropy');
+else {
   if (!np.spec?.policyTypes?.includes('Ingress') || !np.spec?.policyTypes?.includes('Egress'))
     fail('networkpolicy.yaml: must govern Ingress and Egress');
   if ((np.spec?.ingress ?? []).length) fail('networkpolicy.yaml: default ingress must be empty');
 }
+// Additional policies may only open named ports to named sources (never allow-all ingress).
+for (const { file, obj } of policies.filter((d) => d.obj.metadata?.name !== 'agentropy'))
+  for (const rule of obj.spec?.ingress ?? [])
+    if (!rule.from?.length || !rule.ports?.length)
+      fail(`${file}: ingress rules need explicit sources (from) and ports`);
+const svc = docs.find((d) => d.obj?.kind === 'Service')?.obj;
+if (svc && !svc.spec?.ports?.some((p) => p.targetPort === 'health'))
+  fail('service.yaml: must target the container port named health');
 
 const dockerfile = readFileSync(join(root, 'deploy/Dockerfile'), 'utf8');
 const froms = [...dockerfile.matchAll(/^FROM\s+(\S+)/gm)].map((m) => m[1]);

@@ -1,0 +1,21 @@
+# Adds to the default-deny policy (NetworkPolicies are additive): the A2A port accepts connections from namespaces
+# labelled agentropy.io/a2a-peer=true (your ingress controller or mesh gateway), nothing else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agentropy-a2a-ingress
+  labels:
+    app.kubernetes.io/name: agentropy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agentropy
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              agentropy.io/a2a-peer: "true"
+      ports:
+        - protocol: TCP
+          port: 8080

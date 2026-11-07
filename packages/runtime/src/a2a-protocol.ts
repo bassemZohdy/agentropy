@@ -57,7 +57,12 @@ export interface A2AMessage {
 export interface A2ATask {
   id: string;
   contextId?: string;
-  status: { state: A2ATaskState; timestamp: string };
+  status: {
+    state: A2ATaskState;
+    timestamp: string;
+    /** Why a task ended badly: the runtime's outcome message of a failed or cancelled task (TASK-035.3). */
+    message?: A2AMessage;
+  };
   artifacts?: { artifactId: string; parts: A2APart[] }[];
   metadata?: Record<string, unknown>;
 }

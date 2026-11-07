@@ -741,3 +741,84 @@ describe('Agentropy envelopes reach a LocalApp endpoint (FEAT-038.4)', () => {
     ).toBe('UnsupportedOperation');
   });
 });
+
+describe('failed tasks tell the peer why (TASK-035.3)', () => {
+  it('a failed task carries its outcome in status.message; a completed one carries none', async () => {
+    const app = createLocalApp({
+      store: sqliteTempStore(),
+      pdp: new FakePolicy(),
+      profiles: BUILTIN_PROFILES,
+    });
+    const defFor = (id: string): AgentDefinition => ({
+      id,
+      version: '1.0.0',
+      displayName: id,
+      profile: { id: 'task', version: '1.0.0' },
+      implementation: {
+        providerId: 'native-ts',
+        providerVersion: '1.0.0',
+        artifact: { id, version: '1.0.0' },
+      },
+      inputSchema: true,
+      runtimeRequirements: { guarantees: [] },
+      policyRef: { id: 'default', version: '1.0.0' },
+    });
+    app.define(defFor('bad'), {
+      handle: async () => ({
+        kind: 'failed',
+        code: 'BudgetExceeded',
+        retryable: false,
+        message: 'over budget',
+      }),
+    });
+    app.define(defFor('good'), {
+      handle: async () => ({ kind: 'completed', output: 1 }),
+    });
+    const outcome = async (id: string) => {
+      const inst = await app.createInstance(
+        {
+          definition: { id, version: '1.0.0' },
+          ownerId: caller.id,
+          idempotencyKey: id,
+        },
+        caller,
+      );
+      const server = createA2AServer(localAppTarget(app), {
+        instanceId: inst.id,
+      });
+      const sent = await server.handle(
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'SendMessage',
+          params: {
+            message: {
+              role: 'ROLE_USER',
+              messageId: `m-${id}`,
+              parts: [{ text: 'x' }],
+            },
+          },
+        },
+        caller,
+      );
+      await app.runUntilIdle();
+      const taskId = (sent.body.result as { task: { id: string } }).task.id;
+      const got = await server.handle(
+        { jsonrpc: '2.0', id: 2, method: 'GetTask', params: { id: taskId } },
+        caller,
+      );
+      return got.body.result as {
+        status: { state: string; message?: unknown };
+      };
+    };
+    expect((await outcome('bad')).status).toMatchObject({
+      state: 'TASK_STATE_FAILED',
+      message: {
+        role: 'ROLE_AGENT',
+        parts: [{ text: 'over budget' }],
+        metadata: { 'agentropy/code': 'BudgetExceeded' },
+      },
+    });
+    expect((await outcome('good')).status.message).toBeUndefined();
+  });
+});

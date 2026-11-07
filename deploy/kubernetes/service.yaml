@@ -1,0 +1,15 @@
+# The runtime's port inside the cluster: health probes and, when AGENTROPY_A2A_TOKENS is set, the A2A endpoint
+# (POST /a2a, GET /.well-known/agent-card.json). Expose it to peers through your ingress or mesh, with TLS.
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentropy
+  labels:
+    app.kubernetes.io/name: agentropy
+spec:
+  selector:
+    app.kubernetes.io/name: agentropy
+  ports:
+    - name: http
+      port: 8080
+      targetPort: health

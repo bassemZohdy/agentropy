@@ -131,7 +131,21 @@ export function createA2AServer(
     ...((contextId ?? s.correlationId)
       ? { contextId: contextId ?? s.correlationId }
       : {}),
-    status: { state: a2aState(s), timestamp: s.updatedAt ?? now() },
+    status: {
+      state: a2aState(s),
+      timestamp: s.updatedAt ?? now(),
+      // The outcome tells the peer why a task failed or was cancelled; its code travels as metadata.
+      ...(s.outcome && (s.status === 'failed' || s.status === 'cancelled')
+        ? {
+            message: {
+              role: 'ROLE_AGENT' as const,
+              messageId: `${s.taskId}:outcome`,
+              parts: [{ text: s.outcome.message }],
+              metadata: { 'agentropy/code': s.outcome.code },
+            },
+          }
+        : {}),
+    },
     ...(s.status === 'completed' && s.output !== undefined
       ? {
           artifacts: [

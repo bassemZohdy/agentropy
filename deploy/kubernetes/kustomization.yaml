@@ -3,4 +3,6 @@ kind: Kustomization
 resources:
   - configmap.yaml
   - networkpolicy.yaml
+  - networkpolicy-a2a.yaml
+  - service.yaml
   - statefulset.yaml

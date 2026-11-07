@@ -39,6 +39,26 @@ spec:
                 configMapKeyRef:
                   name: agentropy-policy
                   key: allow
+            # A2A endpoint (FEAT-034.1): off unless the Secret `agentropy-a2a` (key `tokens`, `token=principalId`
+            # entries) exists. Peers are users the echo instance is shared with.
+            - name: AGENTROPY_A2A_TOKENS
+              valueFrom:
+                secretKeyRef:
+                  name: agentropy-a2a
+                  key: tokens
+                  optional: true
+            - name: AGENTROPY_TENANT
+              valueFrom:
+                configMapKeyRef:
+                  name: agentropy-policy
+                  key: tenant
+                  optional: true
+            - name: AGENTROPY_PUBLIC_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: agentropy-policy
+                  key: publicUrl
+                  optional: true
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
