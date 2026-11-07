@@ -68,7 +68,7 @@
 - [ ] **TASK-035** · P1 · mid · A2A production hardening: peer principals, SSE keep-alive, webhook timeouts, error mapping, manifests (R-47–R-51)
   - Done when: `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts packages/testkit/test/a2a-push.test.ts packages/examples/test/host.test.ts`
   - Links: Ref: docs/review/2026-11-06-deep-review.md#a2a-production-hardening · Lane: runtime
-  - [ ] **TASK-035.1** · mid · A2A peers are not tenant-wide `service` principals: the sample host maps tokens to `user` principals (or the endpoint applies an explicit visibility rule); deployment.md and a threat-model row (R-47)
+  - [x] **TASK-035.1** · mid · A2A peers are not tenant-wide `service` principals: the sample host maps tokens to `user` principals (or the endpoint applies an explicit visibility rule); deployment.md and a threat-model row (R-47)
     - Done when: `pnpm exec vitest run packages/examples/test/host.test.ts packages/testkit/test/a2a-http.test.ts`
   - [ ] **TASK-035.2** · low · Transport hardening: SSE keep-alive comments, authentication before the body is read, write backpressure, webhook delivery timeout with abort, unread response bodies cancelled (R-48, R-49)
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts packages/testkit/test/a2a-push.test.ts packages/testkit/test/providers.test.ts`

@@ -10,6 +10,10 @@ import {
   type ServerResponse,
 } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import { allowNetwork } from '@agentropy/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -19,6 +23,7 @@ import {
   defineAgents,
   healthHandler,
   schedulerStalled,
+  tokenPrincipals,
   shutdownHost,
 } from '../src/host.js';
 
@@ -80,7 +85,7 @@ describe('container host (M3-08)', () => {
       ({ headers: authorization ? { authorization } : {} }) as IncomingMessage;
     expect(await auth(req('Bearer s3cret'))).toEqual({
       id: 'peer-a',
-      type: 'service',
+      type: 'user',
       tenantId: 'acme',
     });
     expect(await auth(req('Bearer other'))).toMatchObject({ id: 'peer-b' });
@@ -263,5 +268,67 @@ describe('container host (M3-08)', () => {
       'scheduler stopped',
       'store closed',
     ]);
+  });
+
+  it('A2A peers see and cancel only their own tasks; they are not tenant-wide services (TASK-035.1)', async () => {
+    const app = createLocalApp({
+      store: new SqliteStore({
+        path: join(mkdtempSync(join(tmpdir(), 'agentropy-host-')), 'host.db'),
+      }),
+      pdp: new AllowListPolicy(
+        'delegation:delegate,delegation:cancel,task:dispatch,capability:notification:use',
+      ),
+      profiles: BUILTIN_PROFILES,
+    });
+    defineAgents(app);
+    const spec = 'tok-a=peer-a,tok-b=peer-b';
+    expect(tokenPrincipals(spec)).toEqual(['peer-a', 'peer-b']);
+    const a2a = (await a2aEndpoint(app, {
+      AGENTROPY_A2A_TOKENS: spec,
+      AGENTROPY_TENANT: 'acme',
+    }))!;
+    const rpc = async (token: string, method: string, params: unknown) => {
+      const req = Object.assign(
+        Readable.from([
+          Buffer.from(
+            JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+          ),
+        ]),
+        {
+          method: 'POST',
+          url: '/a2a',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${token}`,
+          },
+        },
+      ) as unknown as IncomingMessage;
+      return new Promise<{
+        result?: { task?: { id: string }; id?: string; tasks?: unknown[] };
+        error?: { code: number };
+      }>((resolve) => {
+        const res = {
+          writeHead: () => res,
+          end: (body: string) => resolve(JSON.parse(body)),
+        } as unknown as ServerResponse;
+        void a2a.handle(req, res);
+      });
+    };
+    const sent = await rpc('tok-a', 'SendMessage', {
+      message: { role: 'ROLE_USER', messageId: 'm-1', parts: [{ text: 'hi' }] },
+    });
+    const taskId = sent.result.task.id as string;
+    expect((await rpc('tok-a', 'GetTask', { id: taskId })).result.id).toBe(
+      taskId,
+    );
+    // Another peer in the same tenant: the task does not exist for it, and neither can it cancel it.
+    expect((await rpc('tok-b', 'GetTask', { id: taskId })).error?.code).toBe(
+      -32001,
+    );
+    expect((await rpc('tok-b', 'CancelTask', { id: taskId })).error?.code).toBe(
+      -32001,
+    );
+    expect((await rpc('tok-b', 'ListTasks', {})).result.tasks).toEqual([]);
+    expect((await rpc('tok-a', 'ListTasks', {})).result.tasks).toHaveLength(1);
   });
 });

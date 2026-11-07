@@ -118,16 +118,8 @@ export function healthHandler(
 
 const digest = (s: string) => createHash('sha256').update(s).digest();
 
-/**
- * Sample A2A authentication: static bearer tokens (`token=principalId`, comma-separated), all principals in one
- * tenant. Tokens are compared in constant time. Replace with your identity provider (OIDC/JWT verification, mTLS,
- * or headers from a trusted gateway).
- */
-export function bearerTokens(
-  spec: string,
-  tenantId: string,
-): (req: IncomingMessage) => Promise<TrustedPrincipal | undefined> {
-  const entries = spec
+const parseTokens = (spec: string) =>
+  spec
     .split(',')
     .map((e) => e.trim())
     .filter(Boolean)
@@ -135,14 +127,35 @@ export function bearerTokens(
       const i = e.indexOf('=');
       if (i <= 0 || i === e.length - 1)
         throw new Error('AGENTROPY_A2A_TOKENS entries are token=principalId');
-      return { digest: digest(e.slice(0, i)), id: e.slice(i + 1) };
+      return { token: e.slice(0, i), id: e.slice(i + 1) };
     });
+
+/** The peer principal IDs named in a token spec. */
+export const tokenPrincipals = (spec: string): string[] => [
+  ...new Set(parseTokens(spec).map((e) => e.id)),
+];
+
+/**
+ * Sample A2A authentication: static bearer tokens (`token=principalId`, comma-separated), all principals in one
+ * tenant. Tokens are compared in constant time. Peers are `user` principals, not `service` ones: a service is
+ * tenant-wide (it sees and can cancel every task of the tenant), a peer must see only the tasks it delegated
+ * (TASK-035.1). Replace with your identity provider (OIDC/JWT verification, mTLS, or headers from a trusted
+ * gateway).
+ */
+export function bearerTokens(
+  spec: string,
+  tenantId: string,
+): (req: IncomingMessage) => Promise<TrustedPrincipal | undefined> {
+  const entries = parseTokens(spec).map((e) => ({
+    digest: digest(e.token),
+    id: e.id,
+  }));
   return async (req) => {
     const m = /^Bearer (\S+)$/.exec(String(req.headers.authorization ?? ''));
     if (!m) return undefined;
     const d = digest(m[1]!);
     const hit = entries.find((e) => timingSafeEqual(e.digest, d));
-    return hit ? { id: hit.id, type: 'service', tenantId } : undefined;
+    return hit ? { id: hit.id, type: 'user', tenantId } : undefined;
   };
 }
 
@@ -162,6 +175,13 @@ export async function a2aEndpoint(
       ownerId: host.id,
       idempotencyKey: 'host-a2a-echo',
     },
+    host,
+  );
+  // Peers are not the owner: the instance accepts work only from principals it is shared with, and each peer then
+  // sees only its own tasks.
+  await app.shareInstance(
+    inst.id,
+    tokenPrincipals(env.AGENTROPY_A2A_TOKENS),
     host,
   );
   const url = `${env.AGENTROPY_PUBLIC_URL ?? `http://localhost:${env.PORT ?? 8080}`}/a2a`;
