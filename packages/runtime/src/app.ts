@@ -116,6 +116,8 @@ export interface LocalAppOptions {
   reasoning?: ReasoningProvider;
   /** Deterministic workflow engine behind `workflow.start` / `workflow.status`; completions wake waiting tasks. */
   workflow?: WorkflowEngine;
+  /** Minimum time between polls of a workflow engine that implements `poll` (default 5 s). */
+  workflowPollMs?: number;
   /** Extra built-in operation handlers, e.g. `complete` for `reasoning` backed by a model client. */
   operations?: Record<string, OperationHandler>;
   runtime?: Omit<
@@ -524,8 +526,21 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     },
   });
 
-  if (o.workflow)
-    bridgeWorkflowCompletions(o.workflow, (e) => wakeups.publish(e));
+  if (o.workflow) {
+    bridgeWorkflowCompletions(o.workflow, (e) => wakeups.publish(e), {
+      onError: (err) => runtime.report(err),
+    });
+    // Engines that cannot push are polled as a scheduler sweep, at most every workflowPollMs (FEAT-038.2).
+    const engine = o.workflow;
+    let lastPoll = -Infinity;
+    if (engine.poll)
+      wakeups.addSweep(async () => {
+        const at = Date.parse(now());
+        if (at - lastPoll < (o.workflowPollMs ?? 5_000)) return;
+        lastPoll = at;
+        await engine.poll!();
+      });
+  }
   const scheduler: SchedulerStatus = { running: false, consecutiveFailures: 0 };
   const app: LocalApp = {
     store,

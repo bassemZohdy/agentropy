@@ -56,7 +56,7 @@
   - Links: Ref: docs/review/2026-11-06-deep-review.md#lifecycle-correctness · Lane: runtime
   - [x] **FEAT-038.1** · mid · A `waiting` task past its deadline fails with T9 (deadline folded into the wake-up `dueAt`/`checkAt`); `budget.maxActivations` enforced at T5 with `BudgetExceeded` (R-32, R-35)
     - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts`
-  - [ ] **FEAT-038.2** · low · `subscribe()` re-activates a revoked subscription; workflow completions are retried when publishing fails and engine polls can run as scheduler sweeps (R-33, R-38)
+  - [x] **FEAT-038.2** · low · `subscribe()` re-activates a revoked subscription; workflow completions are retried when publishing fails and engine polls can run as scheduler sweeps (R-33, R-38)
     - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/testkit/test/providers.test.ts`
   - [ ] **FEAT-038.3** · mid · Deadline, timer `at` and `timeoutAt` validated and normalized to UTC ISO-8601 at acceptance and at the waiting disposition (R-34)
     - Done when: `pnpm exec vitest run packages/runtime/test/task-service.test.ts packages/runtime/test/runtime.test.ts`

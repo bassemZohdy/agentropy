@@ -10,13 +10,14 @@ import {
   type TrustedPrincipal,
 } from '@agentropy/core';
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   DefaultToolExecutor,
   DirectToolProvider,
   InMemoryToolRegistry,
   ToolProviderRegistry,
   WORKFLOW_SOURCE,
+  bridgeWorkflowCompletions,
   createLocalApp,
   openAICompatibleReasoning,
 } from '../../runtime/src/index.js';
@@ -573,5 +574,64 @@ describe('AI agent on an OpenAI-compatible provider (M2-08)', () => {
       'SchemaViolation',
     );
     expect(s.requests).toHaveLength(0);
+  });
+});
+
+describe('workflow completion delivery (FEAT-038.2)', () => {
+  it('retries a failed publish, reports it when attempts run out, and polls engines that cannot push', async () => {
+    const engine = new FakeWorkflowEngine({ w: () => 'done' });
+    let failures = 2;
+    const published: string[] = [];
+    bridgeWorkflowCompletions(
+      engine,
+      async (e) => {
+        if (failures-- > 0) throw new Error('store blip');
+        published.push(e.eventId);
+        return true;
+      },
+      { retryMs: 1 },
+    );
+    const ctx = { tenantId: 't-1', taskId: 'task', idempotencyKey: 'k1' };
+    const run = await engine.start('w', {}, ctx);
+    await engine.finish(run.runId);
+    await vi.waitFor(() =>
+      expect(published).toEqual([`workflow:${run.runId}:completed`]),
+    );
+
+    const lost: unknown[] = [];
+    const e2 = new FakeWorkflowEngine({ w: () => 1 });
+    bridgeWorkflowCompletions(
+      e2,
+      async () => {
+        throw new Error('down for good');
+      },
+      { attempts: 2, retryMs: 1, onError: (e) => lost.push(e) },
+    );
+    const r2 = await e2.start('w', {}, { ...ctx, idempotencyKey: 'k2' });
+    await e2.finish(r2.runId);
+    await vi.waitFor(() => expect(lost).toHaveLength(1));
+  });
+
+  it('createLocalApp polls an engine with poll() as a scheduler sweep, at most every workflowPollMs', async () => {
+    const engine = new FakeWorkflowEngine();
+    let polls = 0;
+    (engine as { poll?: () => Promise<void> }).poll = async () => {
+      polls++;
+    };
+    const clock = new FakeClock('2026-11-07T00:00:00.000Z');
+    const app = createLocalApp({
+      store: sqliteTempStore(),
+      pdp: new FakePolicy(),
+      profiles: BUILTIN_PROFILES,
+      now: clock.iso,
+      workflow: engine,
+      workflowPollMs: 5_000,
+    });
+    await app.wakeups.poll();
+    await app.wakeups.poll();
+    expect(polls).toBe(1);
+    clock.advanceBy(5_001);
+    await app.wakeups.poll();
+    expect(polls).toBe(2);
   });
 });

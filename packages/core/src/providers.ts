@@ -61,4 +61,9 @@ export interface WorkflowEngine {
   ): Promise<WorkflowRun>;
   status(runId: string, ctx: { tenantId: string }): Promise<WorkflowRun>;
   onFinished(listener: (run: WorkflowRun & { tenantId: string }) => void): void;
+  /**
+   * Optional, for engines that cannot push: re-checks the runs the engine started and reports the finished ones
+   * through `onFinished`. `createLocalApp` calls it as a scheduler sweep, at most every `workflowPollMs`.
+   */
+  poll?(): Promise<unknown>;
 }

@@ -54,7 +54,11 @@ export function workflowOperationHandlers(
   };
 }
 
-/** Bridges engine completions into the trusted event ingress (deduplicated by run ID). */
+/**
+ * Bridges engine completions into the trusted event ingress (deduplicated by run ID). A failed publish (a store
+ * blip) is retried with doubling backoff; after `attempts` it is handed to `onError`, because the event ID makes a
+ * later manual or polled redelivery safe (FEAT-038.2).
+ */
 export function bridgeWorkflowCompletions(
   engine: WorkflowEngine,
   publish: (event: {
@@ -63,9 +67,35 @@ export function bridgeWorkflowCompletions(
     tenantId: string;
     payload: unknown;
   }) => Promise<boolean>,
+  options: {
+    attempts?: number;
+    retryMs?: number;
+    onError?: (error: unknown) => void;
+  } = {},
 ): void {
+  const attempts = options.attempts ?? 5;
+  const send = async (event: Parameters<typeof publish>[0]) => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await publish(event);
+        return;
+      } catch (err) {
+        if (attempt >= attempts) {
+          try {
+            options.onError?.(err);
+          } catch {
+            // The hook must not turn a reported failure into an unhandled one.
+          }
+          return;
+        }
+        await new Promise((r) =>
+          setTimeout(r, (options.retryMs ?? 100) * 2 ** (attempt - 1)).unref(),
+        );
+      }
+    }
+  };
   engine.onFinished((run) => {
-    void publish({
+    void send({
       eventId: `workflow:${run.runId}:${run.state}`,
       source: WORKFLOW_SOURCE,
       tenantId: run.tenantId,

@@ -620,3 +620,24 @@ describe('deadline and activation budget while waiting (FEAT-038.1)', () => {
     expect(executions).toHaveLength(3); // activations 1, 2 and 3 ran
   });
 });
+
+describe('re-subscribing (FEAT-038.2)', () => {
+  it('subscribe after unsubscribe makes the same subscription active again, so events are delivered', async () => {
+    const h = harness({ builtin: true });
+    const sub = await h.wakeups.subscribe('task-x', 't-1', 'feed');
+    await h.wakeups.unsubscribe(sub, 'task-x');
+    expect(await h.wakeups.subscribe('task-x', 't-1', 'feed')).toBe(sub);
+    const row = await h.store.transaction((tx) => tx.get('subscriptions', sub));
+    expect((row?.value as { status: string }).status).toBe('active');
+    await h.wakeups.publish({
+      eventId: 'e1',
+      source: 'feed',
+      tenantId: 't-1',
+      payload: {},
+    });
+    const mail = await h.store.transaction((tx) =>
+      tx.find('mailbox', { where: { subscriptionId: sub } }),
+    );
+    expect(mail).toHaveLength(1);
+  });
+});

@@ -131,7 +131,14 @@ export class WakeupService {
   ): Promise<string> {
     const id = `sub:${digestOf({ taskId, source, filter: filter ?? null })}`;
     await this.store.transaction(async (tx) => {
-      if (!(await tx.get('subscriptions', id)))
+      const existing = await tx.get<Subscription>('subscriptions', id);
+      // One that `unsubscribe` revoked is active again: the deterministic ID must not leave it dead (FEAT-038.2).
+      if (existing?.value.status === 'revoked')
+        await tx.update<Subscription>('subscriptions', id, existing.revision, {
+          ...existing.value,
+          status: 'active',
+        });
+      else if (!existing)
         await tx.insert<Subscription>('subscriptions', id, {
           id,
           taskId,

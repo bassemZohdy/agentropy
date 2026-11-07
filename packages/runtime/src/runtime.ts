@@ -210,7 +210,8 @@ export class AgentRuntime {
     work.catch((err: unknown) => this.report(err));
   }
 
-  private report(err: unknown): void {
+  /** Counts and reports a failure the host contains (see `onError`). */
+  report(err: unknown): void {
     const error = toAgentropyError(err);
     this.o.tasks.telemetry.count(METRICS.schedulerErrors, 1, {
       'agentropy.error.code': error.code,
