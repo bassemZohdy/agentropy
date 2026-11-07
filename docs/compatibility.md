@@ -17,13 +17,13 @@
 |---|---|---|---|---|
 | `MemoryStore` | — | none | 1 | Tested: Store conformance |
 | `SqliteStore` (`node:sqlite`) | SQLite bundled with Node | durable-execution | several processes on one host (one writer at a time) | Tested: conformance, crash mid-transaction, three worker processes |
-| `PostgresStore` | PostgreSQL 17 server via node-postgres 8.23; PostgreSQL 18.6 via PGlite 0.5.10; other servers supporting `SERIALIZABLE`, advisory locks and `COLLATE "C"` are expected to work | durable-execution | many | Tested: Store conformance, contention and benchmarks on a PostgreSQL 17 server in CI (`postgres` job) and locally; PGlite in the offline suite. Workers on one database add little throughput ([server benchmarks](review/2026-11-06-postgres-server-benchmarks.md)) |
+| `PostgresStore` | PostgreSQL 17 server via node-postgres 8.23; PostgreSQL 18.6 via PGlite 0.5.10; other servers supporting `SERIALIZABLE`, advisory locks and `COLLATE "C"` are expected to work | durable-execution | many | Tested: Store conformance, contention and benchmarks on a PostgreSQL 17 server in CI (`postgres` job) and locally; PGlite in the offline suite. Throughput grows with workers since FEAT-032.3 and FEAT-032.5 ([server benchmarks](review/2026-11-06-postgres-server-benchmarks.md)) |
 
 ## Protocols and providers
 
 | Integration | Version | How verified |
 |---|---|---|
-| A2A | 1.0, JSON-RPC binding, `A2A-Version: 1.0` header; agent cards; SSE streaming (`SendStreamingMessage`, `SubscribeToTask`); push notifications (server) | Tested: provider and server conformance (unary and streaming), two-runtime delegation and streaming, polling fallback, push-notification configs and webhook delivery (server side, in-memory configs), federation. Not tested against third-party A2A implementations |
+| A2A | 1.0, JSON-RPC binding, `A2A-Version: 1.0` header; agent cards; SSE streaming (`SendStreamingMessage`, `SubscribeToTask`); push notifications (server, durable configs with sealed secrets); `ListTasks`, task continuation, file and data parts; HTTP binding | Tested: provider and server conformance (unary and streaming), two-runtime delegation and streaming, polling fallback, push-notification configs and webhook delivery, federation, the HTTP binding over sockets and in the container image, and interoperability with the reference JavaScript SDK `@a2a-js/sdk` 1.3.0 in both directions (offline). Other third-party implementations are not tested |
 | Model API | OpenAI-compatible `POST /chat/completions` with tools | Tested against recorded fixtures (no live endpoint) |
 | OpenTelemetry | `@opentelemetry/api` 1.9; SDK 2.0 (traces, metrics) | Tested: span and metric export to in-memory exporters |
 | Conductor | REST API (`/api/workflow`), Conductor OSS and Orkes | Tested against an in-process fake of the REST API; no live server |
@@ -55,4 +55,4 @@
 | [Runtime contract](runtime-contract.md) | 5 |
 | [Messaging contract](messaging-contract.md) | 4 |
 
-Store schema version 1 with additive evolution; a database written by a newer release is refused ([ADR-0029](adr/0029-upgrades-and-version-migration.md)).
+Store schema version 1 (`SqliteStore`) and 2 (`PostgresStore`, commit-ordered `seq`, FEAT-032.3), each with additive evolution (new collections and index fields are created and backfilled on start); a database written by a newer release is refused ([ADR-0029](adr/0029-upgrades-and-version-migration.md)).

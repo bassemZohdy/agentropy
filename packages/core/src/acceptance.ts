@@ -126,7 +126,7 @@ async function resolveImplementation(
   if (binding.features.remoteAuthority) {
     throw new AgentropyError(
       'UnsupportedOperation',
-      'Remote-authority implementations are not supported in M1',
+      'Remote-authority implementations are not supported; reach remote agents through a Communication provider',
       { details: { feature: 'remoteAuthority' } },
     );
   }

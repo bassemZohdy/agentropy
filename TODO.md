@@ -74,9 +74,6 @@
     - Done when: `pnpm exec vitest run packages/examples/test/host.test.ts`
   - [ ] **FEAT-041.3** · low · Reasoning budget reserved before the model call and settled after, tool-name collisions refused; skill digest cache and size bounds, one federation entry per card skill, abort signal through the direct provider, worker definition-set check (R-54, R-55)
     - Done when: `pnpm exec vitest run packages/testkit/test/providers.test.ts packages/runtime/test/skills.test.ts packages/testkit/test/federation.test.ts packages/runtime/test/router.test.ts`
-- [ ] **TASK-036** · P2 · low · Documentation and governance: compatibility.md and README.md reflect FEAT-032/034, documented `Internal` retry and cron day-field semantics (or aligned code), stale M1 wording removed, `SECURITY.md` with a reporting channel (R-56, R-57)
-  - Done when: `node scripts/check-doc-links.mjs`
-  - Links: Ref: docs/review/2026-11-06-deep-review.md#documentation-and-governance · Lane: docs
 - [ ] **TASK-037** · P2 · mid · Tests and tooling: cron and scheduler-loop tests, source-resolved coverage, type-aware lint, store adapter hygiene (R-58, R-59)
   - Done when: `pnpm check`
   - Links: Ref: docs/review/2026-11-06-deep-review.md#tests-and-tooling · Lane: test

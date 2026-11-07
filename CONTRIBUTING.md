@@ -28,8 +28,8 @@ The M0-08 workspace now has `pnpm build`, `pnpm lint`, `pnpm test`, and `pnpm fo
 
 ## Backlog workflow
 
-[TODO.md](TODO.md) is still the authoritative legacy roadmap. A [todo-skills migration](docs/plans/TODO-SKILLS-MIGRATION.md) is staged but not yet activated. Do not rewrite the TODO task structure or mark unimplemented work complete as part of an unrelated contribution.
+[TODO.md](TODO.md) is the live task tree (the [todo-skills](https://github.com/bassemZohdy/todo-skills) format, checked by `.todo/todo-lint.sh`) and [CHANGELOG.md](CHANGELOG.md) records verified roots. Do not rewrite the task structure or mark unimplemented work complete as part of an unrelated contribution; a task is done when its `Done when:` command passes.
 
 ## Review and releases
 
-Maintainers review functionality, security, DCO, licensing and compatibility. The first publication/release process will be specified after the walking-skeleton milestone; no release is implied by the architecture decisions.
+Maintainers review functionality, security, DCO, licensing and compatibility. Publishing is not decided yet ([release packaging](docs/release.md#owner-decisions)); no release is implied by the architecture decisions. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), not in public issues.
