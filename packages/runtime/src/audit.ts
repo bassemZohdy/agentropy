@@ -375,16 +375,17 @@ export class AuditService {
   ): Promise<AuditEvent[]> {
     await this.authorize(caller, q.tenantId, 'audit:read');
     return this.o.store.transaction(async (tx) => {
+      // The newest N, read newest-first with a limit (not the whole log), returned oldest-first.
       const rows = await tx.find<AuditIntentRow>('audit', {
         where: { tenantId: q.tenantId, ...(q.type ? { type: q.type } : {}) },
         orderBy: 'seq',
+        descending: true,
+        limit: Math.min(Math.max(q.limit ?? 100, 1), 1000),
       });
-      const out = rows
-        .slice(-Math.min(Math.max(q.limit ?? 100, 1), 1000))
-        .map((r) => ({
-          ...r.value.event,
-          details: { ...r.value.event.details, auditId: r.value.auditId },
-        }));
+      const out = rows.reverse().map((r) => ({
+        ...r.value.event,
+        details: { ...r.value.event.details, auditId: r.value.auditId },
+      }));
       await this.record(tx, caller, 'audit:read', 'allow', {
         ...(q.type ? { filterType: q.type } : {}),
         returned: out.length,

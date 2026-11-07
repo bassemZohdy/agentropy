@@ -802,8 +802,11 @@ export class PostgresStore implements Store {
           await this.flush(db, st, false);
         const by = String(o.orderBy ?? 'seq');
         if (by !== 'seq') allowed(c, by);
-        const order =
-          by === 'seq'
+        const order = o.descending
+          ? by === 'seq'
+            ? 'seq DESC'
+            : `"n_${by}" DESC NULLS LAST, "s_${by}" DESC NULLS LAST, seq DESC`
+          : by === 'seq'
             ? 'seq'
             : `"n_${by}" ASC NULLS FIRST, "s_${by}" ASC NULLS FIRST, seq`;
         const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';

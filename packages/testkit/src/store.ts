@@ -193,6 +193,25 @@ export function defineStoreConformance(
             ),
           ),
         ).toEqual(['w-null', 'w-z', 'w-a', 'w-b', 'w-e']);
+        // Descending is the exact reverse, with and without a limit.
+        t.expect(
+          await ids(
+            s.transaction((tx) =>
+              tx.find('wakeups', {
+                where: { status: 'armed' },
+                orderBy: 'dueAt',
+                descending: true,
+              }),
+            ),
+          ),
+        ).toEqual(['w-e', 'w-b', 'w-a', 'w-z', 'w-null']);
+        t.expect(
+          await ids(
+            s.transaction((tx) =>
+              tx.find('wakeups', { descending: true, limit: 2 }),
+            ),
+          ),
+        ).toEqual(['w-null', 'w-fired']);
         t.expect(
           await ids(
             s.transaction((tx) =>

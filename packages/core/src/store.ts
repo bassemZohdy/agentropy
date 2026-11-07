@@ -66,6 +66,8 @@ export interface FindOptions<C extends CollectionName> {
   /** Inclusive range on one indexed field (e.g. due wake-ups: dueAt <= now). */
   range?: { field: IndexField<C>; gte?: IndexValue; lte?: IndexValue };
   orderBy?: 'seq' | IndexField<C>;
+  /** Reverse the order (newest first for `seq`; nulls last for a field): with `limit`, the last N without reading all. */
+  descending?: boolean;
   afterSeq?: number;
   limit?: number;
 }
@@ -275,6 +277,7 @@ export class MemoryStore implements Store {
             ? a.d.seq - b.d.seq
             : compare(a.idx[by]!, b.idx[by]!) || a.d.seq - b.d.seq,
         );
+        if (o.descending) docs.reverse();
         return structuredClone(
           docs.slice(0, o.limit ?? docs.length).map((x) => x.d),
         ) as StoredDocument<T>[];

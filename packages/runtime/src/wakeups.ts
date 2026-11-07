@@ -109,8 +109,9 @@ export class WakeupService {
   }
 
   /** Evaluate every armed registration once; returns how many fired. Safe to call repeatedly and concurrently. */
-  async poll(): Promise<number> {
-    for (const sweep of this.sweeps) await sweep();
+  async poll(options: { sweeps?: boolean } = {}): Promise<number> {
+    if (options.sweeps !== false)
+      for (const sweep of this.sweeps) await sweep();
     const now = this.now();
     const at = Date.parse(now);
     const full = at - this.lastFullScan >= (this.options.fullScanMs ?? 60_000);
@@ -218,8 +219,10 @@ export class WakeupService {
           !matches(s.value.filter, event.payload)
         )
           continue;
+        // Only whether the mailbox is full matters: read at most `limit` rows.
         const pending = await tx.find<MailboxEntry>('mailbox', {
           where: { subscriptionId: s.id, consumed: 0 },
+          limit,
         });
         if (pending.length >= limit) {
           await tx.update<Subscription>('subscriptions', s.id, s.revision, {
@@ -246,7 +249,8 @@ export class WakeupService {
       }
       return r;
     });
-    if (result.accepted) await this.poll();
+    // The event poked the registrations it concerns: evaluate those (the due-time index), not every sweep again.
+    if (result.accepted) await this.poll({ sweeps: false });
     return result;
   }
 

@@ -82,8 +82,8 @@ export class OutboxRelay {
   private readonly consumers: EventConsumer[];
   private readonly local: EventConsumer[];
   private draining?: Promise<number>;
-  /** Seq of the last row handed to local consumers (lease mode). */
-  private cursor = 0;
+  /** Seq of the last row handed to local consumers (lease mode); `undefined` until the first follow. */
+  private cursor: number | undefined;
 
   constructor(private readonly o: OutboxRelayOptions) {
     this.local = [...(o.localConsumers ?? [])];
@@ -165,10 +165,22 @@ export class OutboxRelay {
   /** Hands every committed row after the cursor to the local consumers, published or not. */
   private async follow(): Promise<void> {
     const limit = this.o.batchSize ?? 100;
+    // A process that has just started has no subscribers yet: start at the newest row, not at the first one ever
+    // written (FEAT-039.4). Subscriptions replay from the outbox themselves.
+    this.cursor ??=
+      (
+        await this.o.store.transaction((tx) =>
+          tx.find<OutboxRecord>('outbox', {
+            orderBy: 'seq',
+            descending: true,
+            limit: 1,
+          }),
+        )
+      )[0]?.seq ?? 0;
     for (;;) {
       const rows = await this.o.store.transaction((tx) =>
         tx.find<OutboxRecord>('outbox', {
-          afterSeq: this.cursor,
+          afterSeq: this.cursor!,
           orderBy: 'seq',
           limit,
         }),

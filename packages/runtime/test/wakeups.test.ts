@@ -641,3 +641,34 @@ describe('re-subscribing (FEAT-038.2)', () => {
     expect(mail).toHaveLength(1);
   });
 });
+
+describe('event ingestion cost (FEAT-039.4)', () => {
+  it('publishing an event evaluates the poked wake-ups but does not run every sweep again', async () => {
+    const h = harness({ builtin: true });
+    let sweeps = 0;
+    h.wakeups.addSweep(async () => void sweeps++);
+    h.define('listener', {
+      handle: async (inv) =>
+        inv.activation === 1
+          ? {
+              kind: 'waiting',
+              wakeup: { anyOf: [{ kind: 'event', subscription: 'manual' }] },
+              checkpoint: null,
+            }
+          : { kind: 'completed', output: inv.wakeReason },
+    });
+    await h.wakeups.subscribe('placeholder', 't-1', 'feed'); // an active subscription to deliver to
+    await h.delegate((await h.instance('listener')).id, {}, 'l');
+    await settle(h);
+    sweeps = 0;
+    await h.wakeups.publish({
+      eventId: 'e-1',
+      source: 'feed',
+      tenantId: 't-1',
+      payload: {},
+    });
+    expect(sweeps).toBe(0); // the ingestion poll skipped the sweeps
+    await h.wakeups.poll();
+    expect(sweeps).toBe(1); // the scheduler's own poll still runs them
+  });
+});

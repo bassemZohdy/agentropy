@@ -58,9 +58,9 @@
     - Done when: `pnpm exec vitest run packages/runtime/test/audit-forwarder.test.ts packages/testkit/test/audit-retention.test.ts`
   - [x] **FEAT-039.2** · high · Remote projections sync with per-projection backoff and a `taskId` index (R-40; the peer's SSE stream instead of polling stays a follow-up)
     - Done when: `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
-  - [ ] **FEAT-039.3** · high · `listTasks`, quotas, briefing, event numbering and audit queries use pushed-down limits and new indexes (`tasks.createdAt`/`callerId`/`ownerId`, descending `FindOptions`) (R-42; due executions, tenant running counts and the human-action sweep done: R-41)
+  - [ ] **FEAT-039.3** · high · `listTasks`, quotas, briefing and event numbering use pushed-down limits and new indexes (`tasks.createdAt`/`callerId`/`ownerId`) (R-42; done: due executions, tenant running counts, the human-action sweep, descending `FindOptions` and the audit query)
     - Done when: `pnpm exec vitest run packages/runtime/test/hot-paths.test.ts packages/testkit/test/scale.test.ts packages/testkit/test/multi-worker.test.ts packages/store-postgres/test packages/store-sqlite/test`
-  - [ ] **FEAT-039.4** · mid · Publish evaluates only poked registrations, bounded pending counts, batched compaction, relay follow cursor at max seq, paged task-event streams; stuck outbox rows get `agentropy.outbox.stuck`, bounded attempts and a readiness detail (R-43, R-44)
+  - [ ] **FEAT-039.4** · mid · Paged task-event streams (`afterSeq`); stuck outbox rows get `agentropy.outbox.stuck`, bounded attempts and a readiness detail (R-43, R-44; done: ingestion without sweeps, bounded pending counts, batched compaction, relay cursor at the newest row)
     - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/runtime/test/outbox-inbox.test.ts`
 - [ ] **FEAT-041** · P2 · mid · Composition gaps: skills in `createLocalApp`, a PostgreSQL host mode, reasoning budget reservation, loader and federation details (R-52–R-55)
   - Done when: `pnpm exec vitest run packages/runtime/test/skills.test.ts packages/testkit/test/providers.test.ts packages/examples/test/host.test.ts`

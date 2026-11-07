@@ -312,7 +312,9 @@ export class SqliteStore implements Store {
             'Internal',
             `${c}.${String(by)} is not indexed`,
           );
-        const order = by === 'seq' ? 'seq' : `${col(String(by))}, seq`;
+        const dir = o.descending ? ' DESC' : '';
+        const order =
+          by === 'seq' ? `seq${dir}` : `${col(String(by))}${dir}, seq${dir}`;
         const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
         const limit =
           o.limit !== undefined
