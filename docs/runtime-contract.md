@@ -49,7 +49,7 @@ stateDiagram-v2
 | T6 (gate) | `running` | `assigned` | A protected effect was refused with `AuthorityExpired` or `PolicyDecisionUnavailable` | Not a handler failure: `attempt` unchanged and not counted against `maxAttempts`; new execution queued; the ADR-0024 gate holds it until a fresh decision (policy outage) or reauthorization (lost grant) |
 | T7 | `running` | `completed` | Handler returned `completed` | Output validated against `outputSchema` |
 | T8 | `running` | `failed` | Handler returned `failed` non-retryable, attempts exhausted, output invalid, or `IncompatibleVersion` | Typed failure recorded |
-| T9 | `created`, `assigned`, `waiting` | `failed` | Task deadline passed; wake-up `timeoutAt` passed with `onTimeout: "fail"`; awaited human action expired with `onExpiry: "fail-task"` | Queued execution aborted (E7); registrations revoked |
+| T9 | `created`, `assigned`, `waiting` | `failed` | Task deadline passed (also while `waiting`: the deadline is a due time of the wake-up registration, outcome `Timeout`); wake-up `timeoutAt` passed with `onTimeout: "fail"`; awaited human action expired with `onExpiry: "fail-task"`; `budget.maxActivations` spent when a wake-up would start the next activation (outcome `BudgetExceeded`) | Queued execution aborted (E7); registrations revoked |
 | T10 | `created`, `assigned`, `waiting` | `cancelled` | `cancel`, or instance retired with `force` | Queued execution aborted (E7); registrations and event subscriptions revoked |
 | T11 | `running` | `cancelled` | `cancel` | `cancelRequestedAt` set and `AbortSignal` fired first; transition applies when the execution ends **or** `cancelGracePeriod` (runtime setting, default 30 s) expires; the execution is then fenced as `lost` (E8) |
 

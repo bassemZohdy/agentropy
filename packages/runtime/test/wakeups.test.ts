@@ -567,3 +567,56 @@ describe('deferral and restart', () => {
     ];
   });
 });
+
+describe('deadline and activation budget while waiting (FEAT-038.1)', () => {
+  const forever: Agent = {
+    handle: async () => ({
+      kind: 'waiting',
+      wakeup: { anyOf: [{ kind: 'event', subscription: 'never' }] },
+      checkpoint: null,
+    }),
+  };
+
+  it('a waiting task past its deadline fails with Timeout, though nothing woke it', async () => {
+    const h = harness({ builtin: true });
+    h.define('patient', forever);
+    const inst = await h.instance('patient');
+    const t = await h.delegate(inst.id, {}, 'd', alice, {
+      deadline: '2026-11-05T01:00:00.000Z',
+    });
+    await settle(h);
+    expect(await status(h, t.taskId)).toBe('waiting');
+    h.clock.advanceBy(30 * 60_000); // 00:30, before the deadline
+    await settle(h);
+    expect(await status(h, t.taskId)).toBe('waiting');
+    h.clock.advanceBy(31 * 60_000); // 01:01
+    await settle(h);
+    const snap = await h.tasks.getTask(t.taskId, alice);
+    expect([snap.status, snap.outcome?.code]).toEqual(['failed', 'Timeout']);
+  });
+
+  it('budget.maxActivations refuses the activation after the last one', async () => {
+    const h = harness({ builtin: true });
+    h.define('ticker', {
+      handle: async () => ({
+        kind: 'waiting',
+        wakeup: { anyOf: [{ kind: 'timer', at: '2026-11-05T00:00:00.000Z' }] },
+        checkpoint: null,
+      }),
+    });
+    const inst = await h.instance('ticker');
+    const t = await h.delegate(inst.id, {}, 'b', alice, {
+      budget: { maxActivations: 3 },
+    });
+    await settle(h);
+    const snap = await h.tasks.getTask(t.taskId, alice);
+    expect([snap.status, snap.outcome?.code]).toEqual([
+      'failed',
+      'BudgetExceeded',
+    ]);
+    const executions = await h.store.transaction((tx) =>
+      tx.find('executions', { where: { taskId: t.taskId } }),
+    );
+    expect(executions).toHaveLength(3); // activations 1, 2 and 3 ran
+  });
+});

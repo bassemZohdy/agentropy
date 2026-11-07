@@ -908,9 +908,11 @@ export class AgentRuntime {
               ? nextOccurrence(c.cron, c.timezone, this.now())
               : null,
         );
+        // The task's own deadline is a due time too: a waiting task past it fails with T9 (FEAT-038.1).
         const times = [
           ...conditionDue.filter((x): x is string => x !== null),
           ...(d.wakeup.timeoutAt ? [d.wakeup.timeoutAt] : []),
+          ...(t.deadline ? [t.deadline] : []),
         ].sort();
         const id = this.o.tasks.newId('wakeup');
         await tx.insert<WakeupRecord>('wakeups', id, {

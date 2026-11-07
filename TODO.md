@@ -54,7 +54,7 @@
 - [ ] **FEAT-038** · P1 · high · Lifecycle correctness: deadlines while waiting, activation budget, subscription re-activation, timestamp validation, remote error codes, envelopes (R-32–R-38)
   - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/runtime/test/task-service.test.ts packages/testkit/test/a2a.test.ts packages/testkit/test/providers.test.ts`
   - Links: Ref: docs/review/2026-11-06-deep-review.md#lifecycle-correctness · Lane: runtime
-  - [ ] **FEAT-038.1** · mid · A `waiting` task past its deadline fails with T9 (deadline folded into the wake-up `dueAt`/`checkAt`); `budget.maxActivations` enforced at T5 with `BudgetExceeded` (R-32, R-35)
+  - [x] **FEAT-038.1** · mid · A `waiting` task past its deadline fails with T9 (deadline folded into the wake-up `dueAt`/`checkAt`); `budget.maxActivations` enforced at T5 with `BudgetExceeded` (R-32, R-35)
     - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts`
   - [ ] **FEAT-038.2** · low · `subscribe()` re-activates a revoked subscription; workflow completions are retried when publishing fails and engine polls can run as scheduler sweeps (R-33, R-38)
     - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/testkit/test/providers.test.ts`

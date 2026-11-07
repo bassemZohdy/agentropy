@@ -298,6 +298,14 @@ export class WakeupService {
       )
         return false;
       const now = this.now();
+      // T9: a waiting task past its deadline fails, whatever it waits for (FEAT-038.1).
+      if (task.value.deadline && task.value.deadline <= now) {
+        await this.tasks.terminate(tx, task, 'failed', 'T9', {
+          code: 'Timeout',
+          message: 'Task deadline passed',
+        });
+        return true;
+      }
       const hit = await this.evaluate(tx, w.value, now);
       if (!hit) {
         // Nothing holds yet: wait for the next due time or a poke.
@@ -307,6 +315,23 @@ export class WakeupService {
             checkAt: w.value.dueAt,
           });
         return false;
+      }
+      // The activation budget (`budget.maxActivations`) is spent: no further activation, T9 (FEAT-038.1).
+      const maxActivations = task.value.budget?.maxActivations;
+      if (
+        maxActivations !== undefined &&
+        task.value.activation >= maxActivations
+      ) {
+        await tx.update<WakeupRecord>('wakeups', w.id, w.revision, {
+          ...w.value,
+          status: 'fired',
+          reason: hit.reason,
+        });
+        await this.tasks.terminate(tx, task, 'failed', 'T9', {
+          code: 'BudgetExceeded',
+          message: 'Activation budget spent',
+        });
+        return true;
       }
       // An expired human action whose request says fail-task fails the task (T9) instead of resuming it.
       if (
