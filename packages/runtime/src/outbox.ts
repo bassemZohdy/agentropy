@@ -115,6 +115,35 @@ export class OutboxRelay {
       });
   }
 
+  /**
+   * Rows that consumers keep failing on (`attempts` at or above `minAttempts`). Delivery is in order, so the oldest
+   * of them holds back every later row: this is what an operator or a readiness probe looks at (FEAT-039.4).
+   */
+  async stuck(minAttempts = 5): Promise<
+    {
+      eventId: string;
+      attempts: number;
+      occurredAt: string;
+      lastError?: string;
+    }[]
+  > {
+    const rows = await this.o.store.transaction((tx) =>
+      tx.find<OutboxRecord>('outbox', {
+        where: { published: 0 },
+        orderBy: 'seq',
+        limit: 100,
+      }),
+    );
+    return rows
+      .filter((r) => r.value.attempts >= minAttempts)
+      .map((r) => ({
+        eventId: r.value.eventId,
+        attempts: r.value.attempts,
+        occurredAt: r.value.occurredAt,
+        ...(r.value.lastError ? { lastError: r.value.lastError } : {}),
+      }));
+  }
+
   /** Publish pending rows in commit order; stops at the first failing row so order is preserved. Returns rows published. */
   drain(): Promise<number> {
     // One drain at a time per relay keeps per-relay order; concurrent callers share the running drain.
@@ -214,6 +243,9 @@ export class OutboxRelay {
           this.o.faults?.checkpoint('relay.markPublished');
           this.observe(row.value);
         } catch (err) {
+          this.o.telemetry?.count(METRICS.outboxFailures, 1, {
+            'agentropy.event.type': row.value.type,
+          });
           await this.o.store.transaction(async (tx) => {
             const cur = await tx.get<OutboxRecord>('outbox', row.id);
             if (cur && cur.value.published === 0)
@@ -270,14 +302,23 @@ export class TaskEventStream implements EventConsumer {
     });
     let last = from;
     let signal = this.signal(taskId);
+    // Each pass reads only the rows committed since the previous one (by seq), not the task's whole history.
+    let afterSeq = 0;
+    let terminalRow: OutboxRecord | undefined;
     try {
       for (;;) {
         const rows = await this.tasks.o.store.transaction((tx) =>
           tx.find<OutboxRecord>('outbox', {
             where: { aggregateId: taskId },
             orderBy: 'seq',
+            afterSeq,
           }),
         );
+        if (rows.length) afterSeq = rows[rows.length - 1]!.seq;
+        terminalRow ??= rows.find(
+          (r) =>
+            r.value.sequence === 0 && isTerminal(TASK_MACHINE, r.value.status),
+        )?.value;
         const fresh = rows
           .map((r) => r.value)
           .sort((a, b) => a.revision - b.revision || a.sequence - b.sequence)
@@ -290,13 +331,9 @@ export class TaskEventStream implements EventConsumer {
           yield event;
         }
         // Events committed with the terminal transition (same transaction) were in this read; nothing follows.
-        const terminal = rows.find(
-          (r) =>
-            r.value.sequence === 0 && isTerminal(TASK_MACHINE, r.value.status),
-        );
-        if (terminal && !isAfter(terminal.value, last)) return;
+        if (terminalRow && !isAfter(terminalRow, last)) return;
         // Events of a long-finished task may have been compacted away: stop instead of waiting forever.
-        if (!terminal) {
+        if (!terminalRow) {
           const t = await this.tasks.o.store.transaction((tx) =>
             tx.get<{ status: string }>('tasks', taskId),
           );

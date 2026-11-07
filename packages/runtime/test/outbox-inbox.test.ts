@@ -16,10 +16,11 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   DirectCommunicationProvider,
+  OutboxRelay,
   type OutboxRecord,
   type PublishedEvent,
 } from '../src/index.js';
-import { alice, bob, code, harness, mallory } from './harness.js';
+import { alice, bob, code, completes, harness, mallory } from './harness.js';
 
 type H = ReturnType<typeof harness>;
 
@@ -659,5 +660,41 @@ describe('AC-17: envelope validation and replayed (revision, sequence)', () => {
     expect(
       isAfter({ revision: 4, sequence: 0 }, { revision: 3, sequence: 9 }),
     ).toBe(true);
+  });
+});
+
+describe('stuck outbox rows (FEAT-039.4)', () => {
+  it('a consumer that keeps failing is counted, and the row it blocks is reported with its attempts', async () => {
+    const h = harness();
+    h.define('d', completes());
+    await h.delegate((await h.instance('d')).id, {}, 'k');
+    const failures: string[] = [];
+    const relay = new OutboxRelay({
+      store: h.store,
+      consumers: [
+        {
+          id: 'bad',
+          handle: async () => {
+            throw new Error('consumer down');
+          },
+        },
+      ],
+      telemetry: {
+        startSpan: () => ({
+          traceparent: undefined,
+          setAttributes() {},
+          fail() {},
+          end() {},
+        }),
+        count: (name) => void failures.push(name),
+        record() {},
+      },
+    });
+    expect(await relay.stuck(3)).toEqual([]);
+    for (let i = 0; i < 3; i++) expect(await relay.drain()).toBe(0);
+    expect(failures).toEqual(Array(3).fill('agentropy.outbox.failures'));
+    const [stuck, ...more] = await relay.stuck(3);
+    expect(more).toEqual([]); // delivery halts at the first failing row
+    expect(stuck).toMatchObject({ attempts: 3, lastError: 'Error' });
   });
 });

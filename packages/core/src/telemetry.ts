@@ -63,6 +63,8 @@ export const METRICS = {
   storeConflicts: 'agentropy.store.conflicts',
   /** Scheduler ticks (wake-up poll plus dispatch) that threw; the loop goes on (FEAT-037.1). */
   schedulerErrors: 'agentropy.scheduler.errors',
+  /** Outbox deliveries that a consumer failed (the row is retried and blocks later rows until it succeeds). */
+  outboxFailures: 'agentropy.outbox.failures',
 } as const;
 
 /** Span names (D-13). */

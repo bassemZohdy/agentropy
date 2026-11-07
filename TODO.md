@@ -60,7 +60,7 @@
     - Done when: `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
   - [ ] **FEAT-039.3** · high · The inbox briefing uses pushed-down reads (R-42; done: per-task event numbering, due executions, tenant running counts, the human-action sweep, descending `FindOptions`, the audit query, `listTasks` and the task quotas through new `tasks` indexes)
     - Done when: `pnpm exec vitest run packages/runtime/test/hot-paths.test.ts packages/testkit/test/scale.test.ts packages/testkit/test/multi-worker.test.ts packages/store-postgres/test packages/store-sqlite/test`
-  - [ ] **FEAT-039.4** · mid · Paged task-event streams (`afterSeq`); stuck outbox rows get `agentropy.outbox.stuck`, bounded attempts and a readiness detail (R-43, R-44; done: ingestion without sweeps, bounded pending counts, batched compaction, relay cursor at the newest row)
+  - [x] **FEAT-039.4** · mid · Incremental task-event streams (`afterSeq`) and visible stuck outbox rows (`agentropy.outbox.failures`, `OutboxRelay.stuck()`); with ingestion without sweeps, bounded pending counts, batched compaction and the relay cursor at the newest row (R-43, R-44; a bounded-attempts policy per consumer and a `/readyz` detail are not done)
     - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/runtime/test/outbox-inbox.test.ts`
 - [ ] **FEAT-041** · P2 · mid · Composition gaps: skills in `createLocalApp`, a PostgreSQL host mode, reasoning budget reservation, loader and federation details (R-52–R-55)
   - Done when: `pnpm exec vitest run packages/runtime/test/skills.test.ts packages/testkit/test/providers.test.ts packages/examples/test/host.test.ts`
