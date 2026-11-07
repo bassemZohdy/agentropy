@@ -29,8 +29,10 @@ export type A2APushFetch = (
     headers: Record<string, string>;
     body: string;
     redirect: 'manual';
+    /** Aborts at `timeoutMs`: a webhook that never answers must not hold the watcher. */
+    signal: AbortSignal;
   },
-) => Promise<{ status: number }>;
+) => Promise<{ status: number; body?: { cancel(): Promise<unknown> } | null }>;
 
 export interface A2APushOptions {
   /**
@@ -43,6 +45,8 @@ export interface A2APushOptions {
   fetch?: A2APushFetch;
   /** Attempts per notification (default 3); 5xx, 429 and transport errors are retried with doubling backoff. */
   maxAttempts?: number;
+  /** Time one delivery attempt may take before it is aborted and counted as failed (default 10 s). */
+  timeoutMs?: number;
   /** First retry delay in ms (default 200). */
   retryMs?: number;
   /** Configs one principal may hold per task (default 10). */
@@ -332,14 +336,16 @@ export function createPushNotifications(
     let status: number | undefined;
     for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
-        status = (
-          await send(c.url, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(payload),
-            redirect: 'manual',
-          })
-        ).status;
+        const res = await send(c.url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+          redirect: 'manual',
+          signal: AbortSignal.timeout(push.timeoutMs ?? 10_000),
+        });
+        status = res.status;
+        // The reply body is not read: release the connection.
+        void res.body?.cancel().catch(() => undefined);
         if (status >= 200 && status < 300) return true;
         if (status < 500 && status !== 429) break; // the receiver refused it; retrying will not help
       } catch {

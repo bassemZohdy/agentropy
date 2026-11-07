@@ -33,6 +33,11 @@ export interface A2AHttpOptions {
    * Streams open at once (default 100); more get `503`. A stream is released as soon as its client goes away.
    */
   maxStreams?: number;
+  /**
+   * Interval of the `: ping` comment written on an open stream (default 15 s), so a proxy's idle timeout does not cut
+   * a stream whose task waits a long time for its next state. Clients ignore SSE comments.
+   */
+  keepAliveMs?: number;
 }
 
 export interface A2AHttpHandler {
@@ -125,6 +130,13 @@ export function createA2AHttpHandler(
         json(res, 405, { error: 'method not allowed' }, { allow: 'POST' });
         return true;
       }
+      // Authenticate before reading anything: an unauthenticated caller costs a header check, not a body read.
+      const principal = await o.authenticate(req).catch(() => undefined);
+      if (!principal) {
+        req.resume();
+        rpcError(res, 401, null, -32600, 'Authentication required');
+        return true;
+      }
       const type = String(req.headers['content-type'] ?? '');
       if (!/^application\/(a2a\+)?json\s*(;|$)/i.test(type)) {
         req.resume();
@@ -155,7 +167,6 @@ export function createA2AHttpHandler(
         rpcError(res, 200, null, -32700, 'Parse error');
         return true;
       }
-      const principal = await o.authenticate(req).catch(() => undefined);
       const version = req.headers['a2a-version'];
       const headers =
         typeof version === 'string' ? { 'a2a-version': version } : {};
@@ -183,6 +194,10 @@ export function createA2AHttpHandler(
           return true;
         }
         streams++;
+        const ping = setInterval(() => {
+          if (!gone.signal.aborted) res.write(': ping\n\n');
+        }, o.keepAliveMs ?? 15_000);
+        ping.unref();
         try {
           res.writeHead(200, {
             'content-type': 'text/event-stream',
@@ -191,9 +206,20 @@ export function createA2AHttpHandler(
           });
           for await (const event of sseFrames(r.frames)) {
             if (gone.signal.aborted) break;
-            res.write(event);
+            // A slow reader is waited for (or its disconnect), not buffered without bound.
+            if (!res.write(event))
+              await new Promise<void>((resolve) => {
+                const done = () => {
+                  res.off('drain', done);
+                  res.off('close', done);
+                  resolve();
+                };
+                res.once('drain', done);
+                res.once('close', done);
+              });
           }
         } finally {
+          clearInterval(ping);
           streams--;
           res.end();
         }

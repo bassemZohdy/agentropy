@@ -168,6 +168,11 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
         details: { protocol: 'a2a' },
       });
     }
+    // An error reply's body is never read: release its connection (a real fetch Response holds it until read).
+    if (res.status === 401 || res.status === 403 || res.status >= 500)
+      void (res.body as { cancel?: () => Promise<unknown> } | null | undefined)
+        ?.cancel?.()
+        ?.catch(() => undefined);
     if (res.status === 401 || res.status === 403)
       throw new AgentropyError(
         'AuthorityExpired',

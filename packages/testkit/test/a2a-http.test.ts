@@ -105,7 +105,9 @@ afterEach(async () => {
 });
 
 /** A LocalApp exposed over HTTP on 127.0.0.1; `gate` holds the handler until opened. */
-async function host(o: { maxBodyBytes?: number; maxStreams?: number } = {}) {
+async function host(
+  o: { maxBodyBytes?: number; maxStreams?: number; keepAliveMs?: number } = {},
+) {
   let open_!: () => void;
   let gate = new Promise<void>((r) => (open_ = r));
   const app = createLocalApp({
@@ -374,5 +376,44 @@ describe('A2A HTTP binding (FEAT-034.1)', () => {
       normalized: 'completed',
       output: { summary: 'summary of q5' },
     });
+  });
+});
+
+describe('A2A HTTP binding hardening (TASK-035.2)', () => {
+  it('an open stream carries keep-alive comments while its task waits', async () => {
+    const h = await host({ keepAliveMs: 15 });
+    const res = await post(
+      h.base,
+      rpc('SendStreamingMessage', message('m-ka', 'idle')),
+      { accept: 'text/event-stream' },
+    );
+    expect(res.status).toBe(200);
+    let seen = '';
+    const reader = (async () => {
+      for await (const c of res.body) {
+        seen += String(c);
+        if (seen.includes(': ping')) return;
+      }
+    })();
+    await Promise.race([
+      reader,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('no keep-alive in 2 s')), 2_000),
+      ),
+    ]);
+    expect(seen).toContain(': ping');
+    h.release(); // let the task finish so the stream ends
+  });
+
+  it('answers 401 without reading the body', async () => {
+    const h = await host({ maxBodyBytes: 64 });
+    const anon = await post(
+      h.base,
+      rpc('GetTask', { id: 'x' }).padEnd(10_000),
+      {
+        authorization: 'Bearer wrong',
+      },
+    );
+    expect(anon.status).toBe(401); // not 413: the oversized body was never looked at
   });
 });

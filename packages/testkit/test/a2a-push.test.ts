@@ -567,3 +567,27 @@ describe('A2A push notifications, durable (FEAT-034.3)', () => {
     expect(idle).toBe('idle');
   });
 });
+
+describe('webhook delivery timeout (TASK-035.2)', () => {
+  it('a webhook that never answers is aborted after timeoutMs and reported, and the watcher ends', async () => {
+    const signals: AbortSignal[] = [];
+    const hang: A2APushFetch = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        signals.push(init.signal);
+        init.signal.addEventListener('abort', () =>
+          reject(new Error('aborted')),
+        );
+      });
+    const p = await appPeer({ fetch: hang, timeoutMs: 20, maxAttempts: 1 });
+    await rpc(p.server, 'CreateTaskPushNotificationConfig', {
+      taskId: p.taskId,
+      id: 'cfg-1',
+      url: HOOK,
+    });
+    await p.b.runUntilIdle();
+    await p.server.pushIdle(); // would never resolve without the timeout
+    expect(signals.length).toBeGreaterThan(0);
+    expect(signals.every((s) => s.aborted)).toBe(true);
+    expect(p.errors.length).toBeGreaterThan(0);
+  });
+});

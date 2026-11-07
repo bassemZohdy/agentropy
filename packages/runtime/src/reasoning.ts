@@ -184,7 +184,11 @@ type FetchLike = (
     body: string;
     signal: AbortSignal;
   },
-) => Promise<{ status: number; json(): Promise<unknown> }>;
+) => Promise<{
+  status: number;
+  json(): Promise<unknown>;
+  body?: { cancel(): Promise<unknown> } | null;
+}>;
 
 /** Chat Completions client (OpenAI-compatible wire format). */
 export function openAICompatibleReasoning(o: {
@@ -253,7 +257,7 @@ export function openAICompatibleReasoning(o: {
         () => controller.abort(new Error('timeout')),
         o.timeoutMs ?? 60_000,
       );
-      let res: { status: number; json(): Promise<unknown> };
+      let res: Awaited<ReturnType<FetchLike>>;
       try {
         res = await doFetch(url, {
           method: 'POST',
@@ -278,7 +282,8 @@ export function openAICompatibleReasoning(o: {
         clearTimeout(timer);
         ctx.signal.removeEventListener('abort', onAbort);
       }
-      // Provider error bodies are not passed through: they can echo prompts or keys.
+      // Provider error bodies are not passed through (they can echo prompts or keys) and not read: release them.
+      if (res.status >= 400) void res.body?.cancel().catch(() => undefined);
       if (res.status === 401 || res.status === 403)
         throw new AgentropyError(
           'AuthorityExpired',
