@@ -21,7 +21,8 @@ export const STORE_COLLECTIONS = {
   inbox: ['tenantId', 'ownerId', 'status'],
   humanActions: ['taskId', 'status'],
   idempotency: ['tenantId'],
-  audit: ['tenantId', 'type'],
+  /** `forwarded` (0/1) lets the forwarder read only rows still to send instead of the whole log (FEAT-039.1). */
+  audit: ['tenantId', 'type', 'forwarded'],
   gates: ['taskId', 'nextCheckAt'],
   instances: ['tenantId', 'ownerId'],
   sessions: ['tenantId'],

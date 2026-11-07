@@ -110,13 +110,30 @@ export class AuditForwarder {
     },
   ) {}
 
-  /** Forward committed intents in commit order; stops at the first failure. Returns how many were forwarded. */
+  /**
+   * Forward committed intents in commit order; stops at the first failure. Returns how many were forwarded. Reads
+   * only rows not yet forwarded (indexed), a batch at a time, so a tick costs what is pending, not the whole log.
+   */
   async drain(): Promise<number> {
-    const rows = (
-      await this.o.store.transaction((tx) =>
-        tx.find<AuditIntentRow>('audit', { orderBy: 'seq' }),
-      )
-    ).filter((r) => r.value.forwarded === 0);
+    const batch = 200;
+    let n = 0;
+    for (;;) {
+      const rows = await this.o.store.transaction((tx) =>
+        tx.find<AuditIntentRow>('audit', {
+          where: { forwarded: 0 },
+          orderBy: 'seq',
+          limit: batch,
+        }),
+      );
+      const sent = await this.forward(rows);
+      n += sent;
+      if (sent < batch || sent < rows.length) return n;
+    }
+  }
+
+  private async forward(
+    rows: { id: string; revision: number; value: AuditIntentRow }[],
+  ): Promise<number> {
     let n = 0;
     for (const row of rows) {
       try {
