@@ -9,7 +9,16 @@
 import { AgentropyError } from './errors.js';
 
 export const STORE_COLLECTIONS = {
-  tasks: ['tenantId', 'status', 'instanceId', 'parentTaskId'],
+  /** `callerId`, `ownerId` and `createdAt` let listings and quotas read what concerns them (FEAT-039.3). */
+  tasks: [
+    'tenantId',
+    'status',
+    'instanceId',
+    'parentTaskId',
+    'callerId',
+    'ownerId',
+    'createdAt',
+  ],
   /** `runAt` and `tenantId` let a worker read what is due, and a tenant's running count, without scanning (FEAT-039.3). */
   executions: ['taskId', 'state', 'runAt', 'tenantId'],
   checkpoints: ['taskId'],

@@ -570,32 +570,57 @@ export class TaskService {
   ): Promise<{ tasks: TaskSnapshot[]; cursor: string }> {
     if (!caller?.id || !caller.tenantId)
       throw new AgentropyError('Unauthenticated', 'No trusted principal');
-    const after = query.cursor ? Number(query.cursor) : 0;
-    if (!Number.isSafeInteger(after) || after < 0)
+    const start = query.cursor ? Number(query.cursor) : 0;
+    if (!Number.isSafeInteger(start) || start < 0)
       throw new AgentropyError('SchemaViolation', 'Invalid task cursor');
     const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
-    const docs = await this.o.store.transaction((tx) =>
-      tx.find<TaskRecord>('tasks', {
-        where: {
-          tenantId: caller.tenantId,
-          ...(query.instanceId ? { instanceId: query.instanceId } : {}),
-        },
-        orderBy: 'seq',
-        afterSeq: after,
-      }),
-    );
-    const page = docs
-      .filter(
-        (d) =>
-          (d.value.callerId === caller.id ||
-            d.value.ownerId === caller.id ||
-            caller.type === 'service') &&
-          (!query.status?.length || query.status.includes(d.value.status)),
-      )
-      .slice(0, limit);
+    // Read through the indexes: a trusted service sees the tenant; anyone else the tasks they delegated (callerId)
+    // or own (ownerId). Each source is read in pages of `limit`, so the work follows the page, not the history.
+    const base = {
+      tenantId: caller.tenantId,
+      ...(query.instanceId ? { instanceId: query.instanceId } : {}),
+    };
+    const sources =
+      caller.type === 'service'
+        ? [base]
+        : [
+            { ...base, callerId: caller.id },
+            { ...base, ownerId: caller.id },
+          ];
+    const page: StoredDocument<TaskRecord>[] = [];
+    let after = start;
+    while (page.length < limit) {
+      const { rows, exhausted } = await this.o.store.transaction(async (tx) => {
+        const merged = new Map<string, StoredDocument<TaskRecord>>();
+        let full = false;
+        for (const where of sources) {
+          const r = await tx.find<TaskRecord>('tasks', {
+            where,
+            orderBy: 'seq',
+            afterSeq: after,
+            limit,
+          });
+          if (r.length === limit) full = true;
+          for (const d of r) merged.set(d.id, d);
+        }
+        const sorted = [...merged.values()].sort((a, b) => a.seq - b.seq);
+        // When a source filled its page, only the first `limit` rows of the union are known to be complete.
+        return {
+          rows: full ? sorted.slice(0, limit) : sorted,
+          exhausted: !full,
+        };
+      });
+      for (const d of rows) {
+        after = d.seq;
+        if (!query.status?.length || query.status.includes(d.value.status))
+          page.push(d);
+        if (page.length === limit) break;
+      }
+      if (exhausted) break;
+    }
     return {
       tasks: page.map((d) => toSnapshot(d.value, d.revision)),
-      cursor: String(page.at(-1)?.seq ?? after),
+      cursor: String(after),
     };
   }
 

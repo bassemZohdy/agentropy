@@ -18,7 +18,8 @@ export interface TenantQuota {
 
 export type QuotaResolver = (tenantId: string) => TenantQuota | undefined;
 
-const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
+/** Statuses of a task that has not ended. */
+const LIVE = ['created', 'assigned', 'running', 'waiting'] as const;
 
 const exceeded = (quota: keyof TenantQuota, limit: number) =>
   new AgentropyError(
@@ -40,21 +41,32 @@ export async function checkTaskQuota(
     quota?.maxAcceptsPerMinute === undefined
   )
     return;
-  const tasks = await tx.find<{ status: string; createdAt: string }>('tasks', {
-    where: { tenantId },
-  });
-  if (
-    quota.maxActiveTasks !== undefined &&
-    tasks.filter((t) => !TERMINAL.has(t.value.status)).length >=
-      quota.maxActiveTasks
-  )
-    throw exceeded('maxActiveTasks', quota.maxActiveTasks);
+  // Counted through the `status` and `createdAt` indexes, each read stopping at the limit: a tenant's history of
+  // finished tasks costs nothing here (FEAT-039.3).
+  if (quota.maxActiveTasks !== undefined) {
+    let active = 0;
+    for (const status of LIVE) {
+      active += (
+        await tx.find('tasks', {
+          where: { tenantId, status },
+          limit: quota.maxActiveTasks - active,
+        })
+      ).length;
+      if (active >= quota.maxActiveTasks)
+        throw exceeded('maxActiveTasks', quota.maxActiveTasks);
+    }
+  }
   if (quota.maxAcceptsPerMinute !== undefined) {
     const since = new Date(Date.parse(now) - 60_000).toISOString();
-    if (
-      tasks.filter((t) => t.value.createdAt > since).length >=
-      quota.maxAcceptsPerMinute
-    )
+    // `createdAt > since`: the range is inclusive, so the boundary row is excluded after the read.
+    const recent = (
+      await tx.find<{ createdAt: string }>('tasks', {
+        where: { tenantId },
+        range: { field: 'createdAt', gte: since },
+        limit: quota.maxAcceptsPerMinute + 1,
+      })
+    ).filter((t) => t.value.createdAt > since);
+    if (recent.length >= quota.maxAcceptsPerMinute)
       throw exceeded('maxAcceptsPerMinute', quota.maxAcceptsPerMinute);
   }
 }

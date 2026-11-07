@@ -1,7 +1,7 @@
 // FEAT-039.3: the scheduler's per-tick reads cost what is due, not what is open or waiting.
 import type { CollectionName, Store, StoreTx } from '@agentropy/core';
 import { describe, expect, it } from 'vitest';
-import { harness, sqliteTempStore } from './harness.js';
+import { alice, bob, completes, harness, sqliteTempStore } from './harness.js';
 
 /** Counts the documents each `find` returns, per collection. */
 function countingStore() {
@@ -65,5 +65,63 @@ describe('scheduler reads (FEAT-039.3)', () => {
     read.executions = 0;
     expect(await h.runtime.tick()).toBe(0);
     expect(read.executions ?? 0).toBe(0);
+  });
+});
+
+describe('listings and quotas read through indexes (FEAT-039.3)', () => {
+  it('listTasks pages through the caller’s tasks with a status filter, and a user with none reads nothing', async () => {
+    const { store, read } = countingStore();
+    const h = harness({ store });
+    h.define('d', completes());
+    const inst = await h.instance('d');
+    for (let i = 0; i < 3; i++) await h.delegate(inst.id, {}, `done-${i}`);
+    await h.runtime.runUntilIdle(); // these three complete
+    for (let i = 0; i < 4; i++) await h.delegate(inst.id, {}, `queued-${i}`); // these stay assigned
+
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 5; page++) {
+      const r = await h.tasks.listTasks(
+        { status: ['completed'], limit: 2, ...(cursor ? { cursor } : {}) },
+        alice,
+      );
+      seen.push(...r.tasks.map((t) => t.taskId));
+      if (r.tasks.length < 2) break;
+      cursor = r.cursor;
+    }
+    expect(new Set(seen).size).toBe(3);
+    const all = await h.tasks.listTasks({ limit: 200 }, alice);
+    expect(all.tasks).toHaveLength(7);
+
+    read.tasks = 0;
+    expect((await h.tasks.listTasks({}, bob)).tasks).toEqual([]);
+    expect(read.tasks ?? 0).toBe(0); // bob has no tasks: the index answers without reading the tenant's seven
+  });
+
+  it('task quotas count live tasks and the last minute through the indexes', async () => {
+    const h = harness();
+    h.define('d', completes());
+    const inst = await h.instance('d');
+    // maxActiveTasks 2: the third live task is refused; finished tasks do not count.
+    const { checkTaskQuota } = await import('../src/quotas.js');
+    await h.delegate(inst.id, {}, 'a');
+    await h.delegate(inst.id, {}, 'b');
+    const refuse = (quota: {
+      maxActiveTasks?: number;
+      maxAcceptsPerMinute?: number;
+    }) =>
+      h.store
+        .transaction((tx) => checkTaskQuota(tx, 't-1', quota, h.clock.iso()))
+        .then(
+          () => 'ok',
+          (e: { code: string }) => e.code,
+        );
+    expect(await refuse({ maxActiveTasks: 2 })).toBe('QuotaExceeded');
+    expect(await refuse({ maxActiveTasks: 3 })).toBe('ok');
+    expect(await refuse({ maxAcceptsPerMinute: 2 })).toBe('QuotaExceeded');
+    h.clock.advanceBy(61_000); // the two accepts fall out of the minute
+    expect(await refuse({ maxAcceptsPerMinute: 2 })).toBe('ok');
+    await h.runtime.runUntilIdle(); // both finish
+    expect(await refuse({ maxActiveTasks: 1 })).toBe('ok');
   });
 });
