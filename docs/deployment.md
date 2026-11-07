@@ -35,7 +35,7 @@ The same manifests apply unchanged under the `restricted-v2` SCC: no `runAsUser`
 
 ## Scaling out with PostgreSQL
 
-Several replicas need the PostgreSQL adapter ([ADR-0028](adr/0028-postgresql-store-adapter.md)). Write a host like `host.ts` that builds `new PostgresStore({ pool })` from the driver you choose (node-postgres `Pool` fits the pool port), configure `relay: { relayId: <pod name> }` so one replica leads the outbox relay (subscribers on the other replicas are still woken by their own relay), and deploy it as a `Deployment` with several replicas. Workers coordinate only through the database ([runtime contract](runtime-contract.md), several workers). The sample image does not include a PostgreSQL driver, and no PostgreSQL SLOs exist until measured on a server ([SLOs](slo.md)).
+Several replicas need the PostgreSQL adapter ([ADR-0028](adr/0028-postgresql-store-adapter.md)). Write a host like `host.ts` that builds `new PostgresStore({ pool })` from the driver you choose (node-postgres `Pool` fits the pool port), configure `relay: { relayId: <pod name> }` so one replica leads the outbox relay (subscribers on the other replicas are still woken by their own relay), and deploy it as a `Deployment` with several replicas. Workers coordinate only through the database ([runtime contract](runtime-contract.md), several workers). Set `statementTimeoutMs` and `lockTimeoutMs` on the store so a stuck statement or a row-lock wait fails the transaction with `Timeout` instead of holding a connection (and, at commit, the seq lock); a new index field is backfilled by one server-side statement at start. The sample image does not include a PostgreSQL driver, and no PostgreSQL SLOs exist until measured on a server ([SLOs](slo.md)).
 
 ## Air-gapped installation
 

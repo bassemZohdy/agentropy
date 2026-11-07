@@ -360,4 +360,58 @@ describe('PostgresStore', () => {
     ).toBe('InvalidConfiguration');
     await db.close();
   });
+
+  it('sets statement and lock timeouts for every transaction and maps their errors to Timeout (TASK-037.2)', async () => {
+    const db = new PGlite();
+    const seen: string[] = [];
+    let failWith: string | undefined;
+    const client: PgClient = {
+      query: async (text, params) => {
+        seen.push(text);
+        if (failWith && text.startsWith('SELECT id'))
+          throw Object.assign(new Error('timed out'), { code: failWith });
+        return db.query(text, params);
+      },
+    };
+    const store = new PostgresStore({
+      client,
+      statementTimeoutMs: 5_000,
+      lockTimeoutMs: 1_000,
+    });
+    await store.transaction((tx) => tx.get('tasks', 'x'));
+    const sent = seen.join(' ; ');
+    expect(sent).toContain('SET LOCAL statement_timeout = 5000');
+    expect(sent).toContain('SET LOCAL lock_timeout = 1000');
+    for (const sqlstate of ['57014', '55P03']) {
+      failWith = sqlstate;
+      expect(await code(store.transaction((tx) => tx.get('tasks', 'x')))).toBe(
+        'Timeout',
+      );
+    }
+    await db.close();
+  });
+
+  it('schema evolution backfills numeric, boolean and string index fields on the server', async () => {
+    const db = new PGlite();
+    const s = new PostgresStore({ client: db });
+    await s.transaction(async (tx) => {
+      await tx.insert('outbox', 'n0', { published: 0, aggregateId: 'a' });
+      await tx.insert('outbox', 'n1', { published: 1, aggregateId: 'b' });
+      await tx.insert('outbox', 'bool', { published: true, aggregateId: 'c' });
+      await tx.insert('outbox', 'none', {});
+    });
+    await db.query(
+      'ALTER TABLE agentropy."c_outbox" DROP COLUMN "n_published", DROP COLUMN "s_published", DROP COLUMN "n_aggregateId", DROP COLUMN "s_aggregateId"',
+    );
+    const up = new PostgresStore({ client: db });
+    const ids = async (where: Record<string, string | number | null>) =>
+      (await up.transaction((tx) => tx.find('outbox', { where }))).map(
+        (d) => d.id,
+      );
+    expect(await ids({ published: 1 })).toEqual(['n1', 'bool']);
+    expect(await ids({ published: 0 })).toEqual(['n0']);
+    expect(await ids({ aggregateId: 'b' })).toEqual(['n1']);
+    expect(await ids({ published: null })).toEqual(['none']);
+    await db.close();
+  });
 });

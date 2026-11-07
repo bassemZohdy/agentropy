@@ -127,6 +127,13 @@ export interface PostgresStoreOptions {
    * point instead of at the call; the transaction fails either way. Default true.
    */
   batchWrites?: boolean;
+  /**
+   * `SET LOCAL statement_timeout` for every transaction, in ms (default: the server's). A statement that runs longer
+   * fails the transaction with `Timeout` instead of holding a connection (and, at commit, the seq lock) indefinitely.
+   */
+  statementTimeoutMs?: number;
+  /** `SET LOCAL lock_timeout` for every transaction, in ms (default: the server's): waiting on a row lock fails with `Timeout`. */
+  lockTimeoutMs?: number;
   /** Close the pool/client when the store closes. Default false (the caller owns the connection). */
   ownsConnection?: boolean;
   /**
@@ -167,6 +174,11 @@ const pgCode = (err: unknown) =>
  * classes become ProviderUnavailable (retryable), anything else Internal. Only the SQLSTATE is kept.
  */
 function fromSqlState(code: string): AgentropyError {
+  // statement_timeout (57014) and lock_timeout (55P03) are the adapter's own bounds: a retryable Timeout.
+  if (code === '57014' || code === '55P03')
+    return new AgentropyError('Timeout', 'Database operation timed out', {
+      details: { sqlstate: code },
+    });
   const unavailable = /^(08|53|57P|58)/.test(code);
   return new AgentropyError(
     unavailable ? 'ProviderUnavailable' : 'Internal',
@@ -193,15 +205,24 @@ export class PostgresStore implements Store {
    */
   private async beginTransaction(db: PgClient): Promise<void> {
     const begin = 'BEGIN ISOLATION LEVEL SERIALIZABLE';
-    const prefer = 'SET LOCAL enable_seqscan = off';
-    if (!this.o.pool || this.o.preferIndexScans === false) {
+    const settings: string[] = [];
+    if (this.o.pool && this.o.preferIndexScans !== false)
+      settings.push('SET LOCAL enable_seqscan = off');
+    // Integers only: the values are interpolated into SQL.
+    for (const [name, ms] of [
+      ['statement_timeout', this.o.statementTimeoutMs],
+      ['lock_timeout', this.o.lockTimeoutMs],
+    ] as const)
+      if (ms !== undefined)
+        settings.push(`SET LOCAL ${name} = ${Math.max(0, Math.floor(ms))}`);
+    if (!settings.length) {
       await db.query(begin);
       return;
     }
-    // One round trip where the driver accepts several statements in a query (node-postgres does); otherwise two.
+    // One round trip where the driver accepts several statements in a query (node-postgres does); otherwise one each.
     if (this.multiStatement !== false) {
       try {
-        await db.query(`${begin}; ${prefer}`);
+        await db.query([begin, ...settings].join('; '));
         this.multiStatement = true;
         return;
       } catch (err) {
@@ -210,7 +231,7 @@ export class PostgresStore implements Store {
       }
     }
     await db.query(begin);
-    await db.query(prefer);
+    for (const setting of settings) await db.query(setting);
   }
   private multiStatement?: boolean;
 
@@ -467,22 +488,19 @@ export class PostgresStore implements Store {
           `CREATE INDEX "x_${c}_${f}" ON ${this.t(c)} ("n_${f}", "s_${f}", seq)`,
         );
       }
-      const rows = (
-        await db.query<{ id: string; value: string }>(
-          `SELECT id, value FROM ${this.t(c)}`,
-        )
-      ).rows;
-      for (const r of rows) {
-        const idx = indexValues(c, JSON.parse(r.value));
-        const params = missing.flatMap((f): unknown[] => {
-          const v = idx[f] ?? null;
-          return typeof v === 'number' ? [v, null] : [null, v];
-        });
-        await db.query(
-          `UPDATE ${this.t(c)} SET ${missing.map((f, i) => `"n_${f}" = $${2 * i + 1}, "s_${f}" = $${2 * i + 2}`).join(', ')} WHERE id = $${2 * missing.length + 1}`,
-          [...params, r.id],
-        );
-      }
+      // Backfilled by the server in one statement, like `indexValues` does per document: numbers and booleans
+      // (1/0) fill the numeric column, strings the text column, anything else stays null. (A row per round trip
+      // took hours on a large table while holding the migration lock.)
+      const json = (f: string) => `(value::jsonb -> '${f}')`;
+      await db.query(
+        `UPDATE ${this.t(c)} SET ${missing
+          .map(
+            (f) =>
+              `"n_${f}" = CASE jsonb_typeof${json(f)} WHEN 'number' THEN (${json(f)} #>> '{}')::double precision WHEN 'boolean' THEN CASE WHEN (${json(f)} #>> '{}')::boolean THEN 1 ELSE 0 END END, ` +
+              `"s_${f}" = CASE WHEN jsonb_typeof${json(f)} = 'string' THEN ${json(f)} #>> '{}' END`,
+          )
+          .join(', ')}`,
+      );
     }
   }
 

@@ -1,5 +1,9 @@
 /** @agentropy/store-sqlite — Store port adapter on the built-in node:sqlite module (ADR-0017, ADR-0027). */
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+import {
+  DatabaseSync,
+  type SQLInputValue,
+  type StatementSync,
+} from 'node:sqlite';
 import {
   AgentropyError,
   AsyncMutex,
@@ -129,6 +133,8 @@ export class SqliteStore implements Store {
     this.db.exec('PRAGMA journal_mode = WAL');
     this.db.exec('PRAGMA synchronous = FULL');
     this.db.exec('PRAGMA busy_timeout = 5000');
+    // The WAL file shrinks back after a burst of writes instead of staying at its high-water mark.
+    this.db.exec('PRAGMA journal_size_limit = 67108864');
     migrate(this.db);
   }
 
@@ -152,29 +158,36 @@ export class SqliteStore implements Store {
     await this.mutex.run(async () => {
       if (!this.closed) {
         this.closed = true;
+        this.statements.clear();
         this.db.close();
       }
     });
   }
 
+  /** Prepared statements by SQL text: the SQL varies only by collection and filter shape, so the set stays small. */
+  private readonly statements = new Map<string, StatementSync>();
+  private prep(sql: string): StatementSync {
+    let st = this.statements.get(sql);
+    if (!st) {
+      if (this.statements.size >= 512) this.statements.clear();
+      this.statements.set(sql, (st = this.db.prepare(sql)));
+    }
+    return st;
+  }
+
   private nextSeq(): number {
     return (
-      this.db
-        .prepare(
-          "UPDATE meta SET value = value + 1 WHERE key = 'seq' RETURNING value",
-        )
-        .get() as { value: number }
+      this.prep(
+        "UPDATE meta SET value = value + 1 WHERE key = 'seq' RETURNING value",
+      ).get() as { value: number }
     ).value;
   }
 
   private tx(): StoreTx {
-    const db = this.db;
     const get = <T>(c: CollectionName, id: string) => {
-      const r = db
-        .prepare(
-          `SELECT id, revision, seq, value FROM ${table(c)} WHERE id = ?`,
-        )
-        .get(id) as Row | undefined;
+      const r = this.prep(
+        `SELECT id, revision, seq, value FROM ${table(c)} WHERE id = ?`,
+      ).get(id) as Row | undefined;
       return r ? toDoc<T>(r) : undefined;
     };
     const write = (
@@ -196,7 +209,7 @@ export class SqliteStore implements Store {
           'value',
           ...fields.map(col),
         ].join(', ');
-        db.prepare(
+        this.prep(
           `INSERT INTO ${table(c)} (${cols}) VALUES (${['?', '?', '?', '?', ...fields.map(() => '?')].join(', ')})`,
         ).run(
           id,
@@ -211,7 +224,7 @@ export class SqliteStore implements Store {
           'value = ?',
           ...fields.map((f) => `${col(f)} = ?`),
         ].join(', ');
-        db.prepare(`UPDATE ${table(c)} SET ${sets} WHERE id = ?`).run(
+        this.prep(`UPDATE ${table(c)} SET ${sets} WHERE id = ?`).run(
           revision,
           json,
           ...(Object.values(idx) as SQLInputValue[]),
@@ -251,7 +264,7 @@ export class SqliteStore implements Store {
         if (!cur) throw staleRevision(c, id, 'missing', expected);
         if (cur.revision !== expected)
           throw staleRevision(c, id, 'revision', expected, cur.revision);
-        db.prepare(`DELETE FROM ${table(c)} WHERE id = ?`).run(id);
+        this.prep(`DELETE FROM ${table(c)} WHERE id = ?`).run(id);
       },
       find: async <T, C extends CollectionName>(
         c: C,
@@ -305,11 +318,9 @@ export class SqliteStore implements Store {
           o.limit !== undefined
             ? `LIMIT ${Math.max(0, Math.floor(o.limit))}`
             : '';
-        const rows = db
-          .prepare(
-            `SELECT id, revision, seq, value FROM ${table(c)} ${where} ORDER BY ${order} ${limit}`,
-          )
-          .all(...params) as unknown as Row[];
+        const rows = this.prep(
+          `SELECT id, revision, seq, value FROM ${table(c)} ${where} ORDER BY ${order} ${limit}`,
+        ).all(...params) as unknown as Row[];
         return rows.map((r) => toDoc<T>(r));
       },
     };
