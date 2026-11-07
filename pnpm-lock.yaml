@@ -57,12 +57,19 @@ importers:
       '@agentropy/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@agentropy/store-postgres':
+        specifier: workspace:*
+        version: link:../store-postgres
       '@agentropy/store-sqlite':
         specifier: workspace:*
         version: link:../store-sqlite
       '@agentropy/testkit':
         specifier: workspace:*
         version: link:../testkit
+    optionalDependencies:
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
 
   packages/runtime:
     dependencies:

@@ -9,7 +9,11 @@
   "dependencies": {
     "@agentropy/core": "workspace:*",
     "@agentropy/runtime": "workspace:*",
+    "@agentropy/store-postgres": "workspace:*",
     "@agentropy/store-sqlite": "workspace:*",
     "@agentropy/testkit": "workspace:*"
+  },
+  "optionalDependencies": {
+    "pg": "^8.23.1"
   }
 }

@@ -67,7 +67,9 @@
   - Links: Ref: docs/review/2026-11-06-deep-review.md#composition-gaps · Lane: runtime
   - [x] **FEAT-041.1** · mid · `LocalAppOptions.skills` wires the registry and loader into acceptance and `AgentContext.skills`; quickstart section (R-52)
     - Done when: `pnpm exec vitest run packages/runtime/test/skills.test.ts`
-  - [ ] **FEAT-041.2** · mid · Host PostgreSQL mode (`AGENTROPY_PG_URL`, relay lease, worker ID, driver as an optional dependency), image run against the CI PostgreSQL service, a `Deployment` manifest variant (R-53)
+  - [x] **FEAT-041.2** · mid · Host PostgreSQL mode: `AGENTROPY_PG_URL`, relay lease and worker ID from the pod name, `pg` as an optional dependency loaded only then (R-53)
     - Done when: `pnpm exec vitest run packages/examples/test/host.test.ts`
   - [x] **FEAT-041.3** · low · Reasoning budget reserved before the model call and settled after, tool-name collisions refused, skill folders bounded (500 files, 16 MiB), abort signal through the direct provider (R-54, R-55; not done on purpose: a skill digest cache would weaken the content pin, one federation entry per card skill and a worker definition-set check need a design)
     - Done when: `pnpm exec vitest run packages/testkit/test/providers.test.ts packages/runtime/test/skills.test.ts packages/testkit/test/federation.test.ts packages/runtime/test/router.test.ts`
+  - [ ] **FEAT-041.4** · low · The container image runs against the CI PostgreSQL service (`AGENTROPY_PG_URL`) and a `Deployment` manifest variant for several replicas is checked by `check-deploy` (R-53)
+    - Done when: `node scripts/check-deploy.mjs`

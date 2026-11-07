@@ -5,6 +5,9 @@
  *
  * Configuration (environment):
  * - AGENTROPY_DB          SQLite file path on a persistent volume (default /data/agentropy.db)
+ * - AGENTROPY_PG_URL      PostgreSQL connection URL: use PostgreSQL instead of SQLite (the `pg` driver is an optional
+ *                         dependency loaded only then); several replicas may share the database, the pod name
+ *                         (HOSTNAME) becomes the worker and outbox-relay ID
  * - PORT                  health port (default 8080)
  * - AGENTROPY_ALLOW       comma-separated policy actions the sample policy allows; everything else is denied
  * - AGENTROPY_TICK_MS     scheduler interval (default 250)
@@ -44,7 +47,10 @@ import {
   type LocalApp,
   type SchedulerStatus,
 } from '@agentropy/runtime';
+import { PostgresStore, type PgPool } from '@agentropy/store-postgres';
+import type { Store } from '@agentropy/core';
 import { SqliteStore } from '@agentropy/store-sqlite';
+import { randomUUID } from 'node:crypto';
 
 /** Sample policy: allow-list from configuration, deny by default. Replace with your PDP. */
 export class AllowListPolicy implements PolicyDecisionPoint {
@@ -240,11 +246,48 @@ export async function shutdownHost(h: {
   await h.app.store.close();
 }
 
+/** The `pg` module's `Pool`, as far as the host uses it. */
+export interface PgModule {
+  Pool: new (options: { connectionString: string }) => PgPool;
+}
+
+/**
+ * The store the environment asks for: PostgreSQL with `AGENTROPY_PG_URL` (several replicas can share it; the pod
+ * name is the worker and relay ID), otherwise the SQLite file. The `pg` driver is imported only for PostgreSQL, so
+ * the SQLite image path never loads it (FEAT-041.2).
+ */
+export async function openStore(
+  env: Record<string, string | undefined>,
+  loadPg: () => Promise<PgModule> = () =>
+    import(/* @vite-ignore */ 'pg' as string) as Promise<PgModule>,
+): Promise<{ store: Store; workerId?: string }> {
+  const url = env.AGENTROPY_PG_URL;
+  if (!url)
+    return {
+      store: new SqliteStore({
+        path: env.AGENTROPY_DB ?? '/data/agentropy.db',
+      }),
+    };
+  const { Pool } = await loadPg();
+  return {
+    store: new PostgresStore({
+      pool: new Pool({ connectionString: url }),
+      ownsConnection: true,
+    }),
+    workerId: env.HOSTNAME ?? `host-${randomUUID()}`,
+  };
+}
+
 export async function main(env = process.env): Promise<void> {
+  const { store, workerId } = await openStore(env);
   const app = createLocalApp({
-    store: new SqliteStore({ path: env.AGENTROPY_DB ?? '/data/agentropy.db' }),
+    store,
     pdp: new AllowListPolicy(env.AGENTROPY_ALLOW ?? ''),
     profiles: BUILTIN_PROFILES,
+    // With a shared database every replica is a worker and takes part in the outbox relay lease.
+    ...(workerId
+      ? { relay: { relayId: workerId }, runtime: { workerId } }
+      : {}),
   });
   defineAgents(app);
   const state: HostState = { shuttingDown: false };

@@ -16,6 +16,7 @@
     { "path": "../core" },
     { "path": "../runtime" },
     { "path": "../store-sqlite" },
+    { "path": "../store-postgres" },
     { "path": "../testkit" }
   ]
 }
