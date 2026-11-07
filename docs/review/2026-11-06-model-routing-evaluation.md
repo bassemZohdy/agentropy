@@ -1,6 +1,6 @@
 # 2026-11-06 — Task-aware model routing evaluation (N-03, R-35)
 
-**Status:** evaluation for FEAT-028.10; no implementation is claimed. Question: should Agentropy route a task's model calls to different models by cost, latency, quality, residency and policy, and if so where? Constraint: vendor-neutral, with a fallback that never weakens a security floor.
+**Status:** evaluation for FEAT-028.10. Option B was implemented in FEAT-035.3 as `routedReasoning` (`packages/runtime/src/model-routing.ts`), with the floors below verified offline in `packages/runtime/test/model-routing.test.ts`; options C and D are not built. The fixture cost benchmark was not run: it needs real endpoints' prices and latencies. Question: should Agentropy route a task's model calls to different models by cost, latency, quality, residency and policy, and if so where? Constraint: vendor-neutral, with a fallback that never weakens a security floor.
 
 ## Options
 

@@ -1,4 +1,4 @@
-# Agentropy Capability Contract v1.0 — revision 12
+# Agentropy Capability Contract v1.0 — revision 13
 
 **Status:** Accepted for M1 implementation (2026-11-05). The catalog, profiles and resolver live in `packages/core`; behavior is claimed only where an executable test exists. **Errors:** [Errors v1](errors-v1.md).
 
@@ -18,6 +18,7 @@
 | 10 | 2026-11-05 | TASK-026.5 (N-02): new `isolation` guarantee with levels `logical` < `process` < `sandbox`; the local runtime provides `logical`, so a definition requiring more is refused with `GuaranteeUnavailable` |
 | 11 | 2026-11-05 | FEAT-027.5: `ReasoningProvider` and `WorkflowEngine` SPIs. `reasoning.complete` `{ prompt? , system?, messages?, maxTokens?, temperature?, tools?: toolId[] }` → `{ text, toolCalls?: { toolId, input }[], usage, model }`; only snapshot-pinned tools may be offered and proposed calls are never executed by the capability; task `budget.maxCostUnits` counts model tokens (`BudgetExceeded`, `maxTokens` capped to the remainder). `workflow.start` `{ workflow, input }` is idempotent per step key; completion arrives as a `workflow` event `{ runId, state, output?, code? }`; `workflow.status` `{ runId }` |
 | 12 | 2026-11-06 | FEAT-028.5: `human-input.requestAction` approvals take `requiredApprovals?` (1–5 distinct agreeing approvers) and `allowSelfApproval?` (default false: the delegator cannot approve) |
+| 13 | 2026-11-07 | FEAT-035.3: `reasoning.complete` accepts `route?: { zone?, dataClass?, tier?, latency? }` (plain identifiers set by calling code; other values are dropped) as hints for a routing `ReasoningProvider`; a plain provider ignores them. FEAT-041.3: the call's tokens are reserved against `budget.maxCostUnits` before the model is asked and settled after, so concurrent calls cannot overspend |
 
 ## Classification
 

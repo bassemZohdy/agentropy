@@ -23,7 +23,7 @@
     - Done when: `pnpm exec vitest run packages/runtime/test/mcp-tools.test.ts`
   - [ ] **FEAT-035.2** · mid · Opt-in live suites for the model API and Conductor; Conductor OSS service job in CI (R-12)
     - Done when: `pnpm exec vitest run packages/workflow-conductor/test packages/testkit/test/providers.test.ts`
-  - [ ] **FEAT-035.3** · mid · Rule-based model routing wrapper with residency and data-class floors (R-13)
+  - [x] **FEAT-035.3** · mid · Rule-based model routing wrapper with residency and data-class floors (R-13)
     - Done when: `pnpm exec vitest run packages/runtime/test/model-routing.test.ts`
 - [ ] **FEAT-036** · P1 · mid · Live-cluster deployment test: apply manifests on kind, readiness, rollout, pod loss recovery (R-14)
   - Done when: `bash deploy/kind-smoke.sh`

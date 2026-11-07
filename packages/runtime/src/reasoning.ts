@@ -38,6 +38,19 @@ interface UsageRecord {
   reserved?: { executionId: string; tokens: number };
 }
 
+/** Routing hints are plain identifiers; anything else is dropped rather than passed on. */
+function routeHint(r: unknown): ReasoningRequest['route'] | undefined {
+  if (!r || typeof r !== 'object') return undefined;
+  const out: NonNullable<ReasoningRequest['route']> = {};
+  const v = r as Record<string, unknown>;
+  for (const k of ['zone', 'dataClass', 'tier'] as const)
+    if (typeof v[k] === 'string' && /^[\w.-]{1,64}$/.test(v[k] as string))
+      out[k] = v[k] as string;
+  if (v['latency'] === 'low' || v['latency'] === 'normal')
+    out.latency = v['latency'];
+  return Object.keys(out).length ? out : undefined;
+}
+
 /** Tool IDs → provider-safe names and back (`finance.payout` → `finance_payout`). */
 const toolName = (id: string) =>
   id.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64);
@@ -62,6 +75,7 @@ export function reasoningOperationHandlers(o: {
         maxTokens?: number;
         temperature?: number;
         tools?: string[];
+        route?: ReasoningRequest['route'];
       };
       const messages: ReasoningMessage[] = input.messages ?? [
         ...(input.system
@@ -189,6 +203,9 @@ export function reasoningOperationHandlers(o: {
               ? { temperature: input.temperature }
               : {}),
             ...(tools.length ? { tools } : {}),
+            ...(routeHint(input.route)
+              ? { route: routeHint(input.route)! }
+              : {}),
           },
           { tenantId: ctx.tenantId, taskId: ctx.taskId, signal: ctx.signal },
         );

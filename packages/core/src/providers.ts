@@ -20,6 +20,16 @@ export interface ReasoningRequest {
   maxTokens: number;
   temperature?: number;
   tools?: ReasoningToolSpec[];
+  /**
+   * Routing hints for a routing provider (FEAT-035.3): identifiers set by the calling code, never by model output.
+   * A plain provider ignores them.
+   */
+  route?: {
+    zone?: string;
+    dataClass?: string;
+    tier?: string;
+    latency?: 'low' | 'normal';
+  };
 }
 
 export interface ReasoningResult {

@@ -208,7 +208,7 @@ Types, schemas, errors, lifecycle tables and pure resolvers (no I/O). 197 export
 
 ## @agentropy/runtime
 
-Registries, task service, runtime, scheduler, providers and the local app facade. 172 exports.
+Registries, task service, runtime, scheduler, providers and the local app facade. 177 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
@@ -324,6 +324,8 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `McpToolProvider` | class | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) |  |
 | `mcpToolRegistration` | function | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) | A discovered MCP tool as a Tool v1 descriptor and its binding. |
 | `McpTransport` | interface | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) | A JSON-RPC transport to one MCP server. |
+| `ModelEndpoint` | interface | [runtime/src/model-routing.ts](../packages/runtime/src/model-routing.ts) |  |
+| `ModelRoute` | interface | [runtime/src/model-routing.ts](../packages/runtime/src/model-routing.ts) | Where a request may go and how it prefers to be served. |
 | `NATIVE_TS_FEATURES` | const | [runtime/src/implementation.ts](../packages/runtime/src/implementation.ts) |  |
 | `NativeImplementationProvider` | class | [runtime/src/implementation.ts](../packages/runtime/src/implementation.ts) | Built-in provider for TypeScript handlers registered in a HandlerRegistry. |
 | `OfferResult` | interface | [runtime/src/wakeups.ts](../packages/runtime/src/wakeups.ts) |  |
@@ -356,6 +358,9 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `RemoteTaskRecord` | interface | [runtime/src/remote.ts](../packages/runtime/src/remote.ts) |  |
 | `resolveDelivery` | function | [runtime/src/priority.ts](../packages/runtime/src/priority.ts) |  |
 | `resolveLimits` | function | [runtime/src/limits.ts](../packages/runtime/src/limits.ts) |  |
+| `routedReasoning` | function | [runtime/src/model-routing.ts](../packages/runtime/src/model-routing.ts) |  |
+| `RoutingChoice` | interface | [runtime/src/model-routing.ts](../packages/runtime/src/model-routing.ts) |  |
+| `RoutingRule` | interface | [runtime/src/model-routing.ts](../packages/runtime/src/model-routing.ts) |  |
 | `RuntimeLimits` | interface | [runtime/src/limits.ts](../packages/runtime/src/limits.ts) |  |
 | `RuntimeOptions` | interface | [runtime/src/runtime.ts](../packages/runtime/src/runtime.ts) |  |
 | `SchedulerStatus` | interface | [runtime/src/app.ts](../packages/runtime/src/app.ts) | State of the loop `LocalApp.start()` runs (FEAT-037.1). |

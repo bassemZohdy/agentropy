@@ -45,7 +45,7 @@
 | Contract | Revision |
 |---|---|
 | [Agent v1](contracts/agent-v1.md) | 11 |
-| [Capability v1](contracts/capability-v1.md) | 12 |
+| [Capability v1](contracts/capability-v1.md) | 13 |
 | [Communication v1](contracts/communication-v1.md) | 7 |
 | [Security v1](contracts/security-v1.md) | 8 |
 | [Tool v1](contracts/tool-v1.md) | 3 |

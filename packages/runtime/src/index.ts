@@ -27,3 +27,4 @@ export * from './remote.js';
 export * from './federation.js';
 export * from './compaction.js';
 export * from './mcp.js';
+export * from './model-routing.js';
