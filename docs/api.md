@@ -208,7 +208,7 @@ Types, schemas, errors, lifecycle tables and pure resolvers (no I/O). 197 export
 
 ## @agentropy/runtime
 
-Registries, task service, runtime, scheduler, providers and the local app facade. 157 exports.
+Registries, task service, runtime, scheduler, providers and the local app facade. 158 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
@@ -238,6 +238,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `agentCardForDefinition` | function | [runtime/src/federation.ts](../packages/runtime/src/federation.ts) | A2A AgentCard for one local definition served at `url` (the A2A JSON-RPC endpoint). |
 | `AgentDirectoryFederation` | class | [runtime/src/federation.ts](../packages/runtime/src/federation.ts) |  |
 | `AgentRuntime` | class | [runtime/src/runtime.ts](../packages/runtime/src/runtime.ts) |  |
+| `assertMaxBytes` | function | [runtime/src/limits.ts](../packages/runtime/src/limits.ts) | Refuses a value whose JSON serialization exceeds `max` bytes (`SchemaViolation`, reason `<what>TooLarge`), so a payload cannot grow task rows, mailboxes and … |
 | `AuditAnchor` | interface | [runtime/src/audit.ts](../packages/runtime/src/audit.ts) | Head of a tenant's chain, published to an independently protected sink (ADR-0022 §7). |
 | `AuditAnchorSink` | interface | [runtime/src/audit.ts](../packages/runtime/src/audit.ts) | WORM storage, a transparency log, a signing service… — anything the store's writers cannot rewrite. |
 | `AuditDisposalReceipt` | interface | [runtime/src/audit.ts](../packages/runtime/src/audit.ts) | Non-sensitive record of a disposal: counts and hashes, never the disposed payloads. |

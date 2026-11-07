@@ -31,6 +31,7 @@ import {
 } from '@agentropy/core';
 import { randomUUID } from 'node:crypto';
 import type { InMemoryImplementationProviderRegistry } from './implementation.js';
+import { DEFAULT_LIMITS } from './limits.js';
 import {
   DEFAULT_RETRY,
   hashKey,
@@ -70,6 +71,8 @@ export interface RuntimeOptions {
   poolSize?: number;
   leaseMs?: number;
   cancelGraceMs?: number;
+  /** Largest serialized task output; a larger one fails the task with `SchemaViolation` (default 1 MiB, FEAT-040.2). */
+  maxOutputBytes?: number;
   /** Longest one activation may run before it is aborted and fenced (default 10 min, FEAT-037.2). */
   maxActivationMs?: number;
   /**
@@ -189,6 +192,7 @@ export class AgentRuntime {
       leaseMs: 60_000,
       cancelGraceMs: 30_000,
       maxActivationMs: 600_000,
+      maxOutputBytes: DEFAULT_LIMITS.maxOutputBytes,
       keepExecutions: 20,
       gateRetry: { initialMs: 1_000, maxMs: 300_000, maxAttempts: 8 },
       pdpTimeoutMs: 5_000,
@@ -887,6 +891,17 @@ export class AgentRuntime {
           await this.o.tasks.terminate(tx, cur, 'failed', 'T8', {
             code: 'SchemaViolation',
             message: 'Output does not match outputSchema',
+          });
+          return this.prune(tx, t.taskId);
+        }
+        if (
+          Buffer.byteLength(JSON.stringify(d.output ?? null)) >
+          this.o.maxOutputBytes
+        ) {
+          await end('failed', 'E6');
+          await this.o.tasks.terminate(tx, cur, 'failed', 'T8', {
+            code: 'SchemaViolation',
+            message: `Output exceeds the ${this.o.maxOutputBytes}-byte limit`,
           });
           return this.prune(tx, t.taskId);
         }

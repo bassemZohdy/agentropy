@@ -63,6 +63,8 @@ stateDiagram-v2
 
 **Bounded state (R-37):** a `waiting` disposition whose serialized checkpoint exceeds the runtime's `maxCheckpointBytes` (default 64 KiB) is refused as `SchemaViolation` (`reason: checkpointTooLarge`) and the task fails; execution history keeps the last `keepExecutions` (default 20) finished executions per task (AC-20).
 
+**Payload bounds (FEAT-040.2):** besides the checkpoint, the runtime refuses a task input over `maxInputBytes` (1 MiB; `SchemaViolation` at acceptance), fails a task whose output exceeds `maxOutputBytes` (1 MiB; T8 `SchemaViolation`), refuses an inbound event payload over `maxEventBytes` (256 KiB) and a human-action prompt over `maxPromptBytes` (16 KiB). Sizes are the UTF-8 length of the JSON serialization; the limits are set with `createLocalApp({ limits })` and validated at start.
+
 **Failures and retries:** a handler that throws is retried by the task's retry policy when the error is retryable by the Errors v1 catalog; an unclassified error (anything that is not an `AgentropyError`) and `Internal` are treated as retryable too, because a bug or a transient infrastructure fault may pass on the next attempt, and become `Internal` without their message leaving the runtime. Non-retryable codes (`SchemaViolation`, `PermissionDenied`, …) fail the task at once (T8).
 
 **Cron wake-ups:** `schedule` conditions use five-field UTC cron (`minute hour day-of-month month day-of-week`, lists, ranges and steps). When both day-of-month and day-of-week are restricted, **both** must match (an AND); classic Vixie cron ORs them, so write one of the two as `*` if you port a crontab. Other time zones are `UnsupportedOperation`.

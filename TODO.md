@@ -62,7 +62,7 @@
     - Done when: `pnpm exec vitest run packages/runtime/test/hot-paths.test.ts packages/testkit/test/scale.test.ts packages/testkit/test/multi-worker.test.ts packages/store-postgres/test packages/store-sqlite/test`
   - [ ] **FEAT-039.4** · mid · Publish evaluates only poked registrations, bounded pending counts, batched compaction, relay follow cursor at max seq, paged task-event streams; stuck outbox rows get `agentropy.outbox.stuck`, bounded attempts and a readiness detail (R-43, R-44)
     - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/runtime/test/outbox-inbox.test.ts`
-- [ ] **FEAT-040** · P2 · mid · Retention and bounds: `compact()` covers every collection (retention table in operations.md) and `RuntimeLimits` bounds input, output, event and prompt sizes with a threat-model row (R-45, R-46)
+- [ ] **FEAT-040** · P2 · mid · Retention: `compact()` covers every collection, with a retention table in operations.md (R-45; the input, output, event and prompt size bounds of R-46 are done)
   - Done when: `pnpm exec vitest run packages/testkit/test/operations.test.ts packages/testkit/test/hardening.test.ts`
   - Links: Ref: docs/review/2026-11-06-deep-review.md#retention-and-bounds · Lane: runtime
 - [ ] **FEAT-041** · P2 · mid · Composition gaps: skills in `createLocalApp`, a PostgreSQL host mode, reasoning budget reservation, loader and federation details (R-52–R-55)

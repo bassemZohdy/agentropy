@@ -28,6 +28,11 @@ export interface RuntimeLimits {
   maxFanOut: number;
   /** Unconsumed events per subscription. */
   mailboxLimit: number;
+  /** Largest serialized task input, task output, inbound event payload and human-action prompt (FEAT-040.2). */
+  maxInputBytes: number;
+  maxOutputBytes: number;
+  maxEventBytes: number;
+  maxPromptBytes: number;
   /** ADR-0024 gate retry schedule. */
   gateRetry: { initialMs: number; maxMs: number; maxAttempts: number };
 }
@@ -43,6 +48,10 @@ export const DEFAULT_LIMITS: RuntimeLimits = {
   maxDepth: 5,
   maxFanOut: 20,
   mailboxLimit: 1_000,
+  maxInputBytes: 1024 * 1024,
+  maxOutputBytes: 1024 * 1024,
+  maxEventBytes: 256 * 1024,
+  maxPromptBytes: 16 * 1024,
   gateRetry: { initialMs: 1_000, maxMs: 300_000, maxAttempts: 8 },
 };
 
@@ -61,7 +70,29 @@ const BOUNDS: Record<
   maxDepth: [1, 64],
   maxFanOut: [1, 10_000],
   mailboxLimit: [1, 1_000_000],
+  maxInputBytes: [1024, 64 * 1024 * 1024],
+  maxOutputBytes: [1024, 64 * 1024 * 1024],
+  maxEventBytes: [256, 16 * 1024 * 1024],
+  maxPromptBytes: [64, 1024 * 1024],
 };
+
+/**
+ * Refuses a value whose JSON serialization exceeds `max` bytes (`SchemaViolation`, reason `<what>TooLarge`), so a
+ * payload cannot grow task rows, mailboxes and inbox entries without bound (FEAT-040.2).
+ */
+export function assertMaxBytes(
+  value: unknown,
+  max: number,
+  what: 'input' | 'output' | 'event' | 'prompt',
+): void {
+  const size = Buffer.byteLength(JSON.stringify(value ?? null));
+  if (size > max)
+    throw new AgentropyError(
+      'SchemaViolation',
+      `The ${what} of ${size} bytes exceeds the ${max}-byte limit`,
+      { details: { reason: `${what}TooLarge`, size, limit: max } },
+    );
+}
 
 export function resolveLimits(
   overrides: Partial<RuntimeLimits> = {},

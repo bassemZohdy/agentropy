@@ -25,6 +25,7 @@ import {
   type TrustedPrincipal,
 } from '@agentropy/core';
 import { journaled } from './inbox.js';
+import { DEFAULT_LIMITS, assertMaxBytes } from './limits.js';
 import { pokeWakeups } from './wake-index.js';
 import {
   actionUsers,
@@ -49,6 +50,8 @@ export interface StoredHumanAction extends Omit<
 export interface HumanActionOptions {
   /** Claim timeout (default 15 minutes). */
   claimMs?: number;
+  /** Largest request prompt (default `DEFAULT_LIMITS.maxPromptBytes`); larger is `SchemaViolation`. */
+  maxPromptBytes?: number;
 }
 
 const view = (d: StoredDocument<StoredHumanAction>): HumanActionRequest => {
@@ -131,6 +134,11 @@ export class HumanActionService {
     ctx: CapabilityInvocationContext,
   ): Promise<{ requestId: string; dueAt?: string }> {
     const r = validateRequest(input);
+    assertMaxBytes(
+      r.prompt,
+      this.options.maxPromptBytes ?? DEFAULT_LIMITS.maxPromptBytes,
+      'prompt',
+    );
     return journaled(
       this.tasks,
       ctx,

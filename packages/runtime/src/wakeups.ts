@@ -22,6 +22,7 @@ import {
   sanitizeTraceparent,
 } from '@agentropy/core';
 import type { StoredHumanAction } from './human-actions.js';
+import { DEFAULT_LIMITS, assertMaxBytes } from './limits.js';
 import type { InstanceDirectory } from './registry.js';
 import type { RemoteDelegationService, RemoteTaskRecord } from './remote.js';
 import type { WakeupRecord } from './runtime.js';
@@ -66,6 +67,8 @@ const matches = (
 export interface WakeupServiceOptions {
   /** Unconsumed events kept per subscription; further events are dropped and counted (default 1000). */
   mailboxLimit?: number;
+  /** Largest inbound event payload (default `DEFAULT_LIMITS.maxEventBytes`); larger is `SchemaViolation`. */
+  maxEventBytes?: number;
   /**
    * A poll evaluates only registrations due by `checkAt` (FEAT-033.2); every `fullScanMs` (default 60 s, and on
    * the first poll) it evaluates every armed registration instead, as a backstop.
@@ -188,6 +191,11 @@ export class WakeupService {
     traceparent?: string;
   }): Promise<OfferResult> {
     const limit = this.options.mailboxLimit ?? 1000;
+    assertMaxBytes(
+      event.payload,
+      this.options.maxEventBytes ?? DEFAULT_LIMITS.maxEventBytes,
+      'event',
+    );
     const telemetry = this.tasks.telemetry;
     const traceparent = sanitizeTraceparent(event.traceparent);
     if (event.traceparent !== undefined && !traceparent)

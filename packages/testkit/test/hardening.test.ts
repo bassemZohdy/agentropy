@@ -363,3 +363,123 @@ describe('secret canary (M3-05)', () => {
     expect(haystack).not.toContain(SECRET);
   });
 });
+
+describe('payload size limits (FEAT-040.2)', () => {
+  const big = (n: number) => 'x'.repeat(n);
+  function small() {
+    const app = createLocalApp({
+      store: sqliteTempStore(),
+      pdp: new FakePolicy(),
+      profiles: BUILTIN_PROFILES,
+      limits: {
+        maxInputBytes: 1024,
+        maxOutputBytes: 1024,
+        maxEventBytes: 256,
+        maxPromptBytes: 64,
+      },
+    });
+    return app;
+  }
+  async function start(app: ReturnType<typeof small>, agent: Agent, id = 'a') {
+    app.define(
+      def(id, {
+        capabilities: [{ id: 'human-input', versionRange: '^1.0.0' }],
+      }),
+      agent,
+    );
+    const inst = await app.createInstance(
+      {
+        definition: { id, version: '1.0.0' },
+        ownerId: alice.id,
+        idempotencyKey: `i-${id}`,
+      },
+      alice,
+    );
+    return (input: unknown, key: string) =>
+      app.delegate(
+        {
+          target: { instanceId: inst.id },
+          input,
+          idempotencyKey: key,
+          correlationId: key,
+        },
+        alice,
+      );
+  }
+
+  it('a task input over the limit is refused at acceptance, one under it is accepted', async () => {
+    const app = small();
+    const delegate = await start(app, {
+      handle: async () => ({ kind: 'completed', output: null }),
+    });
+    expect(await code(delegate({ blob: big(2_000) }, 'big'))).toBe(
+      'SchemaViolation',
+    );
+    expect(await code(delegate({ blob: big(100) }, 'ok'))).toBe('no-error');
+  });
+
+  it('an output over the limit fails the task with SchemaViolation', async () => {
+    const app = small();
+    const delegate = await start(app, {
+      handle: async () => ({ kind: 'completed', output: big(2_000) }),
+    });
+    const t = await delegate({}, 'k');
+    await app.runUntilIdle();
+    const snap = await app.getTask(t.taskId, alice);
+    expect([snap.status, snap.outcome?.code]).toEqual([
+      'failed',
+      'SchemaViolation',
+    ]);
+  });
+
+  it('an inbound event payload over the limit is refused; a human-action prompt over the limit is refused', async () => {
+    const app = small();
+    expect(
+      await code(
+        app.publishEvent({
+          eventId: 'e-big',
+          source: 'feed',
+          tenantId: 't-1',
+          payload: { blob: big(1_000) },
+        }),
+      ),
+    ).toBe('SchemaViolation');
+    expect(
+      await app.publishEvent({
+        eventId: 'e-ok',
+        source: 'feed',
+        tenantId: 't-1',
+        payload: { n: 1 },
+      }),
+    ).toBe(true);
+
+    const delegate = await start(
+      app,
+      {
+        handle: async (_inv, ctx) => {
+          await ctx.capabilities.invoke(
+            'human-input',
+            'requestAction',
+            {
+              kind: 'text',
+              prompt: big(200),
+              inputSchema: { type: 'string' },
+              assignees: { principalIds: ['alice'] },
+              onExpiry: 'fail-task',
+            },
+            { stepKey: 'ask' },
+          );
+          return { kind: 'completed', output: null };
+        },
+      },
+      'asker',
+    );
+    const t = await delegate({}, 'p');
+    await app.runUntilIdle();
+    const snap = await app.getTask(t.taskId, alice);
+    expect([snap.status, snap.outcome?.code]).toEqual([
+      'failed',
+      'SchemaViolation',
+    ]);
+  });
+});

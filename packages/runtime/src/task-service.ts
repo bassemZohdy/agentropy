@@ -48,6 +48,7 @@ import {
   type WakeupRequest,
 } from '@agentropy/core';
 import { recordAuditIntent } from './audit.js';
+import { DEFAULT_LIMITS, assertMaxBytes } from './limits.js';
 import { checkTaskQuota, type QuotaResolver } from './quotas.js';
 import { pokeWakeups } from './wake-index.js';
 import type { FaultHook } from './outbox.js';
@@ -185,7 +186,7 @@ export interface TaskServiceOptions {
   grants?: GrantVerifier;
   now: () => string;
   newId?: (kind: IdKind) => string;
-  limits?: { maxDepth?: number; maxFanOut?: number };
+  limits?: { maxDepth?: number; maxFanOut?: number; maxInputBytes?: number };
   /** Fault hook for audit-intent and recovery tests; production passes nothing. */
   faults?: FaultHook;
   /** Spans and metrics (observability contract); defaults to no-op. */
@@ -313,11 +314,16 @@ export class TaskService {
       },
     });
     const definition = this.o.definitions.require(instance.definition);
-    // 3. Schema.
+    // 3. Schema, and the size bound (a payload cannot grow task rows without limit).
     validateAgainst(
       definition.inputSchema,
       request.input,
       `${definition.id} input`,
+    );
+    assertMaxBytes(
+      request.input,
+      this.o.limits?.maxInputBytes ?? DEFAULT_LIMITS.maxInputBytes,
+      'input',
     );
     // The deadline is compared as a string by the scheduler: keep only UTC ISO-8601 (FEAT-038.3).
     const deadline =

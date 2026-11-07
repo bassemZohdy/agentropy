@@ -389,7 +389,11 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     pdp: o.pdp,
     ...(o.grants ? { grants: o.grants } : {}),
     now,
-    limits: { maxDepth: limits.maxDepth, maxFanOut: limits.maxFanOut },
+    limits: {
+      maxDepth: limits.maxDepth,
+      maxFanOut: limits.maxFanOut,
+      maxInputBytes: limits.maxInputBytes,
+    },
     ...(o.faults ? { faults: o.faults } : {}),
     ...(o.telemetry ? { telemetry: o.telemetry } : {}),
     ...(o.quotas ? { quotas: o.quotas } : {}),
@@ -410,6 +414,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
   });
   const wakeups = new WakeupService(tasks, instances, {
     mailboxLimit: limits.mailboxLimit,
+    maxEventBytes: limits.maxEventBytes,
   });
   const inbox = new InboxService(tasks, {
     ...(o.inbox?.policy ? { policy: o.inbox.policy } : {}),
@@ -419,7 +424,9 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     ...(o.inbox?.policy ? { policy: o.inbox.policy } : {}),
     ...(o.inbox?.push ? { push: o.inbox.push } : {}),
   });
-  const human = new HumanActionService(tasks);
+  const human = new HumanActionService(tasks, {
+    maxPromptBytes: limits.maxPromptBytes,
+  });
   wakeups.addSweep(() => human.sweep());
   const remote = o.communication
     ? new RemoteDelegationService({
@@ -547,6 +554,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     leaseMs: limits.leaseMs,
     cancelGraceMs: limits.cancelGraceMs,
     maxActivationMs: limits.maxActivationMs,
+    maxOutputBytes: limits.maxOutputBytes,
     keepExecutions: limits.keepExecutions,
     maxCheckpointBytes: limits.maxCheckpointBytes,
     pdpTimeoutMs: limits.pdpTimeoutMs,
