@@ -208,7 +208,7 @@ Types, schemas, errors, lifecycle tables and pure resolvers (no I/O). 197 export
 
 ## @agentropy/runtime
 
-Registries, task service, runtime, scheduler, providers and the local app facade. 158 exports.
+Registries, task service, runtime, scheduler, providers and the local app facade. 160 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
@@ -254,6 +254,8 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `CALLBACK_SOURCE` | const | [runtime/src/ingress.ts](../packages/runtime/src/ingress.ts) | Inbound callback events use this source; handlers subscribe with `{ source: CALLBACK_SOURCE, filter: { callbackId } }`. |
 | `checkInstanceQuota` | function | [runtime/src/quotas.ts](../packages/runtime/src/quotas.ts) |  |
 | `checkTaskQuota` | function | [runtime/src/quotas.ts](../packages/runtime/src/quotas.ts) |  |
+| `CompactionResult` | interface | [runtime/src/compaction.ts](../packages/runtime/src/compaction.ts) |  |
+| `compactStore` | function | [runtime/src/compaction.ts](../packages/runtime/src/compaction.ts) |  |
 | `coreOperationHandlers` | function | [runtime/src/wakeups.ts](../packages/runtime/src/wakeups.ts) | Handlers for delegation, event-handling and scheduling operations (Capability v1 operation I/O). |
 | `createA2AHttpHandler` | function | [runtime/src/a2a-http.ts](../packages/runtime/src/a2a-http.ts) |  |
 | `createA2AServer` | function | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) |  |

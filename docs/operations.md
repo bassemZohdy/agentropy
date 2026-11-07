@@ -38,6 +38,22 @@ Trace from user request through delegation, agent instance, task, attempts, prov
 - Verify explicit unsupported-feature errors and compatibility when switching providers.
 - Test cancel (including non-cooperative handlers), instance suspend/resume, compensating failures and bounded recursive delegation.
 
+## Retention and compaction
+
+`LocalApp.compact(retainMs, operator)` (a trusted service; run it on a schedule, e.g. daily) removes the standing state of work that is over, in short transactions of 100 tasks each. Nothing is pruned before `retainMs` has passed since the task ended or the record was last used.
+
+| Collection | Kept | Removed by `compact` |
+|---|---|---|
+| `tasks` | always (the system of record for `getTask`; marked `compactedAt`) | never |
+| `audit`, `auditHeads`, `auditReceipts` | governed by audit retention, holds and disposal (`auditLog.dispose`) | never by `compact` |
+| `outbox`, `wakeups`, `subscriptions`, `mailbox`, `effects`, `checkpoints`, `usage`, `humanActions`, `executions`, `pushConfigs`, `idempotency` (delegation records) | while the task is live | rows of tasks that ended before the window (outbox: published rows only) |
+| `mailbox` (consumed), `inboundEvents` | inside the window | consumed rows; dedupe records older than the window (duplicate events are only detected inside it) |
+| `remoteTasks` | while non-terminal | terminal projections last observed before the window |
+| `inbox` | until resolved or acknowledged | entries resolved or acknowledged before the window |
+| `instances`, instance idempotency records, `sessions`, `leases`, `gates`, `policyInvalidations`, `auditPolicies`, `auditHolds` | configuration and control state | pruned by their own owners (gates on task end; invalidations after 10 min) |
+
+Deleting task rows themselves is a deployment decision (it makes old task IDs answer `NotFound`); `compact` leaves them.
+
 ## Deployment stance
 
 Concrete self-hosting files and the air-gapped procedure: [deployment guide](deployment.md).

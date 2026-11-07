@@ -17,7 +17,7 @@ import {
   resolveLimits,
 } from '../../runtime/src/index.js';
 import { code, sqliteTempStore } from '../../runtime/test/harness.js';
-import { FakeAudit, FakePolicy } from '../src/index.js';
+import { FakeAudit, FakeClock, FakePolicy } from '../src/index.js';
 
 const admin: TrustedPrincipal = { id: 'admin', type: 'user', tenantId: 't-1' };
 const agent: TrustedPrincipal = { id: 'inst', type: 'agent', tenantId: 't-1' };
@@ -343,3 +343,132 @@ function def(id: string, over: Partial<AgentDefinition> = {}): AgentDefinition {
     ...over,
   };
 }
+
+describe('compaction covers every collection (FEAT-040.1)', () => {
+  it('removes the standing state of an ended task once, keeps the task answerable, and skips it afterwards', async () => {
+    const clock = new FakeClock('2026-11-06T00:00:00.000Z');
+    const app = createLocalApp({
+      store: sqliteTempStore(),
+      pdp: new FakePolicy(),
+      now: clock.iso,
+      profiles: BUILTIN_PROFILES,
+    });
+    const alice: TrustedPrincipal = {
+      id: 'alice',
+      type: 'user',
+      tenantId: 't-1',
+    };
+    const ops: TrustedPrincipal = {
+      id: 'ops',
+      type: 'service',
+      tenantId: 't-1',
+    };
+    app.define(
+      {
+        id: 'worker',
+        version: '1.0.0',
+        displayName: 'worker',
+        profile: { id: 'task', version: '1.0.0' },
+        implementation: {
+          providerId: 'native-ts',
+          providerVersion: '1.0.0',
+          artifact: { id: 'worker', version: '1.0.0' },
+        },
+        inputSchema: true,
+        runtimeRequirements: { guarantees: [] },
+        policyRef: { id: 'default', version: '1.0.0' },
+        capabilities: [{ id: 'human-input', versionRange: '^1.0.0' }],
+      },
+      {
+        handle: async (inv, ctx) => {
+          if (inv.activation > 1) return { kind: 'completed', output: 'done' };
+          await ctx.capabilities.invoke(
+            'notification',
+            'notify',
+            { severity: 'normal', title: 't', body: 'b' },
+            { stepKey: 'n1' },
+          );
+          await ctx.capabilities.invoke(
+            'human-input',
+            'requestAction',
+            {
+              kind: 'text',
+              prompt: 'q',
+              inputSchema: { type: 'string' },
+              assignees: { principalIds: ['alice'] },
+              onExpiry: 'fail-task',
+            },
+            { stepKey: 'ask' },
+          );
+          return {
+            kind: 'waiting',
+            wakeup: {
+              anyOf: [{ kind: 'timer', at: '2026-11-06T00:00:00.000Z' }],
+            },
+            checkpoint: { a: 1 },
+          };
+        },
+      },
+    );
+    const inst = await app.createInstance(
+      {
+        definition: { id: 'worker', version: '1.0.0' },
+        ownerId: alice.id,
+        idempotencyKey: 'i',
+      },
+      alice,
+    );
+    const t = await app.delegate(
+      {
+        target: { instanceId: inst.id },
+        input: {},
+        idempotencyKey: 'k',
+        correlationId: 'k',
+      },
+      alice,
+    );
+    await app.runUntilIdle();
+    expect((await app.getTask(t.taskId, alice)).status).toBe('completed');
+    const count = async (
+      c:
+        | 'effects'
+        | 'checkpoints'
+        | 'humanActions'
+        | 'executions'
+        | 'wakeups'
+        | 'usage'
+        | 'pushConfigs'
+        | 'subscriptions',
+    ) => (await app.store.transaction((tx) => tx.find(c, {}))).length;
+    expect(await count('effects')).toBeGreaterThan(0);
+    expect(await count('checkpoints')).toBe(1);
+    expect(await count('humanActions')).toBe(1);
+
+    clock.advanceBy(60_000);
+    const first = await app.compact(1_000, ops);
+    expect(first).toMatchObject({
+      tasks: 1,
+      checkpoints: 1,
+      humanActions: 1,
+      idempotency: 1,
+    });
+    expect(first.effects).toBeGreaterThan(0);
+    expect(first.executions).toBeGreaterThanOrEqual(2);
+    expect(first.wakeups).toBeGreaterThan(0);
+    expect(first.outbox).toBeGreaterThan(0);
+    expect(first.inbox).toBeGreaterThan(0);
+    for (const c of [
+      'effects',
+      'checkpoints',
+      'humanActions',
+      'executions',
+      'wakeups',
+    ] as const)
+      expect(await count(c)).toBe(0);
+    // The task is still the system of record; a second run has nothing left to do.
+    expect(await app.getResult(t.taskId, alice)).toBe('done');
+    const second = await app.compact(1_000, ops);
+    expect(second.tasks).toBe(0);
+    expect(second.effects + second.executions + second.wakeups).toBe(0);
+  });
+});

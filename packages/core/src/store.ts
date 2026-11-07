@@ -22,7 +22,8 @@ export const STORE_COLLECTIONS = {
   inbox: ['tenantId', 'ownerId', 'status'],
   /** `dueAt` and `claimExpiresAt` let the expiry sweep read only what lapsed (FEAT-039.3). */
   humanActions: ['taskId', 'status', 'dueAt', 'claimExpiresAt'],
-  idempotency: ['tenantId'],
+  /** `taskId` lets compaction find a task's record (instance records have none) (FEAT-040.1). */
+  idempotency: ['tenantId', 'taskId'],
   /** `forwarded` (0/1) lets the forwarder read only rows still to send instead of the whole log (FEAT-039.1). */
   audit: ['tenantId', 'type', 'forwarded'],
   gates: ['taskId', 'nextCheckAt'],

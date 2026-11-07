@@ -21,6 +21,7 @@ import {
   METRICS,
   sanitizeTraceparent,
 } from '@agentropy/core';
+import { compactStore, type CompactionResult } from './compaction.js';
 import type { StoredHumanAction } from './human-actions.js';
 import { DEFAULT_LIMITS, assertMaxBytes } from './limits.js';
 import type { InstanceDirectory } from './registry.js';
@@ -250,54 +251,11 @@ export class WakeupService {
   }
 
   /**
-   * Compaction (M2-01, R-37): removes consumed mailbox rows, inbound-event dedupe records older than
-   * `retainMs`, and published outbox rows and spent wake-ups of tasks that ended more than `retainMs` ago.
-   * Duplicate inbound events are only detected inside the retention window.
+   * Compaction (M2-01, R-37; every collection since FEAT-040.1): see `compactStore`. Duplicate inbound events are
+   * only detected inside the retention window.
    */
-  async compact(retainMs: number): Promise<{
-    mailbox: number;
-    inboundEvents: number;
-    outbox: number;
-    wakeups: number;
-  }> {
-    const cutoff = new Date(Date.parse(this.now()) - retainMs).toISOString();
-    return this.store.transaction(async (tx) => {
-      const out = { mailbox: 0, inboundEvents: 0, outbox: 0, wakeups: 0 };
-      for (const m of await tx.find<MailboxEntry>('mailbox', {
-        where: { consumed: 1 },
-      })) {
-        await tx.remove('mailbox', m.id, m.revision);
-        out.mailbox++;
-      }
-      for (const e of await tx.find<{ at: string }>('inboundEvents', {})) {
-        if (e.value.at < cutoff) {
-          await tx.remove('inboundEvents', e.id, e.revision);
-          out.inboundEvents++;
-        }
-      }
-      const ended = new Set<string>();
-      for (const status of ['completed', 'failed', 'cancelled'])
-        for (const t of await tx.find<TaskRecord>('tasks', {
-          where: { status },
-        }))
-          if (t.value.updatedAt < cutoff) ended.add(t.id);
-      for (const r of await tx.find<{ aggregateId: string; published: number }>(
-        'outbox',
-        { where: { published: 1 } },
-      ))
-        if (ended.has(r.value.aggregateId)) {
-          await tx.remove('outbox', r.id, r.revision);
-          out.outbox++;
-        }
-      for (const id of ended)
-        for (const w of await tx.find<WakeupRecord>('wakeups', {
-          where: { taskId: id },
-        })) {
-          await tx.remove('wakeups', w.id, w.revision);
-          out.wakeups++;
-        }
-      return out;
-    });
+  compact(retainMs: number): Promise<CompactionResult> {
+    return compactStore(this.tasks, retainMs);
   }
 
   private async tryFire(wakeupId: string): Promise<boolean> {
