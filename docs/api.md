@@ -208,7 +208,7 @@ Types, schemas, errors, lifecycle tables and pure resolvers (no I/O). 197 export
 
 ## @agentropy/runtime
 
-Registries, task service, runtime, scheduler, providers and the local app facade. 156 exports.
+Registries, task service, runtime, scheduler, providers and the local app facade. 157 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
@@ -337,6 +337,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `recordPolicyInvalidation` | function | [runtime/src/policy-cache.ts](../packages/runtime/src/policy-cache.ts) | Records an invalidation for every worker's shared cache inside `tx` (commit it with the change it reflects, e.g. |
 | `RemoteAgentEntry` | interface | [runtime/src/federation.ts](../packages/runtime/src/federation.ts) |  |
 | `RemoteDelegationService` | class | [runtime/src/remote.ts](../packages/runtime/src/remote.ts) |  |
+| `RemoteSyncOptions` | interface | [runtime/src/remote.ts](../packages/runtime/src/remote.ts) | How often a projection is refreshed: `minMs` after a change, doubling per quiet poll up to `maxMs`. |
 | `RemoteTaskRecord` | interface | [runtime/src/remote.ts](../packages/runtime/src/remote.ts) |  |
 | `resolveDelivery` | function | [runtime/src/priority.ts](../packages/runtime/src/priority.ts) |  |
 | `resolveLimits` | function | [runtime/src/limits.ts](../packages/runtime/src/limits.ts) |  |

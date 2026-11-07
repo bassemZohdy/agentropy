@@ -69,7 +69,7 @@ import {
   recordPolicyInvalidation,
 } from './policy-cache.js';
 import { reasoningOperationHandlers } from './reasoning.js';
-import { RemoteDelegationService } from './remote.js';
+import { RemoteDelegationService, type RemoteSyncOptions } from './remote.js';
 import {
   bridgeWorkflowCompletions,
   workflowOperationHandlers,
@@ -130,7 +130,11 @@ export interface LocalAppOptions {
   /** Spans and metrics (e.g. `openTelemetry({ api, tracer, meter })`); no-op by default. */
   telemetry?: Telemetry;
   /** Router for remote delegation targets (`target.remote`), with A2A or custom providers registered (FEAT-027.9). */
-  communication?: { router: CommunicationRouter };
+  communication?: {
+    router: CommunicationRouter;
+    /** Refresh pace of remote task projections (default 1 s after a change, doubling to 30 s when quiet). */
+    sync?: RemoteSyncOptions;
+  };
   /** Per-tenant quotas (M2-11): active tasks, accept rate, live instances. */
   quotas?: QuotaResolver;
   /** Relay leader lease, for several processes sharing one store (M2-06). */
@@ -405,7 +409,11 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
   const human = new HumanActionService(tasks);
   wakeups.addSweep(() => human.sweep());
   const remote = o.communication
-    ? new RemoteDelegationService({ tasks, router: o.communication.router })
+    ? new RemoteDelegationService({
+        tasks,
+        router: o.communication.router,
+        ...(o.communication.sync ? { sync: o.communication.sync } : {}),
+      })
     : undefined;
   // Remote projections refresh before wake-ups are evaluated, so a parent waiting on a remote child wakes promptly.
   if (remote) wakeups.addSweep(() => remote.sync());

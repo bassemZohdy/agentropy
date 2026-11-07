@@ -452,15 +452,17 @@ export class WakeupService {
           };
         }
       } else if (c.kind === 'child-tasks') {
-        // Remote children (FEAT-027.9) are tracked by their local projection.
-        const remote = c.taskIds.some((id) => id.includes(':'))
-          ? await tx.find<RemoteTaskRecord>('remoteTasks', {})
-          : [];
+        // Remote children (FEAT-027.9) are tracked by their local projection, found by its indexed task ID.
         const children = await Promise.all(
           c.taskIds.map(async (id) => {
             const local = await tx.get<TaskRecord>('tasks', id);
             if (local) return local;
-            const r = remote.find((d) => d.value.taskId === id);
+            if (!id.includes(':')) return undefined;
+            const r = (
+              await tx.find<RemoteTaskRecord>('remoteTasks', {
+                where: { taskId: id },
+              })
+            )[0];
             return r
               ? ({
                   ...r,

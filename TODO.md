@@ -56,7 +56,7 @@
   - Links: Ref: docs/review/2026-11-06-deep-review.md#store-access-on-hot-paths · Lane: runtime
   - [x] **FEAT-039.1** · mid · `AuditForwarder` reads only unforwarded rows (indexed `forwarded`), in batches, instead of the whole audit log per tick (R-39)
     - Done when: `pnpm exec vitest run packages/runtime/test/audit-forwarder.test.ts packages/testkit/test/audit-retention.test.ts`
-  - [ ] **FEAT-039.2** · high · Remote projections sync with per-projection backoff and a rate cap, a `taskId` index, and the peer's SSE stream when it offers one (R-40)
+  - [x] **FEAT-039.2** · high · Remote projections sync with per-projection backoff and a `taskId` index (R-40; the peer's SSE stream instead of polling stays a follow-up)
     - Done when: `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
   - [ ] **FEAT-039.3** · high · Due executions, `listTasks`, human-action sweep, quotas, briefing, event numbering and audit queries use pushed-down limits and new indexes (`executions.runAt`, `humanActions.dueAt`/`claimExpiresAt`, `tasks.createdAt`/`callerId`/`ownerId`, descending `FindOptions`) (R-41, R-42)
     - Done when: `pnpm exec vitest run packages/testkit/test/scale.test.ts packages/testkit/test/multi-worker.test.ts packages/store-postgres/test packages/store-sqlite/test`

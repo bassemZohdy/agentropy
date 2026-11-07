@@ -84,7 +84,14 @@ async function runtimeB() {
   };
 }
 
-function runtimeA(server: A2AServer, opts: { offline?: () => boolean } = {}) {
+function runtimeA(
+  server: A2AServer,
+  opts: {
+    offline?: () => boolean;
+    clock?: FakeClock;
+    sync?: { minMs?: number; maxMs?: number };
+  } = {},
+) {
   const wire: string[] = [];
   const a2a = new A2ACommunicationProvider({
     credentialRef: 'peer-b',
@@ -111,9 +118,10 @@ function runtimeA(server: A2AServer, opts: { offline?: () => boolean } = {}) {
     store: sqliteTempStore(),
     pdp,
     audit,
-    now: new FakeClock('2026-11-06T00:00:00.000Z').iso,
+    now: (opts.clock ?? new FakeClock('2026-11-06T00:00:00.000Z')).iso,
     profiles: BUILTIN_PROFILES,
-    communication: { router },
+    // The clock stands still in most tests, so they poll on every pass; the backoff test sets its own.
+    communication: { router, sync: opts.sync ?? { minMs: 0, maxMs: 0 } },
   });
   /** Delegates to the remote summarizer and completes with its result. */
   const coordinator: Agent<{ doc: string }> = {
@@ -394,5 +402,49 @@ describe('remote delegation through the router (FEAT-027.9)', () => {
         ),
       ),
     ).toBe('NoCompatibleRoute');
+  });
+});
+
+describe('remote projection polling backoff (FEAT-039.2)', () => {
+  it('a quiet projection is asked less and less often, a due poll finds completion, a terminal one is never asked again', async () => {
+    const { b, server } = await runtimeB();
+    const clock = new FakeClock('2026-11-06T00:00:00.000Z');
+    const { a, wire } = runtimeA(server, {
+      clock,
+      sync: { minMs: 1_000, maxMs: 8_000 },
+    });
+    await a.delegate(
+      {
+        target: { remote: { endpoint: ENDPOINT, definitionId: 'summarizer' } },
+        input: { doc: 'd' },
+        idempotencyKey: 'k',
+        correlationId: 'c',
+      },
+      alice,
+    );
+    const polls = () =>
+      wire.filter(
+        (w) => (JSON.parse(w) as { method: string }).method === 'GetTask',
+      ).length;
+    await a.wakeups.poll(); // first poll: due at once; the state changes (accepted -> submitted), pace 1 s
+    expect(polls()).toBe(1);
+    await a.wakeups.poll();
+    await a.wakeups.poll();
+    expect(polls()).toBe(1); // not due: the clock has not moved
+    clock.advanceBy(1_001);
+    await a.wakeups.poll(); // nothing new: quiet = 1 -> wait 2 s
+    expect(polls()).toBe(2);
+    clock.advanceBy(1_000); // 1 s into the 2 s wait
+    await a.wakeups.poll();
+    expect(polls()).toBe(2);
+    await b.runUntilIdle(); // the remote work finishes meanwhile
+    clock.advanceBy(1_001);
+    await a.wakeups.poll();
+    expect(polls()).toBe(3);
+    const [done] = await projections(a);
+    expect(done).toMatchObject({ status: 'completed' });
+    clock.advanceBy(60_000);
+    await a.wakeups.poll();
+    expect(polls()).toBe(3); // terminal: never asked again
   });
 });

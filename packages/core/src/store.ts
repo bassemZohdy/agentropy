@@ -28,7 +28,8 @@ export const STORE_COLLECTIONS = {
   sessions: ['tenantId'],
   leases: ['kind'],
   usage: ['taskId'],
-  remoteTasks: ['tenantId', 'status', 'parentTaskId'],
+  /** `taskId` finds one projection without scanning them all (FEAT-039.2). */
+  remoteTasks: ['tenantId', 'status', 'parentTaskId', 'taskId'],
   auditPolicies: ['tenantId'],
   auditHolds: ['tenantId', 'status'],
   auditReceipts: ['tenantId'],

@@ -20,6 +20,7 @@ import {
   type DelegationRequest,
   type RemoteTaskRef,
   type RouteBinding,
+  type StoredDocument,
   type TaskHandle,
   type TaskSnapshot,
   type TrustedPrincipal,
@@ -48,14 +49,40 @@ export interface RemoteTaskRecord {
   observedAt: string;
   createdAt: string;
   lastError?: string;
+  /** The scheduler asks the peer again from this time on (FEAT-039.2); absent means now. */
+  nextSyncAt?: string;
+  /** Polls in a row that found nothing new or failed; the wait doubles with each. */
+  quiet?: number;
+}
+
+/** How often a projection is refreshed: `minMs` after a change, doubling per quiet poll up to `maxMs`. */
+export interface RemoteSyncOptions {
+  minMs?: number;
+  maxMs?: number;
 }
 
 type RemoteTarget = NonNullable<DelegationRequest['target']['remote']>;
 
+/** Statuses of a projection that still needs refreshing. */
+const OPEN = ['created', 'assigned', 'running', 'waiting'] as const;
+
 export class RemoteDelegationService {
   constructor(
-    private readonly o: { tasks: TaskService; router: CommunicationRouter },
+    private readonly o: {
+      tasks: TaskService;
+      router: CommunicationRouter;
+      sync?: RemoteSyncOptions;
+    },
   ) {}
+
+  /** Next refresh time after a poll that saw `quiet` quiet polls in a row (FEAT-039.2). */
+  private due(quiet: number): string | undefined {
+    const min = this.o.sync?.minMs ?? 1_000;
+    const max = this.o.sync?.maxMs ?? 30_000;
+    if (max <= 0) return undefined; // backoff off: refreshed on every poll
+    const wait = Math.min(max, min * 2 ** Math.min(quiet, 20));
+    return new Date(Date.parse(this.now()) + wait).toISOString();
+  }
 
   private get store() {
     return this.o.tasks.o.store;
@@ -200,9 +227,9 @@ export class RemoteDelegationService {
 
   private async find(taskId: string) {
     const rows = await this.store.transaction((tx) =>
-      tx.find<RemoteTaskRecord>('remoteTasks', { where: {} }),
+      tx.find<RemoteTaskRecord>('remoteTasks', { where: { taskId } }),
     );
-    return rows.find((r) => r.value.taskId === taskId);
+    return rows[0];
   }
 
   /**
@@ -262,13 +289,25 @@ export class RemoteDelegationService {
     );
   }
 
-  /** Refresh every non-terminal projection from its provider (called on each scheduler poll). */
+  /**
+   * Refresh the non-terminal projections that are due from their providers (called on each scheduler poll). A
+   * projection that keeps showing nothing new, or whose peer is down, is asked less and less often (doubling from
+   * `sync.minMs` up to `sync.maxMs`), so open remote tasks do not become a request every poll (FEAT-039.2).
+   */
   async sync(): Promise<number> {
+    const now = this.now();
     const open = (
-      await this.store.transaction((tx) =>
-        tx.find<RemoteTaskRecord>('remoteTasks', {}),
-      )
-    ).filter((r) => !isTerminal(TASK_MACHINE, r.value.status));
+      await this.store.transaction(async (tx) => {
+        const rows: StoredDocument<RemoteTaskRecord>[] = [];
+        for (const status of OPEN)
+          rows.push(
+            ...(await tx.find<RemoteTaskRecord>('remoteTasks', {
+              where: { status },
+            })),
+          );
+        return rows;
+      })
+    ).filter((d) => !d.value.nextSyncAt || d.value.nextSyncAt <= now);
     let changed = 0;
     for (const doc of open) {
       const r = doc.value;
@@ -291,19 +330,41 @@ export class RemoteDelegationService {
           state.output,
         );
         if (after.revision !== before) changed++;
+        else await this.schedule(doc.id, (r.quiet ?? 0) + 1);
       } catch (err) {
         // The remote task stays authoritative: an unreachable peer leaves the projection as last observed.
-        await this.store.transaction(async (tx) => {
-          const cur = await tx.get<RemoteTaskRecord>('remoteTasks', doc.id);
-          if (cur)
-            await tx.update('remoteTasks', cur.id, cur.revision, {
-              ...cur.value,
-              lastError: (err as { code?: string }).code ?? 'Internal',
-            });
-        });
+        await this.schedule(
+          doc.id,
+          (r.quiet ?? 0) + 1,
+          (err as { code?: string }).code ?? 'Internal',
+        );
       }
     }
     return changed;
+  }
+
+  /** Records when the projection is asked next, and the error of a failed poll (cleared by a good one). */
+  private async schedule(
+    docId: string,
+    quiet: number,
+    error?: string,
+  ): Promise<void> {
+    const next = this.due(quiet);
+    await this.store.transaction(async (tx) => {
+      const cur = await tx.get<RemoteTaskRecord>('remoteTasks', docId);
+      if (!cur || isTerminal(TASK_MACHINE, cur.value.status)) return;
+      const value: RemoteTaskRecord = { ...cur.value, quiet };
+      if (next) value.nextSyncAt = next;
+      else delete value.nextSyncAt;
+      if (error) value.lastError = error;
+      if (
+        error === undefined &&
+        value.quiet === cur.value.quiet &&
+        value.nextSyncAt === cur.value.nextSyncAt
+      )
+        return;
+      await tx.update('remoteTasks', cur.id, cur.revision, value);
+    });
   }
 
   private ref(r: RemoteTaskRecord): RemoteTaskRef {
@@ -321,9 +382,9 @@ export class RemoteDelegationService {
     output: unknown,
   ): Promise<RemoteTaskRecord> {
     return this.store.transaction(async (tx) => {
-      const doc = (await tx.find<RemoteTaskRecord>('remoteTasks', {})).find(
-        (d) => d.value.taskId === taskId,
-      )!;
+      const doc = (
+        await tx.find<RemoteTaskRecord>('remoteTasks', { where: { taskId } })
+      )[0]!;
       const r = doc.value;
       if (
         normalized === 'unknown' ||
@@ -356,6 +417,10 @@ export class RemoteDelegationService {
             : {}),
       };
       delete next.lastError;
+      next.quiet = 0;
+      const due = this.due(0);
+      if (due) next.nextSyncAt = due;
+      else delete next.nextSyncAt;
       await tx.update<RemoteTaskRecord>(
         'remoteTasks',
         doc.id,
