@@ -25,4 +25,4 @@
 - **M1–M2: direct provider only** (implemented, with the loopback JSON-RPC provider proving the out-of-process shape). It satisfies every criterion and keeps the conformance suite offline.
 - **First external adapter: MCP**, because of ecosystem reach. Rules for that adapter: discovered tools enter the registry as candidates and need the normal activation (with schema digest); MCP tools with effects default to `idempotency: at-least-once` unless the server documents a key convention the adapter maps; credentials are resolved per invocation and never baked into the server configuration; discovery changes after activation surface as `IncompatibleVersion`, never as silent upgrades.
 - **UTCP-style adapter:** later, for APIs that already support idempotency keys natively; it reuses the same provider SPI.
-- Adapters are delivered under FEAT-028 (M3 extensibility); this note closes the evaluation (T-04).
+- Adapters are delivered under FEAT-028 (M3 extensibility); this note closes the evaluation (T-04). The MCP adapter was built in FEAT-035.1 following these rules ([Tool v1, MCP adapter](../contracts/tool-v1.md#mcp-adapter-feat-0351)).

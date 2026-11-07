@@ -19,7 +19,7 @@
 - [ ] **FEAT-035** · P2 · high · Provider integrations: MCP tools, live opt-in model and Conductor suites, model routing (R-11–R-13)
   - Done when: `pnpm exec vitest run packages/runtime/test/tools.test.ts packages/testkit/test`
   - Links: Ref: docs/review/2026-11-06-project-review.md#interoperability · Lane: runtime
-  - [ ] **FEAT-035.1** · high · MCP client tool provider (tools/list, tools/call) under the tool PEP and audit (R-11)
+  - [x] **FEAT-035.1** · high · MCP client tool provider (tools/list, tools/call) under the tool PEP and audit (R-11)
     - Done when: `pnpm exec vitest run packages/runtime/test/mcp-tools.test.ts`
   - [ ] **FEAT-035.2** · mid · Opt-in live suites for the model API and Conductor; Conductor OSS service job in CI (R-12)
     - Done when: `pnpm exec vitest run packages/workflow-conductor/test packages/testkit/test/providers.test.ts`

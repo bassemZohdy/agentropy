@@ -26,3 +26,4 @@ export * from './a2a.js';
 export * from './remote.js';
 export * from './federation.js';
 export * from './compaction.js';
+export * from './mcp.js';

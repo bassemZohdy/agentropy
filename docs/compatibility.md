@@ -24,6 +24,7 @@
 | Integration | Version | How verified |
 |---|---|---|
 | A2A | 1.0, JSON-RPC binding, `A2A-Version: 1.0` header; agent cards; SSE streaming (`SendStreamingMessage`, `SubscribeToTask`); push notifications (server, durable configs with sealed secrets); `ListTasks`, task continuation, file and data parts; HTTP binding | Tested: provider and server conformance (unary and streaming), two-runtime delegation and streaming, polling fallback, push-notification configs and webhook delivery, federation, the HTTP binding over sockets and in the container image, and interoperability with the reference JavaScript SDK `@a2a-js/sdk` 1.3.0 in both directions (offline). Other third-party implementations are not tested |
+| MCP tools | MCP 2025-06-18 over Streamable HTTP (`tools/list`, `tools/call`) | Tested against a fake MCP server: discovery, calls under the executor, schema-drift refusal, SSE and session handling; no live MCP server, no stdio |
 | Model API | OpenAI-compatible `POST /chat/completions` with tools | Tested against recorded fixtures (no live endpoint) |
 | OpenTelemetry | `@opentelemetry/api` 1.9; SDK 2.0 (traces, metrics) | Tested: span and metric export to in-memory exporters |
 | Conductor | REST API (`/api/workflow`), Conductor OSS and Orkes | Tested against an in-process fake of the REST API; no live server |

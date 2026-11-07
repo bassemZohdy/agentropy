@@ -146,3 +146,14 @@ Tool manifests, outputs and errors are untrusted data: they are validated and ne
 ## Conformance checks
 
 Discovery-only tool cannot be invoked; unverified tool cannot be activated; unauthorized activation denied; suspended/revoked tool denied at invocation; PDP outage fails closed; spoofed tenant rejected; missing step key on an external tool; schema violation in/out; same logical tool through two bindings gives the same result without agent code change; audit intent failure prevents dispatch; secrets never present in pins, config snapshots or errors.
+
+## MCP adapter (FEAT-035.1)
+
+`McpToolProvider` (provider `mcp`, `@agentropy/runtime`) runs tools of a Model Context Protocol server (revision 2025-06-18) behind the same registry, pinning, policy, audit and schema checks as any other provider.
+
+- **Discovery is a candidate list.** `McpClient.listTools()` reads `tools/list`; `mcpToolRegistration(tool, { idPrefix, version })` turns each tool into a Tool v1 descriptor and binding. The tool must still be registered, verified and activated by an administrator; nothing is activated automatically.
+- **Effects and idempotency.** A tool annotated `readOnlyHint` is `read`/`idempotent`; every other tool is `external` and `at-least-once` (MCP carries no idempotency key, so the provider declares `idempotencyKeys: false` and the executor refuses to bind it to a tool that claims `keyed` or `idempotent` effects unless the server's own `idempotentHint` says so). Cancellation is the abort signal passed to the transport.
+- **Schema pinning.** The binding's `config.schemaDigest` is the digest of the tool's input and output schemas at registration. Before a call the provider compares it with the server's current `tools/list` (cached for `schemaTtlMs`, default 5 minutes, and re-read once before refusing); a changed or missing tool fails `IncompatibleVersion` and is not called.
+- **Results are data.** A reply's `structuredContent` is the output; otherwise the text content is returned as `{ text }`. A tool-reported error (`isError`) or a JSON-RPC error is `ProviderUnavailable` carrying only the numeric code, never the server's text.
+- **Transport.** `mcpHttpTransport({ url, fetch })` is the Streamable HTTP transport: one POST endpoint, JSON or SSE replies, the `Mcp-Session-Id` issued at `initialize` sent afterwards, a resolved credential `{ token }` as a Bearer header (`binding.credentialRef` as for any tool), redirects never followed, replies capped at 1 MiB; 401/403 is `AuthorityExpired`. stdio servers are not supported (a process supervisor is a deployment concern); implement `McpTransport` for them.
+

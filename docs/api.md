@@ -208,7 +208,7 @@ Types, schemas, errors, lifecycle tables and pure resolvers (no I/O). 197 export
 
 ## @agentropy/runtime
 
-Registries, task service, runtime, scheduler, providers and the local app facade. 160 exports.
+Registries, task service, runtime, scheduler, providers and the local app facade. 172 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
@@ -312,6 +312,18 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `LoopbackRequest` | interface | [runtime/src/tools.ts](../packages/runtime/src/tools.ts) | A JSON-RPC-shaped request as it would cross a protocol boundary; payloads are serialized, never shared by reference. |
 | `LoopbackTransport` | type | [runtime/src/tools.ts](../packages/runtime/src/tools.ts) |  |
 | `MailboxEntry` | interface | [runtime/src/wakeups.ts](../packages/runtime/src/wakeups.ts) |  |
+| `MCP_PROTOCOL_VERSION` | const | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) | The MCP protocol revision this client asks for. |
+| `McpCallOptions` | interface | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) |  |
+| `McpCallResult` | interface | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) |  |
+| `McpClient` | class | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) |  |
+| `McpFetch` | type | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) |  |
+| `McpHttpResponse` | interface | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) | The part of a fetch `Response` the HTTP transport reads. |
+| `mcpHttpTransport` | function | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) | Streamable HTTP transport (MCP 2025-06-18): every message is a POST to one endpoint; a reply is JSON or an SSE stream that carries the response; the session … |
+| `mcpSchemaDigest` | const | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) | Digest of the parts of a tool the caller's validation depends on. |
+| `McpTool` | interface | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) |  |
+| `McpToolProvider` | class | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) |  |
+| `mcpToolRegistration` | function | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) | A discovered MCP tool as a Tool v1 descriptor and its binding. |
+| `McpTransport` | interface | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) | A JSON-RPC transport to one MCP server. |
 | `NATIVE_TS_FEATURES` | const | [runtime/src/implementation.ts](../packages/runtime/src/implementation.ts) |  |
 | `NativeImplementationProvider` | class | [runtime/src/implementation.ts](../packages/runtime/src/implementation.ts) | Built-in provider for TypeScript handlers registered in a HandlerRegistry. |
 | `OfferResult` | interface | [runtime/src/wakeups.ts](../packages/runtime/src/wakeups.ts) |  |
