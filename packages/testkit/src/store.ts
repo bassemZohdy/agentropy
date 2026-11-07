@@ -152,6 +152,63 @@ export function defineStoreConformance(
     );
 
     t.it(
+      'limit 0 returns nothing; strings order by code unit, nulls first; ranges combine with equality',
+      async () => {
+        const s = await o.create();
+        await s.transaction(async (tx) => {
+          for (const [id, dueAt] of [
+            ['w-e', 'é'],
+            ['w-z', 'Z'],
+            ['w-a', 'a'],
+            ['w-b', 'b'],
+          ] as const)
+            await tx.insert('wakeups', id, {
+              taskId: 'x',
+              status: 'armed',
+              dueAt,
+            });
+          await tx.insert('wakeups', 'w-fired', {
+            taskId: 'x',
+            status: 'fired',
+            dueAt: 'a',
+          });
+          await tx.insert('wakeups', 'w-null', {
+            taskId: 'x',
+            status: 'armed',
+          });
+        });
+        const ids = async (p: Promise<{ id: string }[]>) =>
+          (await p).map((d) => d.id);
+        t.expect(
+          await ids(s.transaction((tx) => tx.find('wakeups', { limit: 0 }))),
+        ).toEqual([]);
+        // Code-unit order (uppercase before lowercase, accented after ASCII), nulls first.
+        t.expect(
+          await ids(
+            s.transaction((tx) =>
+              tx.find('wakeups', {
+                where: { status: 'armed' },
+                orderBy: 'dueAt',
+              }),
+            ),
+          ),
+        ).toEqual(['w-null', 'w-z', 'w-a', 'w-b', 'w-e']);
+        t.expect(
+          await ids(
+            s.transaction((tx) =>
+              tx.find('wakeups', {
+                where: { status: 'armed' },
+                range: { field: 'dueAt', gte: 'a', lte: 'b' },
+                orderBy: 'dueAt',
+              }),
+            ),
+          ),
+        ).toEqual(['w-a', 'w-b']);
+        await s.close();
+      },
+    );
+
+    t.it(
       'a failed transaction rolls back every write across collections',
       async () => {
         const s = await o.create();
