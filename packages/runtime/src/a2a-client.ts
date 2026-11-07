@@ -77,6 +77,12 @@ export interface A2AProviderOptions {
   maxPolls?: number;
 }
 
+/** Error codes only this runtime may raise about its own authority; from a peer they become `RemoteUnavailable`. */
+const LOCAL_ONLY = new Set<string>([
+  'AuthorityExpired',
+  'PolicyDecisionUnavailable',
+]);
+
 export class A2ACommunicationProvider implements AgentCommunicationProvider {
   readonly id = 'a2a';
   readonly features: CommunicationFeatures;
@@ -189,10 +195,13 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
     if (body.error) {
       // Prefer an Agentropy peer's typed code; otherwise map the A2A code. Remote messages are not trusted text.
       const fromPeer = body.error.data?.code;
-      const code =
+      const peerCode =
         fromPeer && isErrorCode(fromPeer)
           ? fromPeer
           : (A2A_ERRORS[body.error.code ?? 0] ?? 'RemoteUnavailable');
+      // Lost authority and a policy outage mean something to the local runtime (a task parks behind the dispatch
+      // gate). A peer's claim of them is about the peer, never about local authority (FEAT-038.4).
+      const code = LOCAL_ONLY.has(peerCode) ? 'RemoteUnavailable' : peerCode;
       throw new AgentropyError(
         code as never,
         `A2A peer error ${body.error.code ?? ''}`.trim(),
@@ -285,12 +294,20 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
       ctx,
     );
     const ack = result?.message?.parts?.[0]?.text;
-    return {
-      messageId: message.messageId,
-      accepted: ack
-        ? (JSON.parse(ack) as { accepted: boolean }).accepted
-        : false,
-    };
+    let accepted = false;
+    if (ack) {
+      try {
+        accepted =
+          (JSON.parse(ack) as { accepted?: unknown }).accepted === true;
+      } catch {
+        throw new AgentropyError(
+          'RemoteUnavailable',
+          'A2A peer sent an unreadable acknowledgement',
+          { details: { protocol: 'a2a' } },
+        );
+      }
+    }
+    return { messageId: message.messageId, accepted };
   }
 
   async getTask(

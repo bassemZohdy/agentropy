@@ -51,17 +51,6 @@
     - Done when: `pnpm exec vitest run packages/runtime/test/runtime.test.ts packages/testkit/test/hardening.test.ts`
   - [ ] **FEAT-037.3** · low · Host observability: `AGENTROPY_OTLP_ENDPOINT` wires the OpenTelemetry SDK as an optional dependency of the examples package (R-31; shutdown order, unref'd timers and error logs done)
     - Done when: `pnpm exec vitest run packages/examples/test/host.test.ts packages/testkit/test/telemetry.test.ts`
-- [ ] **FEAT-038** · P1 · high · Lifecycle correctness: deadlines while waiting, activation budget, subscription re-activation, timestamp validation, remote error codes, envelopes (R-32–R-38)
-  - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/runtime/test/task-service.test.ts packages/testkit/test/a2a.test.ts packages/testkit/test/providers.test.ts`
-  - Links: Ref: docs/review/2026-11-06-deep-review.md#lifecycle-correctness · Lane: runtime
-  - [x] **FEAT-038.1** · mid · A `waiting` task past its deadline fails with T9 (deadline folded into the wake-up `dueAt`/`checkAt`); `budget.maxActivations` enforced at T5 with `BudgetExceeded` (R-32, R-35)
-    - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts`
-  - [x] **FEAT-038.2** · low · `subscribe()` re-activates a revoked subscription; workflow completions are retried when publishing fails and engine polls can run as scheduler sweeps (R-33, R-38)
-    - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/testkit/test/providers.test.ts`
-  - [x] **FEAT-038.3** · mid · Deadline, timer `at` and `timeoutAt` validated and normalized to UTC ISO-8601 at acceptance and at the waiting disposition (R-34)
-    - Done when: `pnpm exec vitest run packages/runtime/test/task-service.test.ts packages/runtime/test/runtime.test.ts`
-  - [ ] **FEAT-038.4** · mid · A2A client downgrades peer-supplied authorization-category error codes and guards the acknowledgement parse (threat-model row); `localAppTarget.receive` routes envelopes through the activation ingress (R-36, R-37)
-    - Done when: `pnpm exec vitest run packages/testkit/test/a2a.test.ts packages/testkit/test/remote-delegation.test.ts`
 - [ ] **FEAT-039** · P1 · high · Store access on hot paths: bounded scans, indexes and backoff so per-operation cost stays flat as data grows (R-39–R-44)
   - Done when: `pnpm exec vitest run packages/testkit/test/scale.test.ts packages/testkit/test/benchmarks.test.ts`
   - Links: Ref: docs/review/2026-11-06-deep-review.md#store-access-on-hot-paths · Lane: runtime
@@ -79,7 +68,7 @@
 - [ ] **TASK-035** · P1 · mid · A2A production hardening: peer principals, SSE keep-alive, webhook timeouts, error mapping, manifests (R-47–R-51)
   - Done when: `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts packages/testkit/test/a2a-push.test.ts packages/examples/test/host.test.ts`
   - Links: Ref: docs/review/2026-11-06-deep-review.md#a2a-production-hardening · Lane: runtime
-  - [ ] **TASK-035.1** · mid · A2A peers are not tenant-wide `service` principals: the sample host maps tokens to `user` principals (or the endpoint applies an explicit visibility rule); deployment.md and TM-43 (R-47)
+  - [ ] **TASK-035.1** · mid · A2A peers are not tenant-wide `service` principals: the sample host maps tokens to `user` principals (or the endpoint applies an explicit visibility rule); deployment.md and a threat-model row (R-47)
     - Done when: `pnpm exec vitest run packages/examples/test/host.test.ts packages/testkit/test/a2a-http.test.ts`
   - [ ] **TASK-035.2** · low · Transport hardening: SSE keep-alive comments, authentication before the body is read, write backpressure, webhook delivery timeout with abort, unread response bodies cancelled (R-48, R-49)
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts packages/testkit/test/a2a-push.test.ts packages/testkit/test/providers.test.ts`

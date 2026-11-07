@@ -12,6 +12,7 @@ import {
   type TrustedPrincipal,
 } from '@agentropy/core';
 import type { LocalApp } from './app.js';
+import { createActivationIngress } from './ingress.js';
 import type { DirectTarget } from './communication.js';
 import {
   A2A_PROTOCOL_VERSION,
@@ -605,6 +606,7 @@ export function createA2AServer(
 
 /** Exposes one instance of a LocalApp as an A2A target (inbound), reusing every AgentService check. */
 export function localAppTarget(app: LocalApp): DirectTarget {
+  const ingress = createActivationIngress(app);
   return {
     delegate: (request, caller) => app.delegate(request, caller),
     getTask: async (taskId, caller) => {
@@ -649,6 +651,13 @@ export function localAppTarget(app: LocalApp): DirectTarget {
           } satisfies AgentEvent;
       })();
     },
-    receive: async () => ({ accepted: false }),
+    // Agentropy envelopes (`agent.delegate`, `agent.event`, `agent.callback`) take the activation ingress, which
+    // re-validates them and applies the same policy as any other ingress; a refusal reaches the peer typed.
+    receive: async (message, caller) => {
+      const r = await ingress.receive(message, caller);
+      if (r.status === 'rejected')
+        throw new AgentropyError(r.error.code, r.error.message);
+      return { accepted: true };
+    },
   };
 }

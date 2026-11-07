@@ -636,3 +636,108 @@ describe('A2A 1.0: ListTasks, task continuation and file parts (FEAT-034.4)', ()
       expect((await send(`bad-${i}`, parts)).error?.code).toBe(-32602);
   });
 });
+
+describe('peers cannot claim local authority loss (FEAT-038.4)', () => {
+  const rpc = (error: unknown) => ({
+    fetch: async () => ({ status: 200, json: async () => ({ error }) }),
+  });
+  const ctx = { caller, correlationId: 'c' };
+  const route = {
+    providerId: 'a2a',
+    protocol: 'a2a',
+    protocolVersion: A2A_PROTOCOL_VERSION,
+    target: { definitionId: 'w', tenantId: 't-1', endpoint: 'https://b/a2a' },
+  };
+
+  it('AuthorityExpired and PolicyDecisionUnavailable from a peer become RemoteUnavailable; other typed codes pass', async () => {
+    for (const [peer, local] of [
+      ['AuthorityExpired', 'RemoteUnavailable'],
+      ['PolicyDecisionUnavailable', 'RemoteUnavailable'],
+      ['PermissionDenied', 'PermissionDenied'],
+      ['NotFound', 'NotFound'],
+    ] as const) {
+      const p = new A2ACommunicationProvider(
+        rpc({ code: -32603, message: 'x', data: { code: peer } }),
+      );
+      expect(
+        await code(
+          p.delegate(
+            route,
+            { target: {}, input: 1, idempotencyKey: 'k', correlationId: 'c' },
+            ctx,
+          ),
+        ),
+      ).toBe(local);
+    }
+  });
+
+  it('an unreadable acknowledgement is RemoteUnavailable, not a SyntaxError', async () => {
+    const p = new A2ACommunicationProvider({
+      fetch: async () => ({
+        status: 200,
+        json: async () => ({
+          result: { message: { parts: [{ text: 'not json {' }] } },
+        }),
+      }),
+    });
+    const message = {
+      schemaVersion: 1,
+      kind: 'command' as const,
+      name: 'ping',
+      messageId: 'm',
+      correlationId: 'c',
+      idempotencyKey: 'm',
+      tenantId: 't-1',
+      actor: { principalId: 'x', principalType: 'service' as const },
+      createdAt: '2026-11-07T00:00:00.000Z',
+      payload: {},
+    };
+    expect(await code(p.send(route, message, ctx))).toBe('RemoteUnavailable');
+  });
+});
+
+describe('Agentropy envelopes reach a LocalApp endpoint (FEAT-038.4)', () => {
+  it('a sent agent.event is recorded through the activation ingress; a malformed envelope is refused typed', async () => {
+    const app = createLocalApp({
+      store: sqliteTempStore(),
+      pdp: new FakePolicy(),
+      profiles: BUILTIN_PROFILES,
+    });
+    const server = createA2AServer(localAppTarget(app));
+    const { fetch } = transport(server, { tok: caller });
+    const provider = new A2ACommunicationProvider({
+      fetch,
+      credentialRef: 'b',
+      credentials: credentials('tok'),
+    });
+    const route = {
+      providerId: 'a2a',
+      protocol: 'a2a',
+      protocolVersion: A2A_PROTOCOL_VERSION,
+      target: { definitionId: 'w', tenantId: 't-1', endpoint: 'https://b/a2a' },
+    };
+    const message = {
+      schemaVersion: 1,
+      kind: 'event' as const,
+      name: 'agent.event',
+      messageId: 'evt-1',
+      correlationId: 'c',
+      tenantId: 't-1',
+      actor: { principalId: 'ignored', principalType: 'user' as const },
+      createdAt: '2026-11-07T00:00:00.000Z',
+      payload: { source: 'feed', data: { n: 1 } },
+    };
+    const ctx = { caller, correlationId: 'c' };
+    expect(await provider.send(route, message, ctx)).toEqual({
+      messageId: 'evt-1',
+      accepted: true,
+    });
+    const recorded = await app.store.transaction((tx) =>
+      tx.get('inboundEvents', 'evt-1'),
+    );
+    expect(recorded).toBeDefined();
+    expect(
+      await code(provider.send(route, { ...message, name: 'agent.nope' }, ctx)),
+    ).toBe('UnsupportedOperation');
+  });
+});
