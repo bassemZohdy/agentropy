@@ -67,6 +67,7 @@ Tests and scripts can use `await app.runUntilIdle()` with a fake clock instead.
 |---|---|
 | Ask a human to approve something | [human actions](human-actions.md), example `pnpm example:expense-approval` |
 | React to events over a long time | example `pnpm example:price-watch` |
+| Give an agent Agent Skills | `createLocalApp({ …, skills: { registry } })` with an `InMemorySkillRegistry` (register and activate a skill folder), then `skills: [{ id, versionRange }]` in the definition; the handler reads `ctx.skills` ([Skill v1](contracts/skill-v1.md)) |
 | Call tools and models | [Tool v1](contracts/tool-v1.md), [Capability v1](contracts/capability-v1.md) (`reasoning`) |
 | Delegate to agents in other runtimes | [Communication v1](contracts/communication-v1.md) (A2A, federation) |
 | Run several workers, upgrade safely | [runtime contract](runtime-contract.md), [ADR-0029](adr/0029-upgrades-and-version-migration.md) |

@@ -6,11 +6,15 @@ import { fileURLToPath } from 'node:url';
 import {
   isAgentropyError,
   type AuditEvent,
+  BUILTIN_PROFILES,
   type PolicyDecisionPoint,
   type SkillPin,
   type TrustedPrincipal,
 } from '@agentropy/core';
+import { FakePolicy } from '@agentropy/testkit';
 import { describe, expect, it } from 'vitest';
+import { createLocalApp } from '../src/app.js';
+import { sqliteTempStore } from './harness.js';
 import {
   FileSystemSkillLoader,
   InMemorySkillRegistry,
@@ -292,5 +296,112 @@ describe('governance and authority boundaries (S-03, S-04)', () => {
     const body = await loader.instructions(pin);
     expect(body).toContain('Ignore all previous instructions'); // data, not authority
     expect(record.requires).toEqual({}); // no dependency or grant derived from skill text
+  });
+});
+
+describe('skills in createLocalApp (FEAT-041.1)', () => {
+  it('accepts a definition that selects a skill, pins it, and gives the handler read access', async () => {
+    const { registry, loader, record } = await activeSkill();
+    const app = createLocalApp({
+      store: sqliteTempStore(),
+      pdp: new FakePolicy(),
+      profiles: BUILTIN_PROFILES,
+      skills: { registry, loader },
+    });
+    app.define(
+      {
+        id: 'reader',
+        version: '1.0.0',
+        displayName: 'reader',
+        profile: { id: 'task', version: '1.0.0' },
+        implementation: {
+          providerId: 'native-ts',
+          providerVersion: '1.0.0',
+          artifact: { id: 'reader', version: '1.0.0' },
+        },
+        inputSchema: true,
+        runtimeRequirements: { guarantees: [] },
+        policyRef: { id: 'default', version: '1.0.0' },
+        skills: [{ id: record.id, versionRange: '^1.0.0' }],
+      },
+      {
+        handle: async (_inv, ctx) => ({
+          kind: 'completed',
+          output: {
+            names: ctx.skills.list().map((m) => m.name),
+            instructions: (await ctx.skills.instructions(record.id)).length > 0,
+          },
+        }),
+      },
+    );
+    const inst = await app.createInstance(
+      {
+        definition: { id: 'reader', version: '1.0.0' },
+        ownerId: admin.id,
+        idempotencyKey: 'i',
+      },
+      admin,
+    );
+    const { taskId } = await app.delegate(
+      {
+        target: { instanceId: inst.id },
+        input: {},
+        idempotencyKey: 'k',
+        correlationId: 'c',
+      },
+      admin,
+    );
+    await app.runUntilIdle();
+    expect(await app.getResult(taskId, admin)).toEqual({
+      names: ['pdf-processing'],
+      instructions: true,
+    });
+  });
+
+  it('without a skill registry a definition that selects a skill is refused at acceptance', async () => {
+    const app = createLocalApp({
+      store: sqliteTempStore(),
+      pdp: new FakePolicy(),
+      profiles: BUILTIN_PROFILES,
+    });
+    app.define(
+      {
+        id: 'reader',
+        version: '1.0.0',
+        displayName: 'reader',
+        profile: { id: 'task', version: '1.0.0' },
+        implementation: {
+          providerId: 'native-ts',
+          providerVersion: '1.0.0',
+          artifact: { id: 'reader', version: '1.0.0' },
+        },
+        inputSchema: true,
+        runtimeRequirements: { guarantees: [] },
+        policyRef: { id: 'default', version: '1.0.0' },
+        skills: [{ id: 'pdf-processing', versionRange: '^1.0.0' }],
+      },
+      { handle: async () => ({ kind: 'completed', output: null }) },
+    );
+    const inst = await app.createInstance(
+      {
+        definition: { id: 'reader', version: '1.0.0' },
+        ownerId: admin.id,
+        idempotencyKey: 'i',
+      },
+      admin,
+    );
+    expect(
+      await code(
+        app.delegate(
+          {
+            target: { instanceId: inst.id },
+            input: {},
+            idempotencyKey: 'k',
+            correlationId: 'c',
+          },
+          admin,
+        ),
+      ),
+    ).toBe('CapabilityUnavailable');
   });
 });

@@ -82,6 +82,11 @@ import {
   type TaskRecord,
 } from './task-service.js';
 import {
+  FileSystemSkillLoader,
+  PinnedSkillAccess,
+  type InMemorySkillRegistry,
+} from './skills.js';
+import {
   ToolUseCapability,
   type InMemoryToolRegistry,
   type ToolProviderRegistry,
@@ -111,6 +116,14 @@ export interface LocalAppOptions {
     registry: InMemoryToolRegistry;
     providers: ToolProviderRegistry;
     executor: ToolExecutor;
+  };
+  /**
+   * Skill registry (and loader, default `FileSystemSkillLoader`): definitions may then select `skills`, which are
+   * pinned at acceptance and readable through `AgentContext.skills` (FEAT-041.1).
+   */
+  skills?: {
+    registry: InMemorySkillRegistry;
+    loader?: FileSystemSkillLoader;
   };
   /** Model provider behind `reasoning.complete` (bounded tools and budget), e.g. `openAICompatibleReasoning(…)`. */
   reasoning?: ReasoningProvider;
@@ -390,7 +403,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
       implementationProvider: (id, v) => implementations.find(id, v),
       toolVersions: (id) => o.tools?.registry.versions(id) ?? [],
       toolProviderRegistered: (id, v) => o.tools?.providers.has(id, v) ?? false,
-      skillVersions: () => [],
+      skillVersions: (id) => o.skills?.registry.versions(id) ?? [],
       pdp: o.pdp,
       now,
     },
@@ -515,7 +528,20 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     ...(o.workflow ? workflowOperationHandlers(o.workflow) : {}),
     ...o.operations,
   });
+  const skillLoader =
+    o.skills &&
+    (o.skills.loader ?? new FileSystemSkillLoader(o.skills.registry));
   const runtime = new AgentRuntime({
+    ...(o.skills && skillLoader
+      ? {
+          skills: (task: TaskRecord) =>
+            new PinnedSkillAccess(
+              skillLoader,
+              o.skills!.registry,
+              task.snapshot.skills,
+            ),
+        }
+      : {}),
     ...o.runtime,
     poolSize: limits.poolSize,
     leaseMs: limits.leaseMs,
