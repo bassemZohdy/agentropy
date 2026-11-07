@@ -21,7 +21,7 @@
   - Links: Ref: docs/review/2026-11-06-project-review.md#interoperability · Lane: runtime
   - [x] **FEAT-035.1** · high · MCP client tool provider (tools/list, tools/call) under the tool PEP and audit (R-11)
     - Done when: `pnpm exec vitest run packages/runtime/test/mcp-tools.test.ts`
-  - [ ] **FEAT-035.2** · mid · Opt-in live suites for the model API and Conductor; Conductor OSS service job in CI (R-12)
+  - [ ] **FEAT-035.2** · mid · Run the opt-in live suites (`AGENTROPY_LLM_*` for the model API, `AGENTROPY_CONDUCTOR_URL` for Conductor; written, never yet run against a live endpoint) and fix what they find; add a Conductor OSS service job to CI with a digest-pinned image (R-12)
     - Done when: `pnpm exec vitest run packages/workflow-conductor/test packages/testkit/test/providers.test.ts`
   - [x] **FEAT-035.3** · mid · Rule-based model routing wrapper with residency and data-class floors (R-13)
     - Done when: `pnpm exec vitest run packages/runtime/test/model-routing.test.ts`
