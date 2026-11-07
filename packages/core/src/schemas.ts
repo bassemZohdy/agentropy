@@ -363,6 +363,28 @@ export function validateSkillMetadata(value: unknown): SkillMetadata {
   return value as unknown as SkillMetadata;
 }
 
+const INSTANT =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * A point in time the scheduler compares as a string (deadlines, timers, timeouts): an ISO-8601 instant with an
+ * explicit time zone, returned as UTC `toISOString()` form so string order is time order. Anything else — a date
+ * without a zone (local time is ambiguous), free text — is a `SchemaViolation` (FEAT-038.3).
+ */
+export function normalizeInstant(value: unknown, what: string): string {
+  if (
+    typeof value !== 'string' ||
+    !INSTANT.test(value) ||
+    Number.isNaN(Date.parse(value))
+  )
+    throw new AgentropyError(
+      'SchemaViolation',
+      `${what} must be an ISO-8601 instant with a time zone`,
+      { details: { reason: what } },
+    );
+  return new Date(value).toISOString();
+}
+
 /** Envelope schema version this build accepts (messaging contract). */
 export const MESSAGE_SCHEMA_VERSION = 1;
 

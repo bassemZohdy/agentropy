@@ -10,6 +10,7 @@ import {
   assertTransition,
   enforcePolicy,
   isAgentropyError,
+  normalizeInstant,
   toAgentropyError,
   validateAgainst,
   type AgentContext,
@@ -703,6 +704,26 @@ export class AgentRuntime {
             { details: { reason: 'wakeup' } },
           );
         }
+        // Timers and the timeout are compared as strings: only UTC ISO-8601 instants get through (FEAT-038.3).
+        disposition = {
+          ...disposition,
+          wakeup: {
+            ...disposition.wakeup,
+            anyOf: disposition.wakeup.anyOf.map((c) =>
+              c.kind === 'timer'
+                ? { ...c, at: normalizeInstant(c.at, 'timer.at') }
+                : c,
+            ),
+            ...(disposition.wakeup.timeoutAt !== undefined
+              ? {
+                  timeoutAt: normalizeInstant(
+                    disposition.wakeup.timeoutAt,
+                    'timeoutAt',
+                  ),
+                }
+              : {}),
+          },
+        };
         for (const c of disposition.wakeup.anyOf)
           if (c.kind === 'schedule')
             nextOccurrence(c.cron, c.timezone, this.now());

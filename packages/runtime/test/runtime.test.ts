@@ -378,3 +378,50 @@ describe('failures stay inside the pool (FEAT-037.2)', () => {
     );
   });
 });
+
+describe('wake-up timestamps (FEAT-038.3)', () => {
+  const waiting = (at: unknown, timeoutAt?: unknown): Agent => ({
+    handle: async () =>
+      ({
+        kind: 'waiting',
+        wakeup: {
+          anyOf: [{ kind: 'timer', at }],
+          ...(timeoutAt !== undefined ? { timeoutAt } : {}),
+        },
+        checkpoint: null,
+      }) as never,
+  });
+
+  it('timers and timeouts are stored as UTC ISO-8601 whatever offset they were given', async () => {
+    const h = harness();
+    h.define(
+      'offset',
+      waiting('2026-11-06T09:00:00+02:00', '2026-11-06T12:00:00-05:00'),
+    );
+    const t = await h.delegate((await h.instance('offset')).id, {}, 'k');
+    await h.runtime.runUntilIdle();
+    const [w] = await h.store.transaction((tx) =>
+      tx.find<{
+        dueAt: string;
+        timeoutAt: string;
+        conditions: { at: string }[];
+      }>('wakeups', { where: { taskId: t.taskId } }),
+    );
+    expect(w!.value.conditions[0]!.at).toBe('2026-11-06T07:00:00.000Z');
+    expect(w!.value.timeoutAt).toBe('2026-11-06T17:00:00.000Z');
+    expect(w!.value.dueAt).toBe('2026-11-06T07:00:00.000Z');
+  });
+
+  it('a timer that is not an instant with a zone fails the task with SchemaViolation instead of firing at once or never', async () => {
+    const h = harness();
+    h.define('free-text', waiting('next tuesday'));
+    h.define('no-zone', waiting('2026-11-06T09:00:00'));
+    for (const id of ['free-text', 'no-zone']) {
+      const t = await h.delegate((await h.instance(id)).id, {}, id);
+      await h.runtime.runUntilIdle();
+      expect((await h.tasks.getTask(t.taskId, alice)).outcome?.code).toBe(
+        'SchemaViolation',
+      );
+    }
+  });
+});

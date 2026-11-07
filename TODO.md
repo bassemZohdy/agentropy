@@ -58,7 +58,7 @@
     - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts`
   - [x] **FEAT-038.2** · low · `subscribe()` re-activates a revoked subscription; workflow completions are retried when publishing fails and engine polls can run as scheduler sweeps (R-33, R-38)
     - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/testkit/test/providers.test.ts`
-  - [ ] **FEAT-038.3** · mid · Deadline, timer `at` and `timeoutAt` validated and normalized to UTC ISO-8601 at acceptance and at the waiting disposition (R-34)
+  - [x] **FEAT-038.3** · mid · Deadline, timer `at` and `timeoutAt` validated and normalized to UTC ISO-8601 at acceptance and at the waiting disposition (R-34)
     - Done when: `pnpm exec vitest run packages/runtime/test/task-service.test.ts packages/runtime/test/runtime.test.ts`
   - [ ] **FEAT-038.4** · mid · A2A client downgrades peer-supplied authorization-category error codes and guards the acknowledgement parse (threat-model row); `localAppTarget.receive` routes envelopes through the activation ingress (R-36, R-37)
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a.test.ts packages/testkit/test/remote-delegation.test.ts`

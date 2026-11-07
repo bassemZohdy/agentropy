@@ -14,6 +14,7 @@ import {
   digestOf,
   enforcePolicy,
   isTerminal,
+  normalizeInstant,
   validateAgainst,
   type CapabilityInvocationContext,
   type HumanActionInput,
@@ -86,8 +87,7 @@ function validateRequest(input: unknown): HumanActionInput {
     throw bad('at least one assignee or role required');
   if (r.onExpiry !== 'resume' && r.onExpiry !== 'fail-task')
     throw bad('onExpiry must be "resume" or "fail-task"');
-  if (r.dueAt !== undefined && Number.isNaN(Date.parse(r.dueAt)))
-    throw bad('dueAt must be an ISO timestamp');
+  if (r.dueAt !== undefined) normalizeInstant(r.dueAt, 'dueAt');
   if (
     r.requiredApprovals !== undefined &&
     (r.kind !== 'approval' ||
@@ -107,7 +107,7 @@ function validateRequest(input: unknown): HumanActionInput {
     prompt: r.prompt,
     inputSchema: r.inputSchema,
     assignees: r.assignees,
-    ...(r.dueAt ? { dueAt: new Date(r.dueAt).toISOString() } : {}),
+    ...(r.dueAt ? { dueAt: normalizeInstant(r.dueAt, 'dueAt') } : {}),
     onExpiry: r.onExpiry,
   };
 }

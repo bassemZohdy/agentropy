@@ -16,6 +16,7 @@ import {
   digestOf,
   enforcePolicy,
   isTerminal,
+  normalizeInstant,
   resolveAcceptance,
   validateAgainst,
   type AcceptanceEnvironment,
@@ -318,6 +319,11 @@ export class TaskService {
       request.input,
       `${definition.id} input`,
     );
+    // The deadline is compared as a string by the scheduler: keep only UTC ISO-8601 (FEAT-038.3).
+    const deadline =
+      request.deadline === undefined
+        ? undefined
+        : normalizeInstant(request.deadline, 'deadline');
     // 4. Idempotency replay (before state: a retry always gets its original answer).
     const fingerprint = digestOf({
       target: { instanceId: instance.id },
@@ -430,7 +436,7 @@ export class TaskService {
       retryPolicy: definition.retryPolicy ?? DEFAULT_RETRY,
       activation: 1,
       attempt: 1,
-      ...(request.deadline ? { deadline: request.deadline } : {}),
+      ...(deadline ? { deadline } : {}),
       ...(grantRef ? { grantRef } : {}),
       ...(request.budget ? { budget: request.budget } : {}),
       createdAt: now,

@@ -233,3 +233,26 @@ describe('instances (AC-15 runtime part)', () => {
     });
   });
 });
+
+describe('scheduling timestamps (FEAT-038.3)', () => {
+  it('a delegation deadline is stored as UTC ISO-8601; free text and zone-less times are SchemaViolation', async () => {
+    const h = harness();
+    h.define('d', {
+      handle: async () => ({ kind: 'completed', output: null }),
+    });
+    const inst = await h.instance('d');
+    const t = await h.delegate(inst.id, {}, 'ok', alice, {
+      deadline: '2026-11-06T02:30:00+02:00',
+    });
+    const stored = await h.store.transaction((tx) =>
+      tx.get<{ deadline?: string }>('tasks', t.taskId),
+    );
+    expect(stored?.value.deadline).toBe('2026-11-06T00:30:00.000Z');
+    for (const [i, bad] of ['tomorrow', '2026-11-06T02:30:00', 42].entries())
+      expect(
+        await code(
+          h.delegate(inst.id, {}, `bad-${i}`, alice, { deadline: bad }),
+        ),
+      ).toBe('SchemaViolation');
+  });
+});
