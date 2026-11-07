@@ -259,7 +259,11 @@ export class DirectCommunicationProvider implements AgentCommunicationProvider {
   }
 
   subscribe(ref: RemoteTaskRef, ctx: CallContext): AsyncIterable<AgentEvent> {
-    return this.target.subscribe(ref.remoteTaskId, ctx.caller);
+    return this.target.subscribe(
+      ref.remoteTaskId,
+      ctx.caller,
+      ctx.signal ? { signal: ctx.signal } : undefined,
+    );
   }
 
   private state(s: TaskSnapshot): RemoteTaskState {

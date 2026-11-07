@@ -30,6 +30,12 @@ interface UsageRecord {
   inputTokens: number;
   outputTokens: number;
   calls: number;
+  /**
+   * Output tokens reserved by calls of one activation that have not finished (FEAT-041.3): concurrent calls
+   * cannot overspend the budget together. Tagged with the execution, so a reservation left by a crashed
+   * activation never blocks its successor.
+   */
+  reserved?: { executionId: string; tokens: number };
 }
 
 /** Tool IDs → provider-safe names and back (`finance.payout` → `finance_payout`). */
@@ -98,6 +104,13 @@ export function reasoningOperationHandlers(o: {
             { details: { id } },
           );
         const name = toolName(id);
+        // Two tool IDs that map to one function name would hand the handler the wrong tool back.
+        if (byName.has(name) && byName.get(name) !== id)
+          throw new AgentropyError(
+            'InvalidConfiguration',
+            `Tools ${byName.get(name)} and ${id} map to the same function name`,
+            { details: { reason: 'toolName' } },
+          );
         byName.set(name, id);
         tools.push({
           name,
@@ -106,49 +119,87 @@ export function reasoningOperationHandlers(o: {
         });
       }
 
-      // Budget: tokens spent so far against maxCostUnits.
+      // Budget: tokens spent so far (and reserved by this activation's calls in flight) against maxCostUnits. The
+      // check and the reservation are one transaction, so concurrent calls cannot overspend together.
       const budget = task.value.budget?.maxCostUnits;
-      const usage = await o.tasks.o.store.transaction((tx) =>
-        tx.get<UsageRecord>('usage', ctx.taskId),
-      );
-      const spent = usage
-        ? usage.value.inputTokens + usage.value.outputTokens
-        : 0;
-      if (budget !== undefined && spent >= budget)
-        throw new AgentropyError(
-          'BudgetExceeded',
-          'The task has spent its reasoning budget',
-          { details: { budget, spent } },
-        );
       const cap = o.maxTokensCap ?? 8_192;
-      let maxTokens = Math.min(
+      const wanted = Math.min(
         input.maxTokens ?? o.defaultMaxTokens ?? 1_024,
         cap,
       );
-      if (budget !== undefined) maxTokens = Math.min(maxTokens, budget - spent);
-
-      const result = await o.provider.complete(
-        {
-          messages,
-          maxTokens,
-          ...(input.temperature !== undefined
-            ? { temperature: input.temperature }
-            : {}),
-          ...(tools.length ? { tools } : {}),
-        },
-        { tenantId: ctx.tenantId, taskId: ctx.taskId, signal: ctx.signal },
-      );
-      await o.tasks.o.store.transaction(async (tx) => {
-        const cur = await tx.get<UsageRecord>('usage', ctx.taskId);
+      const maxTokens = await o.tasks.o.store.transaction(async (tx) => {
+        const usage = await tx.get<UsageRecord>('usage', ctx.taskId);
+        const spent = usage
+          ? usage.value.inputTokens + usage.value.outputTokens
+          : 0;
+        const mine =
+          usage?.value.reserved?.executionId === ctx.executionId
+            ? usage.value.reserved.tokens
+            : 0;
+        if (budget !== undefined && spent + mine >= budget)
+          throw new AgentropyError(
+            'BudgetExceeded',
+            'The task has spent its reasoning budget',
+            { details: { budget, spent: spent + mine } },
+          );
+        const grant =
+          budget === undefined
+            ? wanted
+            : Math.min(wanted, budget - spent - mine);
         const next: UsageRecord = {
           taskId: ctx.taskId,
-          inputTokens: (cur?.value.inputTokens ?? 0) + result.usage.inputTokens,
-          outputTokens:
-            (cur?.value.outputTokens ?? 0) + result.usage.outputTokens,
-          calls: (cur?.value.calls ?? 0) + 1,
+          inputTokens: usage?.value.inputTokens ?? 0,
+          outputTokens: usage?.value.outputTokens ?? 0,
+          calls: usage?.value.calls ?? 0,
+          reserved: { executionId: ctx.executionId, tokens: mine + grant },
         };
-        if (cur) await tx.update('usage', cur.id, cur.revision, next);
+        if (usage) await tx.update('usage', usage.id, usage.revision, next);
         else await tx.insert('usage', ctx.taskId, next);
+        return grant;
+      });
+      const release = (used: { input: number; output: number } | undefined) =>
+        o.tasks.o.store.transaction(async (tx) => {
+          const cur = await tx.get<UsageRecord>('usage', ctx.taskId);
+          if (!cur) return;
+          const held =
+            cur.value.reserved?.executionId === ctx.executionId
+              ? cur.value.reserved.tokens
+              : 0;
+          const { reserved: _old, ...rest } = cur.value;
+          void _old;
+          const left = Math.max(0, held - maxTokens);
+          await tx.update('usage', cur.id, cur.revision, {
+            ...rest,
+            inputTokens: rest.inputTokens + (used?.input ?? 0),
+            outputTokens: rest.outputTokens + (used?.output ?? 0),
+            calls: rest.calls + (used ? 1 : 0),
+            ...(left > 0
+              ? { reserved: { executionId: ctx.executionId, tokens: left } }
+              : {}),
+          });
+        });
+
+      let result: ReasoningResult;
+      try {
+        result = await o.provider.complete(
+          {
+            messages,
+            maxTokens,
+            ...(input.temperature !== undefined
+              ? { temperature: input.temperature }
+              : {}),
+            ...(tools.length ? { tools } : {}),
+          },
+          { tenantId: ctx.tenantId, taskId: ctx.taskId, signal: ctx.signal },
+        );
+      } catch (err) {
+        // A call that failed spent nothing we know of: give its reservation back.
+        await release(undefined).catch(() => undefined);
+        throw err;
+      }
+      await release({
+        input: result.usage.inputTokens,
+        output: result.usage.outputTokens,
       });
       const toolCalls = (result.toolCalls ?? []).map((c) => {
         const id = byName.get(c.name);

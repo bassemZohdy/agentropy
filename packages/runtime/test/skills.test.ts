@@ -405,3 +405,24 @@ describe('skills in createLocalApp (FEAT-041.1)', () => {
     ).toBe('CapabilityUnavailable');
   });
 });
+
+describe('skill registration bounds (FEAT-041.3)', () => {
+  it('refuses a skill folder with more than 500 files', async () => {
+    const dir = await copyFixture();
+    await Promise.all(
+      Array.from({ length: 500 }, (_, i) =>
+        writeFile(join(dir, 'assets', `f${i}.txt`), 'x'),
+      ),
+    );
+    const s = setup();
+    expect(
+      await code(
+        s.registry.register(
+          dir,
+          { version: '1.0.0', publisher: 'acme' },
+          admin,
+        ),
+      ),
+    ).toBe('SchemaViolation');
+  });
+});

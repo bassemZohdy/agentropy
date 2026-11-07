@@ -1,6 +1,6 @@
 /** Skill v1: registry, filesystem source, progressive-disclosure loader and handler access. Never executes scripts. */
 import { createHash } from 'node:crypto';
-import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
+import { lstat, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import {
   basename,
   isAbsolute,
@@ -26,6 +26,10 @@ import {
 import semver from 'semver';
 import { parse as parseYaml } from 'yaml';
 import { recordAudit, type SecurityServices } from './tools.js';
+
+/** Bounds of a registered skill folder (it is hashed and read whole on every load). */
+const MAX_SKILL_FILES = 500;
+const MAX_SKILL_BYTES = 16 * 1024 * 1024;
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const SPEC_KEYS = [
@@ -192,6 +196,21 @@ export class InMemorySkillRegistry {
     }
     const id = opts.id ?? metadata.name;
     const { digest, files } = await digestSkillDirectory(root);
+    // A skill folder is read whole on every load: bound what a registration may bring.
+    if (files.length > MAX_SKILL_FILES)
+      throw new AgentropyError(
+        'SchemaViolation',
+        `A skill has at most ${MAX_SKILL_FILES} files`,
+        { details: { what: 'skill', reason: 'tooManyFiles' } },
+      );
+    let bytes = 0;
+    for (const f of files) bytes += (await stat(join(root, f))).size;
+    if (bytes > MAX_SKILL_BYTES)
+      throw new AgentropyError(
+        'SchemaViolation',
+        `A skill is at most ${MAX_SKILL_BYTES} bytes`,
+        { details: { what: 'skill', reason: 'tooLarge', size: bytes } },
+      );
     const key = `${id}@${opts.version}`;
     const existing = this.entries.get(key);
     if (existing) {

@@ -69,5 +69,5 @@
     - Done when: `pnpm exec vitest run packages/runtime/test/skills.test.ts`
   - [ ] **FEAT-041.2** · mid · Host PostgreSQL mode (`AGENTROPY_PG_URL`, relay lease, worker ID, driver as an optional dependency), image run against the CI PostgreSQL service, a `Deployment` manifest variant (R-53)
     - Done when: `pnpm exec vitest run packages/examples/test/host.test.ts`
-  - [ ] **FEAT-041.3** · low · Reasoning budget reserved before the model call and settled after, tool-name collisions refused; skill digest cache and size bounds, one federation entry per card skill, abort signal through the direct provider, worker definition-set check (R-54, R-55)
+  - [x] **FEAT-041.3** · low · Reasoning budget reserved before the model call and settled after, tool-name collisions refused, skill folders bounded (500 files, 16 MiB), abort signal through the direct provider (R-54, R-55; not done on purpose: a skill digest cache would weaken the content pin, one federation entry per card skill and a worker definition-set check need a design)
     - Done when: `pnpm exec vitest run packages/testkit/test/providers.test.ts packages/runtime/test/skills.test.ts packages/testkit/test/federation.test.ts packages/runtime/test/router.test.ts`
