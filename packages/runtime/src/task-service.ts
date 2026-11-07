@@ -911,13 +911,18 @@ export class TaskService {
   ): Promise<OutboxRecord> {
     let sequence = 0;
     if (type) {
-      const atRevision = await tx.find<OutboxRecord>('outbox', {
+      // The task's newest event: at this revision it carries the highest sequence so far (the transition event is
+      // sequence 0), so the next one follows it. One row read, not the task's whole event history (FEAT-039.3).
+      const [latest] = await tx.find<OutboxRecord>('outbox', {
         where: { aggregateId: t.taskId },
+        orderBy: 'seq',
+        descending: true,
+        limit: 1,
       });
-      sequence = Math.max(
-        1,
-        atRevision.filter((e) => e.value.revision === revision).length,
-      );
+      sequence =
+        latest && latest.value.revision === revision
+          ? latest.value.sequence + 1
+          : 1;
     }
     const eventId = this.newId('event');
     const record: OutboxRecord = {

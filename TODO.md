@@ -58,7 +58,7 @@
     - Done when: `pnpm exec vitest run packages/runtime/test/audit-forwarder.test.ts packages/testkit/test/audit-retention.test.ts`
   - [x] **FEAT-039.2** · high · Remote projections sync with per-projection backoff and a `taskId` index (R-40; the peer's SSE stream instead of polling stays a follow-up)
     - Done when: `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
-  - [ ] **FEAT-039.3** · high · the inbox briefing and the per-task event numbering use pushed-down reads (R-42; done: due executions, tenant running counts, the human-action sweep, descending `FindOptions`, the audit query, `listTasks` and the task quotas through new `tasks` indexes)
+  - [ ] **FEAT-039.3** · high · the inbox briefing uses pushed-down reads (R-42; done: per-task event numbering, done: due executions, tenant running counts, the human-action sweep, descending `FindOptions`, the audit query, `listTasks` and the task quotas through new `tasks` indexes)
     - Done when: `pnpm exec vitest run packages/runtime/test/hot-paths.test.ts packages/testkit/test/scale.test.ts packages/testkit/test/multi-worker.test.ts packages/store-postgres/test packages/store-sqlite/test`
   - [ ] **FEAT-039.4** · mid · Paged task-event streams (`afterSeq`); stuck outbox rows get `agentropy.outbox.stuck`, bounded attempts and a readiness detail (R-43, R-44; done: ingestion without sweeps, bounded pending counts, batched compaction, relay cursor at the newest row)
     - Done when: `pnpm exec vitest run packages/runtime/test/wakeups.test.ts packages/runtime/test/outbox-inbox.test.ts`
