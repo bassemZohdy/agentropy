@@ -169,3 +169,32 @@ jobs:
           bash deploy/a2a-smoke.sh localhost:8092 ci-token
           for n in 1 2; do docker stop -t 30 host-pg-$n; docker logs host-pg-$n; done
           for n in 1 2; do test "$(docker inspect -f '{{.State.ExitCode}}' host-pg-$n)" = "0"; done
+
+  conductor:
+    # FEAT-035.2: the Conductor adapter against a real Conductor OSS server (opt-in live suite).
+    runs-on: ubuntu-latest
+    services:
+      conductor:
+        image: conductoross/conductor-standalone:3.15.0@sha256:099e36a7840616a979559fa0b2aebbcfada2c7b4b8c4c99cdc4679e8a26a7592
+        ports: ['8080:8080']
+    env:
+      AGENTROPY_CONDUCTOR_URL: http://127.0.0.1:8080
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: '10.34.9'
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Wait for Conductor
+        run: |
+          for i in $(seq 1 90); do curl -fsS http://127.0.0.1:8080/health && break; sleep 2; done
+          curl -fsS http://127.0.0.1:8080/health
+      - name: Conductor adapter on a live server
+        run: pnpm exec vitest run packages/workflow-conductor/test/conductor-live.test.ts
+
