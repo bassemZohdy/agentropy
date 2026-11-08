@@ -12,7 +12,7 @@ jobs:
   scaffold:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: '10.34.9'
@@ -65,7 +65,7 @@ jobs:
     # TASK-033.5: the engines floor (Node 24.0.0) builds and passes the offline suite.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: '10.34.9'
@@ -93,7 +93,7 @@ jobs:
     env:
       AGENTROPY_PG_URL: postgres://postgres:ci@127.0.0.1:5432/agentropy
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: '10.34.9'
@@ -123,7 +123,7 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build image
         run: docker build -f deploy/Dockerfile -t agentropy-host:ci .
       - name: Image SBOM (CycloneDX, OS and application packages) with syft (TASK-030.2)
@@ -176,7 +176,7 @@ jobs:
     env:
       AGENTROPY_CONDUCTOR_URL: http://127.0.0.1:8080
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: '10.34.9'
@@ -200,6 +200,6 @@ jobs:
     # the Service, roll the StatefulSet, delete the pod without grace and check the accepted task survives on the volume.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Live-cluster deployment test
         run: bash deploy/kind-smoke.sh
