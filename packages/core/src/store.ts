@@ -28,7 +28,8 @@ export const STORE_COLLECTIONS = {
   inboundEvents: ['source'],
   effects: ['taskId'],
   outbox: ['published', 'aggregateId'],
-  inbox: ['tenantId', 'ownerId', 'status'],
+  /** `pending` (1 while an entry is unacknowledged and unpresented at its revision) lets the briefing read only those (FEAT-039.3). */
+  inbox: ['tenantId', 'ownerId', 'status', 'pending'],
   /** `dueAt` and `claimExpiresAt` let the expiry sweep read only what lapsed (FEAT-039.3). */
   humanActions: ['taskId', 'status', 'dueAt', 'claimExpiresAt'],
   /** `taskId` lets compaction find a task's record (instance records have none) (FEAT-040.1). */

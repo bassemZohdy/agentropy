@@ -125,3 +125,40 @@ describe('listings and quotas read through indexes (FEAT-039.3)', () => {
     expect(await refuse({ maxActiveTasks: 1 })).toBe('ok');
   });
 });
+
+describe('inbox briefing reads (FEAT-039.3)', () => {
+  it('a briefing reads only entries it may show: after they are presented a repeat reads none', async () => {
+    const { store, read } = countingStore();
+    const h = harness({ store, builtin: true });
+    h.define('n', {
+      handle: async (_inv, ctx) => {
+        for (const k of ['a', 'b', 'c'])
+          await ctx.capabilities.invoke(
+            'notification',
+            'notify',
+            { severity: 'high', title: `t-${k}`, body: 'b', dedupeKey: k },
+            { stepKey: k },
+          );
+        return { kind: 'completed', output: null };
+      },
+    });
+    await h.delegate((await h.instance('n')).id, {}, 'k');
+    await h.runtime.runUntilIdle();
+
+    const first = await h.inbox.briefing(alice);
+    expect(first.entries.map((e) => e.title).sort()).toEqual([
+      't-a',
+      't-b',
+      't-c',
+    ]);
+    read.inbox = 0;
+    const again = await h.inbox.briefing(alice);
+    expect(again.entries).toEqual([]);
+    expect(read.inbox ?? 0).toBe(0); // presented entries are no longer candidates
+
+    // Acknowledged entries stay out too; a revised entry (new revision) is a candidate again.
+    const [entry] = (await h.inbox.list({}, alice)).entries;
+    await h.inbox.mark(entry!.entryId, 'acknowledged', alice);
+    expect((await h.inbox.briefing(alice)).entries).toEqual([]);
+  });
+});

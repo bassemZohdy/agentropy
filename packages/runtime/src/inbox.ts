@@ -40,7 +40,21 @@ export interface StoredInboxEntry extends InboxEntry {
   status: 'open' | 'resolved';
   /** Recent source event IDs already applied (projection idempotency). */
   applied: string[];
+  /**
+   * 1 while the entry is neither acknowledged nor presented at its current revision, i.e. the briefing may show it.
+   * Indexed; kept in step by `settle` on every write. Entries written before the field existed lack it.
+   */
+  pending?: 0 | 1;
 }
+
+/** The entry with `pending` recomputed from its markers and revision. */
+const settle = (e: StoredInboxEntry): StoredInboxEntry => ({
+  ...e,
+  pending:
+    !e.markers.acknowledgedAt && e.markers.presentedRevision !== e.revision
+      ? 1
+      : 0,
+});
 
 export interface EffectRecord {
   taskId: string;
@@ -55,10 +69,11 @@ const APPLIED_KEPT = 50;
 
 /** Public shape: storage bookkeeping removed. */
 export function publicEntry(e: StoredInboxEntry): InboxEntry {
-  const { ownerId: _o, status: _s, applied: _a, ...entry } = e;
+  const { ownerId: _o, status: _s, applied: _a, pending: _p, ...entry } = e;
   void _o;
   void _s;
   void _a;
+  void _p;
   return entry;
 }
 
@@ -131,10 +146,12 @@ export class InboxService {
         markers.presentedRevision = presentedRevision ?? e.revision;
       } else if (marker === 'read') markers.readAt ??= now;
       else markers.acknowledgedAt ??= now;
-      await tx.update<StoredInboxEntry>('inbox', doc.id, doc.revision, {
-        ...e,
-        markers,
-      });
+      await tx.update<StoredInboxEntry>(
+        'inbox',
+        doc.id,
+        doc.revision,
+        settle({ ...e, markers }),
+      );
     });
   }
 
@@ -150,10 +167,19 @@ export class InboxService {
     const p = authenticated(user);
     const prefs = (await this.options.preferences?.(p)) ?? {};
     return this.store.transaction(async (tx) => {
-      const docs = await tx.find<StoredInboxEntry>('inbox', {
-        where: { tenantId: p.tenantId, ownerId: p.id },
-        orderBy: 'seq',
-      });
+      // Only entries the briefing may show: `pending` 1, plus entries written before the field existed (null).
+      const docs = (
+        await Promise.all(
+          [1, null].map((pending) =>
+            tx.find<StoredInboxEntry>('inbox', {
+              where: { tenantId: p.tenantId, ownerId: p.id, pending },
+              orderBy: 'seq',
+            }),
+          ),
+        )
+      )
+        .flat()
+        .sort((x, y) => x.seq - y.seq);
       const due = docs
         .filter(
           (d) =>
@@ -191,7 +217,12 @@ export class InboxService {
             presentedRevision: d.value.revision,
           },
         };
-        await tx.update<StoredInboxEntry>('inbox', d.id, d.revision, next);
+        await tx.update<StoredInboxEntry>(
+          'inbox',
+          d.id,
+          d.revision,
+          settle(next),
+        );
         entries.push({ ...publicEntry(next), severity: decision.severity });
       }
       return { entries, onDemand: onDemand.length };
@@ -371,13 +402,18 @@ export class InboxProjector implements EventConsumer {
         actionEntryId(d.requestId, user),
       );
       if (!doc || doc.value.applied.includes(event.eventId)) continue;
-      await tx.update<StoredInboxEntry>('inbox', doc.id, doc.revision, {
-        ...doc.value,
-        status: 'resolved',
-        revision: doc.value.revision + 1,
-        markers: { ...doc.value.markers, resolvedAt: event.occurredAt },
-        applied: [...doc.value.applied, event.eventId].slice(-APPLIED_KEPT),
-      });
+      await tx.update<StoredInboxEntry>(
+        'inbox',
+        doc.id,
+        doc.revision,
+        settle({
+          ...doc.value,
+          status: 'resolved',
+          revision: doc.value.revision + 1,
+          markers: { ...doc.value.markers, resolvedAt: event.occurredAt },
+          applied: [...doc.value.applied, event.eventId].slice(-APPLIED_KEPT),
+        }),
+      );
     }
   }
 
@@ -410,29 +446,38 @@ export class InboxProjector implements EventConsumer {
       ...(e.actionRequestId ? { actionRequestId: e.actionRequestId } : {}),
     };
     if (!cur) {
-      await tx.insert<StoredInboxEntry>('inbox', entryId, {
+      await tx.insert<StoredInboxEntry>(
+        'inbox',
         entryId,
-        userId: e.ownerId,
-        ownerId: e.ownerId,
-        tenantId: e.task.tenantId,
-        agentInstanceId: e.task.instanceId,
-        ...content,
-        revision: 1,
-        markers: {},
-        status: 'open',
-        applied: [event.eventId],
-      });
+        settle({
+          entryId,
+          userId: e.ownerId,
+          ownerId: e.ownerId,
+          tenantId: e.task.tenantId,
+          agentInstanceId: e.task.instanceId,
+          ...content,
+          revision: 1,
+          markers: {},
+          status: 'open',
+          applied: [event.eventId],
+        }),
+      );
       return;
     }
     // A later event for the same entry (deduplicated notification) revises it, so it is presented again.
     const { body: _b, ...previous } = cur.value;
     void _b;
-    await tx.update<StoredInboxEntry>('inbox', cur.id, cur.revision, {
-      ...previous,
-      ...content,
-      revision: cur.value.revision + 1,
-      applied: [...cur.value.applied, event.eventId].slice(-APPLIED_KEPT),
-    });
+    await tx.update<StoredInboxEntry>(
+      'inbox',
+      cur.id,
+      cur.revision,
+      settle({
+        ...previous,
+        ...content,
+        revision: cur.value.revision + 1,
+        applied: [...cur.value.applied, event.eventId].slice(-APPLIED_KEPT),
+      }),
+    );
   }
 }
 
