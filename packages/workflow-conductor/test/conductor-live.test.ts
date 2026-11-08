@@ -19,12 +19,21 @@ const headers = (): Record<string, string> => ({
 });
 
 live('ConductorWorkflowEngine on a live server', () => {
-  const engine = () =>
+  /** Raw replies, so a failure shows what the server actually answered. */
+  const replies: string[] = [];
+  const engine = (idempotency: 'server' | 'lookup') =>
     new ConductorWorkflowEngine({
       baseUrl: URL!,
-      fetch: (url, init) => liveFetch(url, init),
+      fetch: async (url, init) => {
+        const res = await liveFetch(url, init);
+        const text = await res.text();
+        replies.push(
+          `${init.method} ${url.replace(URL!, '')} -> ${res.status} ${text.slice(0, 300)}`,
+        );
+        return { status: res.status, text: async () => text };
+      },
       headers: () => (TOKEN ? { 'X-Authorization': TOKEN } : {}),
-      idempotency: 'lookup', // Conductor OSS has no idempotency keys
+      idempotency,
     });
 
   /** A workflow that finishes at once with a constant output, registered (or updated) for the run. */
@@ -60,31 +69,35 @@ live('ConductorWorkflowEngine on a live server', () => {
     idempotencyKey: `${key}-${Date.now()}`,
   });
 
-  it('starts a run idempotently per key, reports it finished through poll, and hides it from another tenant', async () => {
-    await register();
-    const e = engine();
-    const finished: string[] = [];
-    e.onFinished((r) => finished.push(`${r.runId}:${r.state}:${r.tenantId}`));
-    const c = ctx('a');
-    const run = await e.start(NAME, {}, c);
-    expect(run.runId).toBeTruthy();
-    const again = await e.start(NAME, {}, c);
-    expect(again.runId).toBe(run.runId);
+  for (const mode of ['server', 'lookup'] as const)
+    it(`[${mode} idempotency] starts a run once per key, reports it finished through poll, and hides it from another tenant`, async () => {
+      await register();
+      const e = engine(mode);
+      const finished: string[] = [];
+      e.onFinished((r) => finished.push(`${r.runId}:${r.state}:${r.tenantId}`));
+      const c = ctx(mode);
+      replies.length = 0;
+      const run = await e.start(NAME, {}, c);
+      expect(run.runId).toBeTruthy();
+      const again = await e.start(NAME, {}, c);
+      expect(again.runId, replies.join(' | ')).toBe(run.runId);
 
-    for (let i = 0; i < 30 && !finished.length; i++) {
-      await e.poll();
-      if (!finished.length) await new Promise((r) => setTimeout(r, 500));
-    }
-    expect(finished).toEqual([`${run.runId}:completed:t-live`]);
-    const done = await e.status(run.runId, { tenantId: 't-live' });
-    expect(done).toMatchObject({ state: 'completed', output: { total: 42 } });
-    expect((await e.status(run.runId, { tenantId: 't-other' })).code).toBe(
-      'NotFound',
-    );
-  }, 60_000);
+      for (let i = 0; i < 30 && !finished.length; i++) {
+        await e.poll();
+        if (!finished.length) await new Promise((r) => setTimeout(r, 500));
+      }
+      expect(finished, replies.join(' | ')).toEqual([
+        `${run.runId}:completed:t-live`,
+      ]);
+      const done = await e.status(run.runId, { tenantId: 't-live' });
+      expect(done).toMatchObject({ state: 'completed', output: { total: 42 } });
+      expect((await e.status(run.runId, { tenantId: 't-other' })).code).toBe(
+        'NotFound',
+      );
+    }, 60_000);
 
   it('an unknown workflow is CapabilityUnavailable', async () => {
-    const err = await engine()
+    const err = await engine('server')
       .start('agentropy_no_such_workflow', {}, ctx('b'))
       .catch((e: { code?: string }) => e);
     expect((err as { code?: string }).code).toBe('CapabilityUnavailable');
