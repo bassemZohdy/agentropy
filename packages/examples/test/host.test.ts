@@ -25,6 +25,7 @@ import {
   schedulerStalled,
   tokenPrincipals,
   shutdownHost,
+  telemetryFromEnv,
 } from '../src/host.js';
 
 function call(
@@ -330,5 +331,46 @@ describe('container host (M3-08)', () => {
     );
     expect((await rpc('tok-b', 'ListTasks', {})).result.tasks).toEqual([]);
     expect((await rpc('tok-a', 'ListTasks', {})).result.tasks).toHaveLength(1);
+  });
+
+  it('exports spans and metrics to an OTLP/HTTP collector when AGENTROPY_OTLP_ENDPOINT is set, and loads nothing without it (FEAT-037.3)', async () => {
+    const off = await telemetryFromEnv({}, async () => {
+      throw new Error('must not load');
+    });
+    expect(off.telemetry).toBeUndefined();
+
+    const received: { path: string; body: string }[] = [];
+    const collector = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => chunks.push(c));
+      req.on('end', () => {
+        received.push({
+          path: req.url ?? '',
+          body: Buffer.concat(chunks).toString('utf8'),
+        });
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end('{}');
+      });
+    });
+    await new Promise<void>((r) => collector.listen(0, '127.0.0.1', r));
+    const port = (collector.address() as AddressInfo).port;
+    const release = allowNetwork([`127.0.0.1:${port}`]);
+    const on = await telemetryFromEnv({
+      AGENTROPY_OTLP_ENDPOINT: `http://127.0.0.1:${port}/`,
+      AGENTROPY_SERVICE_NAME: 'host-under-test',
+      HOSTNAME: 'pod-9',
+    });
+    const span = on.telemetry!.startSpan('agentropy.test.span');
+    span.end();
+    on.telemetry!.count('agentropy.test.counter', 3, { kind: 'probe' });
+    await on.shutdown(); // flushes both exporters
+    release();
+    await new Promise((r) => collector.close(r));
+    const traces = received.find((r) => r.path === '/v1/traces');
+    const meters = received.find((r) => r.path === '/v1/metrics');
+    expect(traces?.body).toContain('agentropy.test.span');
+    expect(traces?.body).toContain('host-under-test');
+    expect(traces?.body).toContain('pod-9');
+    expect(meters?.body).toContain('agentropy.test.counter');
   });
 });

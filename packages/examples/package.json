@@ -14,6 +14,12 @@
     "@agentropy/testkit": "workspace:*"
   },
   "optionalDependencies": {
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "0.223.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.223.0",
+    "@opentelemetry/resources": "2.12.0",
+    "@opentelemetry/sdk-metrics": "2.12.0",
+    "@opentelemetry/sdk-trace-base": "2.12.0",
     "pg": "^8.23.1"
   }
 }

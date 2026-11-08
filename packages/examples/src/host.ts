@@ -11,6 +11,9 @@
  * - PORT                  health port (default 8080)
  * - AGENTROPY_ALLOW       comma-separated policy actions the sample policy allows; everything else is denied
  * - AGENTROPY_TICK_MS     scheduler interval (default 250)
+ * - AGENTROPY_OTLP_ENDPOINT  base URL of an OTLP/HTTP collector (e.g. http://collector:4318): traces and metrics are
+ *                         exported to `<base>/v1/traces` and `<base>/v1/metrics` (the OpenTelemetry packages are optional
+ *                         dependencies loaded only then); AGENTROPY_SERVICE_NAME names the service (default agentropy-host)
  * - AGENTROPY_A2A_TOKENS  enables the A2A endpoint: comma-separated `token=principalId` bearer tokens (sample
  *                         authentication; replace `bearerTokens` with your identity provider)
  * - AGENTROPY_TENANT      tenant of those principals and of the exposed instance (default `default`)
@@ -39,6 +42,7 @@ import {
 } from '@agentropy/core';
 import {
   agentCardForDefinition,
+  openTelemetry,
   createA2AHttpHandler,
   createA2AServer,
   createLocalApp,
@@ -48,7 +52,7 @@ import {
   type SchedulerStatus,
 } from '@agentropy/runtime';
 import { PostgresStore, type PgPool } from '@agentropy/store-postgres';
-import type { Store } from '@agentropy/core';
+import type { Store, Telemetry } from '@agentropy/core';
 import { SqliteStore } from '@agentropy/store-sqlite';
 import { randomUUID } from 'node:crypto';
 
@@ -237,13 +241,79 @@ export async function shutdownHost(h: {
   server: Server;
   stop: () => Promise<void>;
   app: LocalApp;
+  /** Flushes telemetry after the last execution finished (spans of the final work are not lost). */
+  flush?: () => Promise<void>;
 }): Promise<void> {
   if (h.state.shuttingDown) return;
   h.state.shuttingDown = true;
   h.server.close();
   h.server.closeAllConnections();
   await h.stop();
+  await h.flush?.().catch(() => undefined);
   await h.app.store.close();
+}
+
+/** The OpenTelemetry modules the host loads (all optional dependencies, imported only with an OTLP endpoint). */
+export type OtelLoader = (name: string) => Promise<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+/**
+ * Telemetry from the environment (FEAT-037.3): with `AGENTROPY_OTLP_ENDPOINT` spans and metrics go to an OTLP/HTTP
+ * collector through the OpenTelemetry SDK; without it nothing is loaded and telemetry is off. `shutdown` flushes and
+ * stops the exporters.
+ */
+export async function telemetryFromEnv(
+  env: Record<string, string | undefined>,
+  load: OtelLoader = (name) => import(/* @vite-ignore */ name),
+): Promise<{ telemetry?: Telemetry; shutdown: () => Promise<void> }> {
+  const base = env.AGENTROPY_OTLP_ENDPOINT?.replace(/\/+$/, '');
+  if (!base) return { shutdown: async () => undefined };
+  const [api, trace, metrics, resources, traceExporter, metricExporter] =
+    await Promise.all(
+      [
+        '@opentelemetry/api',
+        '@opentelemetry/sdk-trace-base',
+        '@opentelemetry/sdk-metrics',
+        '@opentelemetry/resources',
+        '@opentelemetry/exporter-trace-otlp-http',
+        '@opentelemetry/exporter-metrics-otlp-http',
+      ].map((name) => load(name)),
+    );
+  const resource = resources.resourceFromAttributes({
+    'service.name': env.AGENTROPY_SERVICE_NAME ?? 'agentropy-host',
+    ...(env.HOSTNAME ? { 'service.instance.id': env.HOSTNAME } : {}),
+  });
+  const tracerProvider = new trace.BasicTracerProvider({
+    resource,
+    spanProcessors: [
+      new trace.BatchSpanProcessor(
+        new traceExporter.OTLPTraceExporter({ url: `${base}/v1/traces` }),
+      ),
+    ],
+  });
+  const meterProvider = new metrics.MeterProvider({
+    resource,
+    readers: [
+      new metrics.PeriodicExportingMetricReader({
+        exporter: new metricExporter.OTLPMetricExporter({
+          url: `${base}/v1/metrics`,
+        }),
+        exportIntervalMillis: 15_000,
+      }),
+    ],
+  });
+  return {
+    telemetry: openTelemetry({
+      api,
+      tracer: tracerProvider.getTracer('agentropy'),
+      meter: meterProvider.getMeter('agentropy'),
+    }),
+    shutdown: async () => {
+      await Promise.allSettled([
+        tracerProvider.shutdown(),
+        meterProvider.shutdown(),
+      ]);
+    },
+  };
 }
 
 /** The `pg` module's `Pool`, as far as the host uses it. */
@@ -280,8 +350,10 @@ export async function openStore(
 
 export async function main(env = process.env): Promise<void> {
   const { store, workerId } = await openStore(env);
+  const otel = await telemetryFromEnv(env);
   const app = createLocalApp({
     store,
+    ...(otel.telemetry ? { telemetry: otel.telemetry } : {}),
     pdp: new AllowListPolicy(env.AGENTROPY_ALLOW ?? ''),
     profiles: BUILTIN_PROFILES,
     // With a shared database every replica is a worker and takes part in the outbox relay lease.
@@ -312,7 +384,8 @@ export async function main(env = process.env): Promise<void> {
     })();
   });
   server.listen(Number(env.PORT ?? 8080));
-  const shutdown = () => shutdownHost({ state, server, stop, app });
+  const shutdown = () =>
+    shutdownHost({ state, server, stop, app, flush: otel.shutdown });
   process.once('SIGTERM', () => void shutdown());
   process.once('SIGINT', () => void shutdown());
   process.on('unhandledRejection', (reason) => {
