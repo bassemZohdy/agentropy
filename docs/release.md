@@ -48,3 +48,17 @@ These are deliberately left open; each needs the owner, not an implementation ch
 - **Publishing identity.** Ownership of the `@agentropy` npm scope, the publishing account or trusted-publisher setup, and npm provenance.
 - **Release flow.** Flip `private` to `false`, tag, publish from CI (for example `pnpm -r publish --access public --provenance`), and draft release notes from the `CHANGELOG.md` `[Unreleased]` section.
 - **Image.** Whether the container image is published, to which registry, and with which tags and signatures.
+
+### Recommendation (not a decision)
+
+Drafted so the decisions above can be confirmed or changed quickly; none of it is in effect until the owner records it here and TASK-032 is unblocked.
+
+| Decision | Recommended default | Why |
+|---|---|---|
+| Version and stability | `0.1.0`, published under the npm dist-tag `next` | `0.x` allows breaking changes between minors while the TypeScript API is unfrozen; the contracts keep their own revision numbers, which is the compatibility promise that exists today. `latest` only at 1.0 |
+| Publishing identity | An `@agentropy` npm organization owned by the maintainer account, publishing through npm trusted publishing (GitHub OIDC) | No long-lived token to leak; provenance comes with it (see the signing plan above) |
+| Release flow | Tag `v0.1.0` → a `release.yml` workflow that runs `pnpm check` and `node scripts/check-pack.mjs`, publishes with `pnpm -r publish --provenance --tag next`, and creates a GitHub release from `CHANGELOG.md` with the package SBOMs attached; `"private": true` is removed in one reviewed commit | Everything the workflow needs already runs in CI; publishing is the only new step |
+| Image | GitHub Container Registry, `ghcr.io/<owner>/agentropy-host`, tags `0.1.0` and the digest (never `latest`), signed with cosign keyless and carrying the SBOM and provenance attestations | No second account or secret (the workflow's `GITHUB_TOKEN` suffices); deployments pin by digest, as the manifests already require |
+
+What the owner must do regardless: create the npm organization, configure the trusted publisher for each package (or choose a token), and decide the repository owner name that appears in the image path.
+

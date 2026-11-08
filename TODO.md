@@ -22,7 +22,7 @@
 - [!] **TASK-032** · P2 · low · Release decisions: version, npm scope, release workflow, image registry (R-17)
   - Done when: `node scripts/check-pack.mjs`
   - Links: Ref: docs/release.md · Lane: ops
-  - Blocked: owner decisions needed → nothing to run until they are made → owner records version, scope, registry and flow in docs/release.md
+  - Blocked: owner decisions needed → nothing to run until they are made → owner records version, scope, registry and flow in docs/release.md (a recommendation is drafted there: confirm or change it)
 - [ ] **TASK-034** · P2 · mid · Governance: settle Proposed ADRs, decide D-09, extend the threat model to multi-worker deployments (R-23–R-25)
   - Done when: `node scripts/check-readiness.mjs`
   - Links: Ref: docs/review/2026-11-06-project-review.md#governance-and-documentation · Lane: docs
@@ -30,6 +30,6 @@
     - Done when: `node scripts/check-doc-links.mjs`
   - [!] **TASK-034.2** · low · Decide D-09 (Temporal + LangGraph TypeScript): keep deferred or schedule (R-24)
     - Done when: `node scripts/check-readiness.mjs`
-    - Blocked: owner decision → no command can make it → owner records the decision in docs/plans/DESIGN-FOLLOWUPS.md
+    - Blocked: owner decision → no command can make it → owner records the decision in docs/plans/DESIGN-FOLLOWUPS.md (a recommendation is drafted there: keep deferred)
   - [x] **TASK-034.3** · mid · STRIDE rows for multi-worker and PostgreSQL flows, including cross-worker cache staleness (R-25)
     - Done when: `node scripts/check-readiness.mjs`
