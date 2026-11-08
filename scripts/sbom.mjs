@@ -79,10 +79,13 @@ export function sbomFor(dir) {
             : {}),
         });
       if (!graph.has(id)) graph.set(id, new Set());
+      // pnpm lists optional dependencies under their own key; they ship in the image and belong in the SBOM.
       walk(id, d.dependencies);
+      walk(id, d.optionalDependencies);
     }
   };
   walk(self, tree.dependencies);
+  walk(self, tree.optionalDependencies);
 
   const sorted = [...components.values()].sort((a, b) =>
     a['bom-ref'].localeCompare(b['bom-ref']),

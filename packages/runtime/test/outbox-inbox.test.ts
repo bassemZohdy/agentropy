@@ -698,3 +698,57 @@ describe('stuck outbox rows (FEAT-039.4)', () => {
     expect(stuck).toMatchObject({ attempts: 3, lastError: 'Error' });
   });
 });
+
+describe('poisoned outbox rows (FEAT-039.4)', () => {
+  it('with poisonAfter a row that keeps failing is given up on and delivery goes on; without it the row holds everything back', async () => {
+    const h = harness();
+    h.define('d', completes());
+    const inst = await h.instance('d');
+    await h.delegate(inst.id, {}, 'one');
+    await h.delegate(inst.id, {}, 'two');
+    const rows = await h.store.transaction((tx) =>
+      tx.find<OutboxRecord>('outbox', { orderBy: 'seq' }),
+    );
+    const first = rows[0]!.value.eventId;
+    const got: string[] = [];
+    const picky = {
+      id: 'picky',
+      handle: async (e: PublishedEvent) => {
+        if (e.eventId === first) throw new Error('cannot handle this one');
+        got.push(e.eventId);
+      },
+    };
+    const counted: string[] = [];
+    const telemetry = {
+      startSpan: () => ({
+        traceparent: undefined,
+        setAttributes() {},
+        fail() {},
+        end() {},
+      }),
+      count: (name: string) => void counted.push(name),
+      record() {},
+    };
+    const holding = new OutboxRelay({ store: h.store, consumers: [picky] });
+    for (let i = 0; i < 4; i++) await holding.drain();
+    expect(got).toEqual([]); // ordering kept: nothing passes the failing row
+    expect(await holding.stuck(3)).toHaveLength(1);
+
+    const giving = new OutboxRelay({
+      store: h.store,
+      consumers: [picky],
+      poisonAfter: 6,
+      telemetry,
+    });
+    for (let i = 0; i < 2; i++) await giving.drain(); // attempts 5 and 6: the sixth gives up
+    expect(
+      counted.filter((n) => n === 'agentropy.outbox.poisoned'),
+    ).toHaveLength(1);
+    expect(got.length).toBe(rows.length - 1); // every other row was delivered
+    expect(await giving.stuck(1)).toEqual([]);
+    const after = await h.store.transaction((tx) =>
+      tx.get<OutboxRecord>('outbox', rows[0]!.id),
+    );
+    expect(after?.value).toMatchObject({ published: 1, poisoned: true });
+  });
+});

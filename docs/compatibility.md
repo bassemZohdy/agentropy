@@ -52,7 +52,7 @@
 | [Skill v1](contracts/skill-v1.md) | 1 |
 | [Errors v1](contracts/errors-v1.md) | 2 |
 | [Agent Implementation v1](contracts/agent-implementation-v1.md) | 1 |
-| [Observability v1](contracts/observability-v1.md) | 4 |
+| [Observability v1](contracts/observability-v1.md) | 5 |
 | [Runtime contract](runtime-contract.md) | 5 |
 | [Messaging contract](messaging-contract.md) | 4 |
 

@@ -73,6 +73,13 @@ export interface OutboxRelayOptions {
   localConsumers?: EventConsumer[];
   /** Leader lease length (default 30 s). */
   leaseMs?: number;
+  /**
+   * Off by default: a row that keeps failing holds back every later row (ordering is kept). With a number, a row
+   * whose delivery failed that many times is given up on: marked published and `poisoned` (counted as
+   * `agentropy.outbox.poisoned`) so delivery goes on. A consumer that missed it is repaired by reconciliation
+   * (`rebuildInbox` for the inbox); other consumers must be able to tolerate a gap.
+   */
+  poisonAfter?: number;
   /** Delivery lag and terminal-outcome metrics, recorded once per published row. */
   telemetry?: Telemetry;
   now?: () => string;
@@ -246,15 +253,28 @@ export class OutboxRelay {
           this.o.telemetry?.count(METRICS.outboxFailures, 1, {
             'agentropy.event.type': row.value.type,
           });
-          await this.o.store.transaction(async (tx) => {
+          const poisoned = await this.o.store.transaction(async (tx) => {
             const cur = await tx.get<OutboxRecord>('outbox', row.id);
-            if (cur && cur.value.published === 0)
-              await tx.update<OutboxRecord>('outbox', cur.id, cur.revision, {
-                ...cur.value,
-                attempts: cur.value.attempts + 1,
-                lastError: err instanceof Error ? err.name : 'Error',
-              });
+            if (!cur || cur.value.published !== 0) return false;
+            const attempts = cur.value.attempts + 1;
+            const give =
+              this.o.poisonAfter !== undefined &&
+              attempts >= this.o.poisonAfter;
+            await tx.update<OutboxRecord>('outbox', cur.id, cur.revision, {
+              ...cur.value,
+              attempts,
+              lastError: err instanceof Error ? err.name : 'Error',
+              ...(give ? { published: 1 as const, poisoned: true } : {}),
+            });
+            return give;
           });
+          if (poisoned) {
+            this.o.telemetry?.count(METRICS.outboxPoisoned, 1, {
+              'agentropy.event.type': row.value.type,
+            });
+            published++;
+            continue; // given up on: the next row is delivered
+          }
           return published;
         }
         await this.o.store.transaction(async (tx) => {

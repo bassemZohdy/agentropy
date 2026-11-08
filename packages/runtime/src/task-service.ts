@@ -123,6 +123,8 @@ export interface OutboxRecord {
   published: 0 | 1;
   attempts: number;
   lastError?: string;
+  /** Given up on after `poisonAfter` failed deliveries: marked published without every consumer having it. */
+  poisoned?: boolean;
 }
 
 /** Users whose inbox shows a human-action request: its named assignees, else the task owner. */

@@ -373,4 +373,51 @@ describe('container host (M3-08)', () => {
     expect(traces?.body).toContain('pod-9');
     expect(meters?.body).toContain('agentropy.test.counter');
   });
+
+  it('/readyz reports rows a failing outbox consumer holds back as a detail, and stays ready', async () => {
+    const app = createLocalApp({
+      store: new SqliteStore({
+        path: join(mkdtempSync(join(tmpdir(), 'agentropy-host-')), 'host.db'),
+      }),
+      pdp: new AllowListPolicy(
+        'delegation:delegate,task:dispatch,capability:notification:use',
+      ),
+      profiles: BUILTIN_PROFILES,
+    });
+    defineAgents(app);
+    const alice: TrustedPrincipal = { id: 'a', type: 'user', tenantId: 't' };
+    const inst = await app.createInstance(
+      {
+        definition: { id: 'echo', version: '1.0.0' },
+        ownerId: 'a',
+        idempotencyKey: 'i',
+      },
+      alice,
+    );
+    await app.delegate(
+      {
+        target: { instanceId: inst.id },
+        input: {},
+        idempotencyKey: 'k',
+        correlationId: 'c',
+      },
+      alice,
+    );
+    const h = healthHandler(app, { shuttingDown: false });
+    expect(await call(h, 'GET', '/readyz')).toEqual({
+      status: 200,
+      body: { status: 'ready' },
+    });
+    app.relay.register({
+      id: 'broken',
+      handle: async () => {
+        throw new Error('down');
+      },
+    });
+    for (let i = 0; i < 5; i++) await app.relay.drain();
+    expect(await call(h, 'GET', '/readyz')).toEqual({
+      status: 200,
+      body: { status: 'ready', outboxStuck: 1 },
+    });
+  });
 });

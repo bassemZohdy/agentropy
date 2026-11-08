@@ -11,6 +11,9 @@
  * - PORT                  health port (default 8080)
  * - AGENTROPY_ALLOW       comma-separated policy actions the sample policy allows; everything else is denied
  * - AGENTROPY_TICK_MS     scheduler interval (default 250)
+ * - AGENTROPY_OUTBOX_POISON_AFTER  give up on an outbox row after this many failed deliveries (default: never, which keeps
+ *                         event order but lets one failing consumer hold back every later row; /readyz reports
+ *                         `outboxStuck` while rows are held back)
  * - AGENTROPY_OTLP_ENDPOINT  base URL of an OTLP/HTTP collector (e.g. http://collector:4318): traces and metrics are
  *                         exported to `<base>/v1/traces` and `<base>/v1/metrics` (the OpenTelemetry packages are optional
  *                         dependencies loaded only then); AGENTROPY_SERVICE_NAME names the service (default agentropy-host)
@@ -120,7 +123,12 @@ export function healthHandler(
       }
       if (schedulerStalled(app.schedulerStatus(), now()))
         return send(503, { status: 'scheduler-stalled' });
-      return send(200, { status: 'ready' });
+      // Rows a failing consumer holds back are a detail, not a reason to leave the service: the pod still serves.
+      const stuck = await app.relay.stuck(5).catch(() => []);
+      return send(200, {
+        status: 'ready',
+        ...(stuck.length ? { outboxStuck: stuck.length } : {}),
+      });
     }
     return send(404, { error: 'not found' });
   };
@@ -354,6 +362,9 @@ export async function main(env = process.env): Promise<void> {
   const app = createLocalApp({
     store,
     ...(otel.telemetry ? { telemetry: otel.telemetry } : {}),
+    ...(env.AGENTROPY_OUTBOX_POISON_AFTER
+      ? { outboxPoisonAfter: Number(env.AGENTROPY_OUTBOX_POISON_AFTER) }
+      : {}),
     pdp: new AllowListPolicy(env.AGENTROPY_ALLOW ?? ''),
     profiles: BUILTIN_PROFILES,
     // With a shared database every replica is a worker and takes part in the outbox relay lease.

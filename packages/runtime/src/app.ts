@@ -152,6 +152,8 @@ export interface LocalAppOptions {
   quotas?: QuotaResolver;
   /** Relay leader lease, for several processes sharing one store (M2-06). */
   relay?: { relayId: string; leaseMs?: number };
+  /** Give up on an outbox row after this many failed deliveries (default: never; see `OutboxRelayOptions.poisonAfter`). */
+  outboxPoisonAfter?: number;
   /** Unconsumed events kept per subscription before back-pressure drops (default 1000). */
   mailboxLimit?: number;
   /** Briefing policy, per-user preferences and urgent push (M2-04). */
@@ -450,6 +452,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
           ...(o.relay.leaseMs ? { leaseMs: o.relay.leaseMs } : {}),
         }
       : {}),
+    ...(o.outboxPoisonAfter ? { poisonAfter: o.outboxPoisonAfter } : {}),
     ...(o.telemetry ? { telemetry: o.telemetry, now } : {}),
     ...(o.faults ? { faults: o.faults } : {}),
   });

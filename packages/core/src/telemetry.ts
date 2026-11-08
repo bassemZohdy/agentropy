@@ -65,6 +65,8 @@ export const METRICS = {
   schedulerErrors: 'agentropy.scheduler.errors',
   /** Outbox deliveries that a consumer failed (the row is retried and blocks later rows until it succeeds). */
   outboxFailures: 'agentropy.outbox.failures',
+  /** Outbox rows given up on after `poisonAfter` failed deliveries (FEAT-039.4). */
+  outboxPoisoned: 'agentropy.outbox.poisoned',
 } as const;
 
 /** Span names (D-13). */
