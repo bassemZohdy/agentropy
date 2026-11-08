@@ -130,7 +130,18 @@ for (const file of readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f))) {
   for (const m of text.matchAll(/^[ \t]+image:[ \t]*([^\s#]+)/gm))
     if (!/@sha256:[0-9a-f]{64}$/.test(m[1])) fail(`${file}: service image ${m[1]} must be pinned by digest`);
 }
-if (!/pnpm audit --prod/.test(readFileSync(join(wfDir, 'ci.yml'), 'utf8')))
+// FEAT-036 (R-14): the manifests are applied to a live kind cluster in CI, with rollout and pod loss exercised.
+const ci = readFileSync(join(wfDir, 'ci.yml'), 'utf8');
+if (!/bash deploy\/kind-smoke\.sh/.test(ci)) fail('ci.yml: the kind live-cluster job (bash deploy/kind-smoke.sh) is missing');
+let kindSmoke = '';
+try {
+  kindSmoke = readFileSync(join(root, 'deploy/kind-smoke.sh'), 'utf8');
+} catch {
+  fail('deploy/kind-smoke.sh missing');
+}
+for (const needle of ['kubectl kustomize', 'rollout restart', 'delete pod', 'a2a-smoke.sh'])
+  if (!kindSmoke.includes(needle)) fail(`deploy/kind-smoke.sh must exercise: ${needle}`);
+if (!/pnpm audit --prod/.test(ci))
   fail('ci.yml: production dependency audit (pnpm audit --prod) missing');
 let dependabot = '';
 try {

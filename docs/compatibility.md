@@ -36,8 +36,8 @@
 | Target | Version | How verified |
 |---|---|---|
 | Container image | OCI, non-root UID 1001, group 0 | Tested: CI builds it and runs it read-only, without capabilities, as UID 1001 and as an arbitrary UID |
-| Kubernetes | `apps/v1`, `networking.k8s.io/v1`, Pod Security "restricted" | Checked: `scripts/check-deploy.mjs`; not applied to a live cluster in CI |
-| OpenShift | 4.x with `restricted-v2` SCC | Checked as above; arbitrary-UID behaviour tested in the container smoke test |
+| Kubernetes | `apps/v1`, `networking.k8s.io/v1`, Pod Security "restricted" | Checked: `scripts/check-deploy.mjs`; applied to a live kind cluster in CI (`deploy/kind-smoke.sh`: readiness, A2A through the Service, rolling restart, pod loss) |
+| OpenShift | 4.x with `restricted-v2` SCC | Checked as above; arbitrary-UID behaviour tested in the container smoke test; not run on an OpenShift cluster |
 | Air-gapped | offline install from mirrored image and pnpm store | Documented ([deployment guide](deployment.md)); the test suite runs with the network blocked |
 
 ## Contracts

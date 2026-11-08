@@ -195,3 +195,11 @@ jobs:
       - name: Conductor adapter on a live server
         run: pnpm exec vitest run packages/workflow-conductor/test/conductor-live.test.ts
 
+  cluster:
+    # FEAT-036: apply the Kubernetes manifests to a kind cluster, wait for readiness, run the A2A smoke test through
+    # the Service, roll the StatefulSet, delete the pod without grace and check the accepted task survives on the volume.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Live-cluster deployment test
+        run: bash deploy/kind-smoke.sh

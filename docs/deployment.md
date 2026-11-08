@@ -44,7 +44,7 @@ Nothing in the runtime calls out at run time except the providers you configure,
 1. **On a connected machine:** mirror the base image by digest into your registry (`docker pull node:24-bookworm-slim@sha256:…`, `docker save`), and fill a pnpm store with `pnpm fetch` from `pnpm-lock.yaml` (or mirror the npm registry, e.g. Verdaccio/Nexus/Artifactory). Corepack needs the pinned pnpm (`packageManager` in `package.json`) — mirror it too, or set `COREPACK_NPM_REGISTRY` to your mirror.
 2. **Move** the saved image, the pnpm store and the repository snapshot into the isolated network.
 3. **Build** with the base image from the internal registry and `pnpm install --offline --frozen-lockfile` (adjust the first stage, or build outside Docker and copy `pnpm deploy` output into the final stage).
-4. **Verify** offline: `pnpm check`, `node scripts/check-deploy.mjs`, then run the image as in CI and probe `/readyz`.
+4. **Verify** offline: `pnpm check`, `node scripts/check-deploy.mjs`, then run the image as in CI and probe `/readyz`. With docker, kind and kubectl installed, `bash deploy/kind-smoke.sh` (the `cluster` CI job) applies the manifests to a throwaway kind cluster, runs the A2A smoke test through the Service, rolls the StatefulSet, deletes the pod without grace and checks that the accepted task is still completed on the persistent volume (`KEEP=1` keeps the cluster).
 5. **Push** to the internal registry and change `image:` in `statefulset.yaml` to that reference.
 
 ## Data residency, backup and upgrades
