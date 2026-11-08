@@ -1,0 +1,10 @@
+{
+  "name": "agentropy",
+  "version": "0.1.0",
+  "description": "Agent Skills for building, deploying, integrating, operating and contributing to Agentropy, a composable multi-agent framework for reliable autonomous work.",
+  "author": { "name": "Bassem Zohdy" },
+  "homepage": "https://github.com/bassemZohdy/agentropy",
+  "repository": "https://github.com/bassemZohdy/agentropy",
+  "license": "Apache-2.0",
+  "keywords": ["agents", "multi-agent", "a2a", "mcp", "kubernetes", "typescript"]
+}

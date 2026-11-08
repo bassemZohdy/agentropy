@@ -67,6 +67,17 @@ Profiles are templates, not a rigid inheritance hierarchy. Required capabilities
 - Enforcing a single framework, vendor, language, UI, transport, or cloud provider.
 - Building a centralized distributed orchestration platform in the first milestone.
 
+## Agent Skills for coding agents
+
+[`skills/`](skills/) holds five [Agent Skills](https://agentskills.io) (build an agent, deploy, A2A, operate, contribute), packaged as a Claude Code plugin and readable by any harness that supports the format. In Claude Code:
+
+```text
+/plugin marketplace add bassemZohdy/agentropy
+/plugin install agentropy@agentropy
+```
+
+Other harnesses: `node scripts/install-skills.mjs <skills folder>`. Details in [docs/skills.md](docs/skills.md); [AGENTS.md](AGENTS.md) summarises the repository for agents.
+
 ## Documentation
 
 - **Start here:** [Quickstart](docs/quickstart.md) (`pnpm example:quickstart`) · [API reference](docs/api.md) · [Compatibility matrix](docs/compatibility.md)

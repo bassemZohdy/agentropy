@@ -1,0 +1,17 @@
+{
+  "name": "agentropy",
+  "owner": { "name": "Bassem Zohdy" },
+  "metadata": {
+    "description": "Agent Skills for the Agentropy multi-agent framework."
+  },
+  "plugins": [
+    {
+      "name": "agentropy",
+      "source": "./",
+      "description": "Build agents, deploy the host, integrate over A2A, operate and contribute to Agentropy.",
+      "version": "0.1.0",
+      "license": "Apache-2.0",
+      "keywords": ["agents", "a2a", "kubernetes"]
+    }
+  ]
+}
