@@ -12,7 +12,9 @@ rpc() {
     -d "$1" "${base}/a2a"
 }
 
-curl -fsS "${base}/.well-known/agent-card.json" | grep -q '"protocolBinding":"JSONRPC"'
+# Output is captured first: `curl | grep -q` under pipefail fails (curl exit 23) when grep stops reading early.
+card=$(curl -fsS "${base}/.well-known/agent-card.json")
+grep -q '"protocolBinding":"JSONRPC"' <<<"${card}"
 
 status=$(curl -s -o /dev/null -w '%{http_code}' -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"GetTask","params":{"id":"x"}}' "${base}/a2a")
@@ -27,7 +29,8 @@ fi
 
 get='{"jsonrpc":"2.0","id":2,"method":"GetTask","params":{"id":"'"${task}"'"}}'
 for _ in $(seq 1 30); do
-  if rpc "${get}" | grep -q TASK_STATE_COMPLETED; then
+  got=$(rpc "${get}")
+  if grep -q TASK_STATE_COMPLETED <<<"${got}"; then
     echo "a2a smoke: task ${task} completed"
     exit 0
   fi

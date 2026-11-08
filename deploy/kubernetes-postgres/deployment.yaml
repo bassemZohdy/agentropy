@@ -1,0 +1,94 @@
+# Several replicas on one PostgreSQL database (docs/deployment.md, "Scaling out with PostgreSQL"). Each pod is a worker:
+# its name (HOSTNAME) is the worker and outbox-relay ID, so one replica leads the relay and the others still wake their
+# own subscribers. Works on OpenShift restricted-v2 like the StatefulSet: no fixed UID, read-only root filesystem.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentropy
+  labels:
+    app.kubernetes.io/name: agentropy
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agentropy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agentropy
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: runtime
+          image: registry.example.com/agentropy/agentropy-host:0.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: health
+              containerPort: 8080
+          env:
+            - name: AGENTROPY_PG_URL
+              valueFrom:
+                secretKeyRef:
+                  name: agentropy-pg
+                  key: url
+            - name: AGENTROPY_ALLOW
+              valueFrom:
+                configMapKeyRef:
+                  name: agentropy-policy
+                  key: allow
+            - name: AGENTROPY_A2A_TOKENS
+              valueFrom:
+                secretKeyRef:
+                  name: agentropy-a2a
+                  key: tokens
+                  optional: true
+            - name: AGENTROPY_TENANT
+              valueFrom:
+                configMapKeyRef:
+                  name: agentropy-policy
+                  key: tenant
+                  optional: true
+            - name: AGENTROPY_PUBLIC_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: agentropy-policy
+                  key: publicUrl
+                  optional: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            periodSeconds: 5
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

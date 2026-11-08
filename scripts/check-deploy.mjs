@@ -26,6 +26,33 @@ for (const file of readdirSync(dir).filter((f) => f.endsWith('.yaml'))) {
   }
 }
 
+// The PostgreSQL variant (FEAT-041.4): a Deployment overlay that replaces the StatefulSet, held to the same pod rules.
+const pgDir = join(root, 'deploy/kubernetes-postgres');
+const pgDocs = [];
+for (const file of readdirSync(pgDir).filter((f) => f.endsWith('.yaml'))) {
+  for (const d of YAML.parseAllDocuments(readFileSync(join(pgDir, file), 'utf8'))) {
+    if (d.errors.length) fail(`kubernetes-postgres/${file}: ${d.errors[0].message}`);
+    else pgDocs.push({ file: `kubernetes-postgres/${file}`, obj: d.toJS() });
+  }
+}
+const pgKustomization = pgDocs.find((d) => d.obj?.kind === 'Kustomization')?.obj;
+if (!pgKustomization?.resources?.includes('deployment.yaml'))
+  fail('kubernetes-postgres/kustomization.yaml: must list deployment.yaml');
+if (!pgKustomization?.resources?.includes('../kubernetes'))
+  fail('kubernetes-postgres/kustomization.yaml: must build on the base (../kubernetes)');
+if (!JSON.stringify(pgKustomization?.patches ?? []).includes('$patch: delete'))
+  fail('kubernetes-postgres/kustomization.yaml: must delete the SQLite StatefulSet');
+const pgDeployment = pgDocs.find((d) => d.obj?.kind === 'Deployment')?.obj;
+if (!pgDeployment) fail('kubernetes-postgres: no Deployment');
+else if (!(pgDeployment.spec?.replicas > 1))
+  fail('kubernetes-postgres/deployment.yaml: the variant exists for several replicas');
+else if (
+  !pgDeployment.spec.template.spec.containers.some((c) =>
+    (c.env ?? []).some((e) => e.name === 'AGENTROPY_PG_URL' && e.valueFrom?.secretKeyRef),
+  )
+)
+  fail('kubernetes-postgres/deployment.yaml: AGENTROPY_PG_URL must come from a Secret');
+
 const kinds = new Set(docs.map((d) => d.obj?.kind));
 for (const k of ['StatefulSet', 'NetworkPolicy', 'ConfigMap', 'Kustomization', 'Service'])
   if (!kinds.has(k)) fail(`deploy/kubernetes: no ${k}`);
@@ -35,7 +62,7 @@ for (const d of docs)
   if (d.obj?.kind !== 'Kustomization' && !kustomization?.resources?.includes(d.file))
     fail(`${d.file}: not listed in kustomization.yaml`);
 
-for (const { file, obj } of docs) {
+for (const { file, obj } of [...docs, ...pgDocs]) {
   const pod = obj?.spec?.template?.spec;
   if (!pod) continue;
   if (pod.securityContext?.runAsNonRoot !== true) fail(`${file}: pod runAsNonRoot must be true`);
@@ -61,7 +88,8 @@ for (const { file, obj } of docs) {
       else if (!served.has(path)) fail(`${where}: ${probe} path ${path} is not served by host.ts`);
     }
     const mounts = new Set((c.volumeMounts ?? []).map((m) => m.mountPath));
-    for (const p of ['/data', '/tmp'])
+    // Only the SQLite StatefulSet keeps state on a volume; the PostgreSQL variant needs scratch space alone.
+    for (const p of obj.kind === 'StatefulSet' ? ['/data', '/tmp'] : ['/tmp'])
       if (!mounts.has(p)) fail(`${where}: needs a writable mount at ${p} (root filesystem is read-only)`);
   }
 }

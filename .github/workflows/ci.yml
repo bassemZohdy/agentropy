@@ -112,6 +112,16 @@ jobs:
   image:
     # FEAT-028.8: build the host image and smoke-test it the way Kubernetes/OpenShift run it.
     runs-on: ubuntu-latest
+    services:
+      # FEAT-041.4: the PostgreSQL mode of the image runs against a real server (two replicas, one database).
+      postgres:
+        image: postgres:17@sha256:748a18a54d3842d43bc156f0840d78029b8d349e0feca98c12b9c4ce3404a6b3
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: agentropy
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Build image
@@ -146,3 +156,16 @@ jobs:
           curl -fsS localhost:8081/readyz
           docker stop -t 30 host-oc
           docker logs host-oc
+      - name: Run two replicas on PostgreSQL (shared database, relay lease, A2A across them)
+        run: |
+          for n in 1 2; do
+            docker run -d --name host-pg-$n --network host --read-only --tmpfs /tmp               --cap-drop ALL --security-opt no-new-privileges               -e PORT=809$n -e HOSTNAME=pod-$n               -e AGENTROPY_PG_URL=postgres://postgres:ci@127.0.0.1:5432/agentropy               -e AGENTROPY_A2A_TOKENS=ci-token=ci-peer -e AGENTROPY_ALLOW=delegation:delegate,task:dispatch,capability:notification:use               agentropy-host:ci
+          done
+          for p in 8091 8092; do
+            for i in $(seq 1 60); do curl -fsS localhost:$p/readyz && break; sleep 1; done
+            curl -fsS localhost:$p/readyz
+          done
+          bash deploy/a2a-smoke.sh localhost:8091 ci-token
+          bash deploy/a2a-smoke.sh localhost:8092 ci-token
+          for n in 1 2; do docker stop -t 30 host-pg-$n; docker logs host-pg-$n; done
+          for n in 1 2; do test "$(docker inspect -f '{{.State.ExitCode}}' host-pg-$n)" = "0"; done

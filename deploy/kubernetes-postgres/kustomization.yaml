@@ -1,0 +1,15 @@
+# PostgreSQL variant (FEAT-041.4): several stateless replicas sharing one database instead of the single SQLite
+# StatefulSet. Apply with `kubectl apply -k deploy/kubernetes-postgres` after creating the Secret `agentropy-pg`
+# (key `url`: the connection URL, with TLS settings, of a database role that owns the schema).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../kubernetes
+  - deployment.yaml
+patches:
+  - patch: |-
+      $patch: delete
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: agentropy
