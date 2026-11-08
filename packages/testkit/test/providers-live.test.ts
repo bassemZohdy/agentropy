@@ -72,4 +72,37 @@ live('OpenAI-compatible reasoning on a live endpoint', () => {
         (err as { code: string }).code,
       );
   }, 90_000);
+
+  it('offers a tool and, if the model proposes a call, returns it parsed with the offered name', async () => {
+    const r = await provider().complete(
+      {
+        messages: [
+          {
+            role: 'user',
+            content: 'What is the weather in Oslo? Use the tool get_weather.',
+          },
+        ],
+        maxTokens: 128,
+        temperature: 0,
+        tools: [
+          {
+            name: 'get_weather',
+            description: 'Current weather for a city',
+            inputSchema: {
+              type: 'object',
+              properties: { city: { type: 'string' } },
+              required: ['city'],
+            },
+          },
+        ],
+      },
+      ctx,
+    );
+    // A small model may answer in text instead of calling; the wire format is what is under test.
+    expect(typeof r.text).toBe('string');
+    for (const call of r.toolCalls ?? []) {
+      expect(call.name).toBe('get_weather');
+      expect(typeof call.input).toBe('object');
+    }
+  }, 90_000);
 });
