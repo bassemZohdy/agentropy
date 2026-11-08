@@ -19,8 +19,8 @@
  *   deduplicates across instances.
  *
  * Live findings (Conductor OSS 3.15.0 standalone, `conductor-live.test.ts`): the start request's `idempotencyKey` is
- * accepted but not enforced (the same key starts another run), and the correlation search is eventually consistent
- * (empty right after a start), so `lookup` can start a duplicate if repeated at once. Once-per-key is therefore
+ * accepted but not enforced (the same key starts another run), and the correlation search returned nothing for a
+ * started run (still empty 20 s later), so `lookup` finds no earlier run there. Once-per-key is therefore
  * the runtime's job: `workflow.start` is journaled by its step key (`workflowOperationHandlers` with a store).
  * An engine that enforces the key (Orkes) makes `server` mode exact.
  *
