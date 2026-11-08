@@ -1,6 +1,6 @@
 # Release packaging
 
-**Status:** FEAT-030 (2026-11-06). The library packages are publish-ready artifacts; **nothing is published**. Every package stays `"private": true` at version `0.0.0` until the owner decides the items under [Owner decisions](#owner-decisions).
+**Status:** FEAT-030 (2026-11-06), decisions recorded 2026-11-08 (TASK-032). The library packages are publish-ready artifacts; **nothing is published yet**. Every package stays `"private": true` at version `0.0.0` until the first release is cut under the [accepted decisions](#owner-decisions).
 
 ## What is packaged
 
@@ -42,18 +42,18 @@ Nothing is published yet ([owner decisions](#owner-decisions)), so nothing is si
 
 ## Owner decisions
 
-These are deliberately left open; each needs the owner, not an implementation change:
+The owner decided these on 2026-11-08 by accepting the defaults below; each was an owner decision, not an implementation change:
 
 - **Version and stability.** First version number and what it promises: the [contracts](contracts/) are versioned documents; the TypeScript API is not yet frozen.
 - **Publishing identity.** Ownership of the `@agentropy` npm scope, the publishing account or trusted-publisher setup, and npm provenance.
 - **Release flow.** Flip `private` to `false`, tag, publish from CI (for example `pnpm -r publish --access public --provenance`), and draft release notes from the `CHANGELOG.md` `[Unreleased]` section.
 - **Image.** Whether the container image is published, to which registry, and with which tags and signatures.
 
-### Recommendation (not a decision)
+### Accepted decisions (2026-11-08)
 
-Drafted so the decisions above can be confirmed or changed quickly; none of it is in effect until the owner records it here and TASK-032 is unblocked.
+The owner accepted these defaults. They take effect when the first release is cut: the `release.yml` workflow and removing `"private": true` are the implementation work of that release, not of a decision.
 
-| Decision | Recommended default | Why |
+| Decision | Accepted default | Why |
 |---|---|---|
 | Version and stability | `0.1.0`, published under the npm dist-tag `next` | `0.x` allows breaking changes between minors while the TypeScript API is unfrozen; the contracts keep their own revision numbers, which is the compatibility promise that exists today. `latest` only at 1.0 |
 | Publishing identity | An `@agentropy` npm organization owned by the maintainer account, publishing through npm trusted publishing (GitHub OIDC) | No long-lived token to leak; provenance comes with it (see the signing plan above) |

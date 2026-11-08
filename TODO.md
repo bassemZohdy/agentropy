@@ -2,34 +2,6 @@
 
 ## 🌳 Task Tree
 
-- [ ] **FEAT-032** · P1 · high · PostgreSQL scaling: remove the store-wide seq hot row, cut round trips, expose retries (R-01–R-04)
-  - Done when: `env AGENTROPY_PG_URL=postgres://postgres:ci@127.0.0.1:5432/agentropy pnpm exec vitest run packages/store-postgres/test packages/testkit/test/benchmarks.test.ts`
-  - Links: Ref: docs/review/2026-11-06-project-review.md#runtime-and-scale · Lane: store
-  - [x] **FEAT-032.1** · low · Count serialization retries and exhausted retries as metrics and span attributes (R-03)
-    - Done when: `pnpm exec vitest run packages/store-postgres/test/postgres-store.test.ts packages/testkit/test/telemetry.test.ts`
-  - [x] **FEAT-032.2** · mid · Batch statements per transaction; at most 12 round trips per acceptance (R-02; now 16, R-26 fixed)
-    - Done when: `pnpm exec vitest run packages/store-postgres/test`
-  - [x] **FEAT-032.3** · high · ADR-0028 revision: commit-ordered seq without one hot row; multi-worker throughput grows with workers (R-01)
-    - Done when: `env AGENTROPY_PG_URL=postgres://postgres:ci@127.0.0.1:5432/agentropy pnpm exec vitest run packages/testkit/test/benchmarks.test.ts`
-  - [!] **FEAT-032.4** · low · Re-measure on a dedicated database host and finalize the PostgreSQL SLOs (R-04)
-    - Done when: `node scripts/check-doc-links.mjs`
-    - Blocked: needs a dedicated PostgreSQL host → no such host is available to this checkout → owner provides a host URL or accepts the provisional targets
-  - [x] **FEAT-032.5** · mid · Outbox relays on several workers stop marking the same rows published (~1,200 retried conflicts per multi-worker run)
-    - Done when: `pnpm exec vitest run packages/runtime/test/outbox-inbox.test.ts packages/testkit/test/multi-worker.test.ts`
 - [ ] **FEAT-036** · P1 · mid · Live-cluster deployment test: apply manifests on kind, readiness, rollout, pod loss recovery (R-14)
   - Done when: `bash deploy/kind-smoke.sh`
   - Links: Ref: docs/review/2026-11-06-project-review.md#deployment-supply-chain-and-release · Lane: ops
-- [!] **TASK-032** · P2 · low · Release decisions: version, npm scope, release workflow, image registry (R-17)
-  - Done when: `node scripts/check-pack.mjs`
-  - Links: Ref: docs/release.md · Lane: ops
-  - Blocked: owner decisions needed → nothing to run until they are made → owner records version, scope, registry and flow in docs/release.md (a recommendation is drafted there: confirm or change it)
-- [ ] **TASK-034** · P2 · mid · Governance: settle Proposed ADRs, decide D-09, extend the threat model to multi-worker deployments (R-23–R-25)
-  - Done when: `node scripts/check-readiness.mjs`
-  - Links: Ref: docs/review/2026-11-06-project-review.md#governance-and-documentation · Lane: docs
-  - [x] **TASK-034.1** · mid · Accept, supersede or annotate ADRs 0008–0014 and 0018 with evidence (R-23)
-    - Done when: `node scripts/check-doc-links.mjs`
-  - [!] **TASK-034.2** · low · Decide D-09 (Temporal + LangGraph TypeScript): keep deferred or schedule (R-24)
-    - Done when: `node scripts/check-readiness.mjs`
-    - Blocked: owner decision → no command can make it → owner records the decision in docs/plans/DESIGN-FOLLOWUPS.md (a recommendation is drafted there: keep deferred)
-  - [x] **TASK-034.3** · mid · STRIDE rows for multi-worker and PostgreSQL flows, including cross-worker cache staleness (R-25)
-    - Done when: `node scripts/check-readiness.mjs`
