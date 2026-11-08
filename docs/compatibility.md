@@ -27,7 +27,7 @@
 | MCP tools | MCP 2025-06-18 over Streamable HTTP (`tools/list`, `tools/call`) | Tested against a fake MCP server: discovery, calls under the executor, schema-drift refusal, SSE and session handling; no live MCP server, no stdio |
 | Model API | OpenAI-compatible `POST /chat/completions` with tools | Tested against recorded fixtures; an opt-in live suite exists (`AGENTROPY_LLM_BASE_URL`, `AGENTROPY_LLM_MODEL`, `AGENTROPY_LLM_API_KEY`) but has not been run against a live endpoint |
 | OpenTelemetry | `@opentelemetry/api` 1.9; SDK 2.0 (traces, metrics) | Tested: span and metric export to in-memory exporters |
-| Conductor | REST API (`/api/workflow`), Conductor OSS and Orkes | Tested against an in-process fake of the REST API; an opt-in live suite exists (`AGENTROPY_CONDUCTOR_URL`, `AGENTROPY_CONDUCTOR_TOKEN`) but has not been run against a live server |
+| Conductor | REST API (`/api/workflow`), Conductor OSS and Orkes | Tested against an in-process fake of the REST API; an opt-in live suite (`AGENTROPY_CONDUCTOR_URL`, `AGENTROPY_CONDUCTOR_TOKEN`) runs in CI against Conductor OSS 3.15.0 standalone. That server does not enforce the start request's idempotency key and indexes the correlation search asynchronously, so the runtime journals `workflow.start` by step key |
 | Custom brokers | any request/response transport | Tested: broker sample through the communication conformance suite |
 | Agent Skills | `SKILL.md` folders with YAML frontmatter | Tested: skill loader suite |
 

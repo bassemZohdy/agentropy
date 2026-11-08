@@ -532,7 +532,9 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
           ...(o.tools ? { tools: o.tools.registry } : {}),
         })
       : {}),
-    ...(o.workflow ? workflowOperationHandlers(o.workflow) : {}),
+    ...(o.workflow
+      ? workflowOperationHandlers(o.workflow, { store, now })
+      : {}),
     ...o.operations,
   });
   const skillLoader =

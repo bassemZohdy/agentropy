@@ -8,6 +8,7 @@
 import {
   AgentropyError,
   type CapabilityInvocationContext,
+  type Store,
   type WorkflowEngine,
 } from '@agentropy/core';
 
@@ -16,6 +17,13 @@ export const WORKFLOW_SOURCE = 'workflow';
 
 export function workflowOperationHandlers(
   engine: WorkflowEngine,
+  /**
+   * With a store, `workflow.start` is journaled by its step key (the `effects` collection, like other external
+   * effects): a replayed step returns the run it started instead of asking the engine again, so once-per-key
+   * holds even for engines that ignore the idempotency key (Conductor OSS does). A crash between the engine's
+   * answer and the journal write can still start a second run; the engine's own idempotency covers that window.
+   */
+  journal?: { store: Store; now: () => string },
 ): Record<
   string,
   (input: unknown, ctx: CapabilityInvocationContext) => Promise<unknown>
@@ -36,11 +44,30 @@ export function workflowOperationHandlers(
             details: { reason: 'missingStepKey' },
           },
         );
-      return engine.start(input.workflow, input.input, {
+      const effectId = `effect:${ctx.idempotencyKey}`;
+      if (journal) {
+        const done = await journal.store.transaction((tx) =>
+          tx.get<{ result: unknown }>('effects', effectId),
+        );
+        if (done) return done.value.result;
+      }
+      const run = await engine.start(input.workflow, input.input, {
         tenantId: ctx.tenantId,
         taskId: ctx.taskId,
         idempotencyKey: ctx.idempotencyKey,
       });
+      if (journal)
+        await journal.store.transaction(async (tx) => {
+          if (await tx.get('effects', effectId)) return;
+          await tx.insert('effects', effectId, {
+            taskId: ctx.taskId,
+            operation: 'workflow.start',
+            ...(ctx.stepKey ? { stepKey: ctx.stepKey } : {}),
+            result: run,
+            at: journal.now(),
+          });
+        });
+      return run;
     },
     status: async (raw, ctx) => {
       const { runId } = (raw ?? {}) as { runId?: string };

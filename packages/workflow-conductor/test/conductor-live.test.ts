@@ -69,32 +69,58 @@ live('ConductorWorkflowEngine on a live server', () => {
     idempotencyKey: `${key}-${Date.now()}`,
   });
 
-  for (const mode of ['server', 'lookup'] as const)
-    it(`[${mode} idempotency] starts a run once per key, reports it finished through poll, and hides it from another tenant`, async () => {
-      await register();
-      const e = engine(mode);
-      const finished: string[] = [];
-      e.onFinished((r) => finished.push(`${r.runId}:${r.state}:${r.tenantId}`));
-      const c = ctx(mode);
-      replies.length = 0;
-      const run = await e.start(NAME, {}, c);
-      expect(run.runId).toBeTruthy();
-      const again = await e.start(NAME, {}, c);
-      expect(again.runId, replies.join(' | ')).toBe(run.runId);
+  // Findings of the first live run (Conductor OSS 3.15.0 standalone), which the adapter documents:
+  // - `idempotencyKey` / RETURN_EXISTING in the start request is NOT enforced: the same key starts a second run, so
+  //   once-per-key comes from the runtime's own `workflow.start` journal, not from this server;
+  // - the correlation search is indexed asynchronously: right after a start it returns an empty list.
+  it('starts a run, reports it finished through poll, and hides it from another tenant', async () => {
+    await register();
+    const e = engine('server');
+    const finished: string[] = [];
+    e.onFinished((r) => finished.push(`${r.runId}:${r.state}:${r.tenantId}`));
+    replies.length = 0;
+    const run = await e.start(NAME, {}, ctx('a'));
+    expect(run.runId, replies.join(' | ')).toBeTruthy();
+    for (let i = 0; i < 30 && !finished.length; i++) {
+      await e.poll();
+      if (!finished.length) await new Promise((r) => setTimeout(r, 500));
+    }
+    expect(finished, replies.join(' | ')).toEqual([
+      `${run.runId}:completed:t-live`,
+    ]);
+    const done = await e.status(run.runId, { tenantId: 't-live' });
+    expect(done).toMatchObject({ state: 'completed', output: { total: 42 } });
+    expect((await e.status(run.runId, { tenantId: 't-other' })).code).toBe(
+      'NotFound',
+    );
+  }, 60_000);
 
-      for (let i = 0; i < 30 && !finished.length; i++) {
-        await e.poll();
-        if (!finished.length) await new Promise((r) => setTimeout(r, 500));
-      }
-      expect(finished, replies.join(' | ')).toEqual([
-        `${run.runId}:completed:t-live`,
-      ]);
-      const done = await e.status(run.runId, { tenantId: 't-live' });
-      expect(done).toMatchObject({ state: 'completed', output: { total: 42 } });
-      expect((await e.status(run.runId, { tenantId: 't-other' })).code).toBe(
-        'NotFound',
-      );
-    }, 60_000);
+  it('lookup idempotency returns the existing run once the correlation search has indexed it', async () => {
+    await register();
+    const e = engine('lookup');
+    const c = ctx('lookup');
+    replies.length = 0;
+    const run = await e.start(NAME, {}, c);
+    // The search is eventually consistent: wait until it knows the run, then a repeat start must find it.
+    const correlated = async () =>
+      (
+        JSON.parse(
+          await (
+            await liveFetch(
+              `${URL}/api/workflow/${NAME}/correlated/${encodeURIComponent(`t-live:${c.idempotencyKey}`)}?includeClosed=true&includeTasks=false`,
+              { headers: headers() },
+            )
+          ).text(),
+        ) as unknown[]
+      ).length;
+    let seen = await correlated();
+    for (let i = 0; i < 40 && !seen; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      seen = await correlated();
+    }
+    expect(seen, replies.join(' | ')).toBeGreaterThan(0);
+    expect((await e.start(NAME, {}, c)).runId).toBe(run.runId);
+  }, 90_000);
 
   it('an unknown workflow is CapabilityUnavailable', async () => {
     const err = await engine('server')

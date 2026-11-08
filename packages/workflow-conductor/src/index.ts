@@ -18,6 +18,12 @@
  *   own. Each terminal run is reported to `onFinished` once per adapter instance; the runtime's event ingress
  *   deduplicates across instances.
  *
+ * Live findings (Conductor OSS 3.15.0 standalone, `conductor-live.test.ts`): the start request's `idempotencyKey` is
+ * accepted but not enforced (the same key starts another run), and the correlation search is eventually consistent
+ * (empty right after a start), so `lookup` can start a duplicate if repeated at once. Once-per-key is therefore
+ * the runtime's job: `workflow.start` is journaled by its step key (`workflowOperationHandlers` with a store).
+ * An engine that enforces the key (Orkes) makes `server` mode exact.
+ *
  * Not supported by the SPI and therefore not mapped: pause/resume, terminate, task-level visibility.
  */
 import {
