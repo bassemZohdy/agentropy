@@ -173,10 +173,6 @@ jobs:
   conductor:
     # FEAT-035.2: the Conductor adapter against a real Conductor OSS server (opt-in live suite).
     runs-on: ubuntu-latest
-    services:
-      conductor:
-        image: conductoross/conductor-standalone:3.15.0@sha256:099e36a7840616a979559fa0b2aebbcfada2c7b4b8c4c99cdc4679e8a26a7592
-        ports: ['8080:8080']
     env:
       AGENTROPY_CONDUCTOR_URL: http://127.0.0.1:8080
     steps:
@@ -191,9 +187,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - name: Wait for Conductor
+      - name: Start Conductor OSS (the service-container health gate waits on the image's own healthcheck, which never passes)
         run: |
-          for i in $(seq 1 90); do curl -fsS http://127.0.0.1:8080/health && break; sleep 2; done
+          docker run -d --name conductor -p 8080:8080             conductoross/conductor-standalone:3.15.0@sha256:099e36a7840616a979559fa0b2aebbcfada2c7b4b8c4c99cdc4679e8a26a7592
+          for i in $(seq 1 120); do curl -fsS http://127.0.0.1:8080/health && break; sleep 2; done
           curl -fsS http://127.0.0.1:8080/health
       - name: Conductor adapter on a live server
         run: pnpm exec vitest run packages/workflow-conductor/test/conductor-live.test.ts
