@@ -1,3 +1,74 @@
 # Active Backlog
 
 ## 🌳 Task Tree
+
+- [!] **TASK-040** · P0 · low · Restore GitHub Actions billing; verify `main` CI (setup-node 7.1.0 bump never ran)
+  - Done when: `gh run list --branch main --workflow ci.yml --limit 1 --json conclusion --jq '.[0].conclusion' | grep -qx success`
+  - Links: Ref: .github/workflows/ci.yml
+  - Blocked: jobs never start ("recent account payments have failed or your spending limit needs to be increased") → run 42526351089 failed with 0 steps on all 6 jobs → owner fixes Billing & plans in GitHub, then re-runs CI on main
+- [ ] **TASK-041** · P0 · mid · Move the image to Node 26 without `corepack enable` (exits 127 there, PR #11 fails); check-deploy rejects corepack
+  - Done when: `grep -q 'FROM node:26' deploy/Dockerfile` `node scripts/check-deploy.mjs`
+  - Links: Ref: deploy/Dockerfile
+  - State: branch todo/TASK-041-move-image-node-26 from main; next: start TASK-041
+- [ ] **TASK-042** · P1 · low · Triage open PRs: #7 legacy testkit helpers (stale), #14 pnpm/action-setup, #16 dev tooling (eslint 10); merge or close with a reason
+  - Done when: `gh pr view 7 --json state --jq .state | grep -qv OPEN` `gh pr view 14 --json state --jq .state | grep -qv OPEN` `gh pr view 16 --json state --jq .state | grep -qv OPEN`
+  - Links: Depends: TASK-040 · Ref: docs/review/2026-11-05-legacy-pr-integration.md
+- [!] **TASK-044** · P1 · low · Enable GitHub private vulnerability reporting (SECURITY.md names it as the channel)
+  - Done when: `gh api repos/bassemZohdy/agentropy/private-vulnerability-reporting --jq .enabled | grep -qx true`
+  - Blocked: reporting channel is off or not visible → the settings API answers HTTP 404 → owner enables it under Settings > Code security
+- [ ] **TASK-043** · P1 · high · First release 0.1.0 (owner defaults accepted 2026-11-08)
+  - Done when: `npm view @agentropy/core@0.1.0 version`
+  - Links: Ref: docs/release.md
+  - [ ] **TASK-043.1** · mid · Write release.yml: tag trigger, pnpm check and check-pack first, npm provenance under tag next, GHCR image by digest, cosign, GitHub release
+    - Done when: `test -f .github/workflows/release.yml` `node scripts/check-deploy.mjs`
+    - Links: Ref: docs/release.md
+  - [ ] **TASK-043.2** · low · Set publishable packages to 0.1.0 and drop `private` in one reviewed commit
+    - Done when: `grep -q '"version": "0.1.0"' packages/core/package.json` `node scripts/check-pack.mjs`
+  - [!] **TASK-043.3** · low · Owner: create the `@agentropy` npm org, trusted publishers per package, repository owner name for the image path
+    - Done when: `grep -q 'owner setup done' docs/release.md`
+    - Blocked: nothing is published and no npm org exists → `npm view @agentropy/core` finds no package → owner creates the org and trusted publishers, then records it in docs/release.md
+  - [ ] **TASK-043.4** · mid · Cut v0.1.0 (tag, workflow publishes packages and image), verify provenance and signature
+    - Done when: `gh release view v0.1.0`
+    - Links: Depends: TASK-043.1, TASK-043.2, TASK-043.3, TASK-040, TASK-044
+- [ ] **FEAT-042** · P2 · mid · Live model API suite in CI, key-gated (R-12): job runs `providers-live.test.ts` only when the secret exists
+  - Done when: `grep -q AGENTROPY_LLM_API_KEY .github/workflows/ci.yml` `node scripts/check-deploy.mjs`
+  - Links: Depends: TASK-040 · Ref: packages/testkit/test/providers-live.test.ts
+- [ ] **FEAT-043** · P2 · low · Fixture cost benchmark of the model routing evaluation (FEAT-035 leftover)
+  - Done when: `pnpm exec vitest run packages/testkit/test/model-routing-cost.test.ts`
+  - Links: Ref: docs/review/2026-11-06-model-routing-evaluation.md
+- [ ] **FEAT-044** · P2 · high · A2A completeness; each part bumps communication-v1 and adds conformance
+  - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-paging.test.ts packages/testkit/test/a2a-history.test.ts packages/testkit/test/a2a-push-outbound.test.ts packages/testkit/test/a2a-interop-second.test.ts`
+  - Links: Ref: docs/contracts/communication-v1.md
+  - [ ] **FEAT-044.1** · mid · Push-config paging for `ListTaskPushNotificationConfigs`
+    - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-paging.test.ts`
+  - [ ] **FEAT-044.2** · mid · Message history so `historyLength` has an effect
+    - Done when: `pnpm exec vitest run packages/testkit/test/a2a-history.test.ts`
+  - [ ] **FEAT-044.3** · mid · Outbound push-config at peers (`features.pushNotifications`)
+    - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-outbound.test.ts`
+  - [ ] **FEAT-044.4** · mid · Interop with a second, non-JS A2A implementation (only `@a2a-js/sdk` 1.3.0 is tested)
+    - Done when: `pnpm exec vitest run packages/testkit/test/a2a-interop-second.test.ts`
+- [ ] **FEAT-045** · P2 · high · Optional: memory provider (ADR-0008: memory is a catalog contract with no provider)
+  - Done when: `pnpm exec vitest run packages/testkit/test/memory.test.ts`
+  - Links: Ref: docs/adr/0008-provider-neutral-runtime.md
+  - [ ] **FEAT-045.1** · low · Memory behaviour contract: revise capability-v1 and ADR-0008 evidence
+    - Done when: `grep -q 'Memory provider' docs/contracts/capability-v1.md` `node scripts/check-doc-links.mjs`
+  - [ ] **FEAT-045.2** · mid · Reference memory provider on the Store port with a conformance suite
+    - Done when: `pnpm exec vitest run packages/testkit/test/memory.test.ts`
+    - Links: Depends: FEAT-045.1
+- [ ] **FEAT-046** · P2 · high · Optional: broker relay adapter (ADR-0011: Kafka or NATS), no mandatory broker dependency
+  - Done when: `pnpm exec vitest run packages/testkit/test/broker-relay.test.ts`
+  - Links: Ref: docs/adr/0011-versioned-agent-messaging.md
+  - [ ] **FEAT-046.1** · low · Owner picks the broker; record it as ADR-0031
+    - Done when: `test -f docs/adr/0031-broker-adapter.md` `node scripts/check-doc-links.mjs`
+  - [ ] **FEAT-046.2** · mid · Adapter passes the outbox relay conformance suite (ordering, dedup, redelivery)
+    - Done when: `pnpm exec vitest run packages/testkit/test/broker-relay.test.ts`
+    - Links: Depends: FEAT-046.1
+- [ ] **TASK-045** · P2 · low · Skills: list the plugin in a public marketplace; run the five skills in a second harness (TASK-039 leftover)
+  - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
+  - Links: Ref: docs/skills.md
+- [ ] **TASK-046** · P2 · low · Clear the dev advisory GHSA-g3hv-75wg-m249 (minimatch via typescript-eslint); `pnpm audit` reports 1 moderate
+  - Done when: `pnpm audit`
+  - Links: Ref: TASK-030
+- [ ] **TASK-047** · P2 · low · Coverage gate from the baseline (94.4% lines, 86.35% branches); report-only today
+  - Done when: `grep -q thresholds vitest.config.ts` `pnpm exec vitest run --coverage`
+  - Links: Ref: TASK-037
