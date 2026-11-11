@@ -61,7 +61,3 @@
 - [ ] **TASK-045** · P2 · low · Skills: list the plugin in a public marketplace; run the five skills in a second harness (TASK-039 leftover)
   - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
   - Links: Ref: docs/skills.md
-- [/] **TASK-047** · P2 · low · Coverage gate from the baseline (94.4% lines, 86.35% branches); report-only today
-  - Done when: `grep -q thresholds vitest.config.ts` `pnpm exec vitest run --coverage`
-  - Links: Ref: TASK-037
-  - State: attempts 0/3; baseline 595 passing; branch todo/TASK-047-coverage-gate-from-baseline from main; next: drain
