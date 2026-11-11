@@ -213,6 +213,35 @@ jobs:
       - name: Interop with the Python reference SDK
         run: AGENTROPY_A2A_PY=auto pnpm exec vitest run packages/testkit/test/a2a-interop-second.test.ts
 
+  model-live:
+    # FEAT-042 (R-12): the OpenAI-compatible reasoning adapter against a real endpoint (opt-in live suite). It runs only
+    # where the repository defines the secret AGENTROPY_LLM_API_KEY and the variables AGENTROPY_LLM_BASE_URL and
+    # AGENTROPY_LLM_MODEL, never for pull requests (a fork controls those), and each step skips without the key.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      AGENTROPY_LLM_API_KEY: ${{ secrets.AGENTROPY_LLM_API_KEY }}
+      AGENTROPY_LLM_BASE_URL: ${{ vars.AGENTROPY_LLM_BASE_URL }}
+      AGENTROPY_LLM_MODEL: ${{ vars.AGENTROPY_LLM_MODEL }}
+    steps:
+      - if: env.AGENTROPY_LLM_API_KEY != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: env.AGENTROPY_LLM_API_KEY != ''
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: '10.34.9'
+          run_install: false
+      - if: env.AGENTROPY_LLM_API_KEY != ''
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: pnpm
+      - if: env.AGENTROPY_LLM_API_KEY != ''
+        run: pnpm install --frozen-lockfile
+      - name: OpenAI-compatible reasoning on a live endpoint
+        if: env.AGENTROPY_LLM_API_KEY != ''
+        run: pnpm exec vitest run packages/testkit/test/providers-live.test.ts
+
   cluster:
     # FEAT-036: apply the Kubernetes manifests to a kind cluster, wait for readiness, run the A2A smoke test through
     # the Service, roll the StatefulSet, delete the pod without grace and check the accepted task survives on the volume.

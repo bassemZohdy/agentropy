@@ -24,7 +24,7 @@ DCO text and explanation: https://developercertificate.org/
 
 ## Test and formatting policy
 
-The M0-08 workspace now has `pnpm build`, `pnpm lint`, `pnpm test`, and `pnpm format:check` scripts under [ADR-0016](docs/adr/0016-implementation-language.md). Run them on the supported Node.js LTS with pnpm installed; [CI](.github/workflows/ci.yml) validates the scaffold. Existing tests are **smoke checks only**—they do not prove Agentropy's domain contracts or resilience. Pull requests must also satisfy the [DCO workflow](.github/workflows/dco.yml). The future todo-skills backlog lint becomes mandatory only after the legacy roadmap has been migrated and the skill is installed.
+The M0-08 workspace now has `pnpm build`, `pnpm lint`, `pnpm test`, and `pnpm format:check` scripts under [ADR-0016](docs/adr/0016-implementation-language.md). Run them on the supported Node.js LTS with pnpm installed; [CI](.github/workflows/ci.yml) validates the scaffold. Existing tests are **smoke checks only**—they do not prove Agentropy's domain contracts or resilience. CI also runs `pnpm exec vitest run --coverage`, which fails when statement, branch, function or line coverage of `packages/*/src` drops under the thresholds in `vitest.config.ts` (TASK-047; they sit about 1.5 points under the measured baseline, so raise them when it rises). Pull requests must also satisfy the [DCO workflow](.github/workflows/dco.yml). The future todo-skills backlog lint becomes mandatory only after the legacy roadmap has been migrated and the skill is installed.
 
 ## Backlog workflow
 

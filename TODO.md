@@ -27,9 +27,6 @@
   - [ ] **TASK-043.4** · mid · Cut v0.1.0 (tag, workflow publishes packages and image), verify provenance and signature
     - Done when: `gh release view v0.1.0`
     - Links: Depends: TASK-043.1, TASK-043.2, TASK-043.3, TASK-040, TASK-044
-- [ ] **FEAT-042** · P2 · mid · Live model API suite in CI, key-gated (R-12): job runs `providers-live.test.ts` only when the secret exists
-  - Done when: `grep -q AGENTROPY_LLM_API_KEY .github/workflows/ci.yml` `node scripts/check-deploy.mjs`
-  - Links: Depends: TASK-040 · Ref: packages/testkit/test/providers-live.test.ts
 - [ ] **FEAT-044** · P2 · high · A2A completeness; each part bumps communication-v1 and adds conformance
   - Done when: `AGENTROPY_A2A_PY=auto pnpm exec vitest run packages/testkit/test/a2a-push-paging.test.ts packages/testkit/test/a2a-history.test.ts packages/testkit/test/a2a-interop-second.test.ts`
   - Links: Ref: docs/contracts/communication-v1.md
@@ -48,20 +45,11 @@
   - [ ] **FEAT-045.2** · mid · Reference memory provider on the Store port with a conformance suite
     - Done when: `pnpm exec vitest run packages/testkit/test/memory.test.ts`
     - Links: Depends: FEAT-045.1
-- [ ] **FEAT-046** · P2 · high · Optional: broker relay adapter (ADR-0011: Kafka or NATS), no mandatory broker dependency
-  - Done when: `pnpm exec vitest run packages/testkit/test/broker-relay.test.ts`
-  - Links: Ref: docs/adr/0011-versioned-agent-messaging.md
-  - [ ] **FEAT-046.1** · low · Owner picks the broker; record it as ADR-0031
-    - Done when: `test -f docs/adr/0031-broker-adapter.md` `node scripts/check-doc-links.mjs`
-  - [ ] **FEAT-046.2** · mid · Adapter passes the outbox relay conformance suite (ordering, dedup, redelivery)
-    - Done when: `pnpm exec vitest run packages/testkit/test/broker-relay.test.ts`
-    - Links: Depends: FEAT-046.1
-- [ ] **TASK-045** · P2 · low · Skills: list the plugin in a public marketplace; run the five skills in a second harness (TASK-039 leftover)
+- [!] **FEAT-048** · P2 · high · Outbound push config at A2A peers: the host receives their webhooks (deferred, design first)
+  - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-outbound.test.ts`
+  - Links: Ref: docs/contracts/communication-v1.md · From: FEAT-044
+  - Blocked: needs an inbound webhook endpoint, token verification and threat-model rows; the owner deferred it on 2026-11-11 → n/a (manual) → owner schedules it, then /todo-plan the receiver design
+- [!] **TASK-045** · P2 · low · Skills: list the plugin in a public marketplace; run the five skills in a second harness (TASK-039 leftover)
   - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
   - Links: Ref: docs/skills.md
-- [ ] **TASK-046** · P2 · low · Clear the dev advisory GHSA-g3hv-75wg-m249 (minimatch via typescript-eslint); `pnpm audit` reports 1 moderate
-  - Done when: `pnpm audit`
-  - Links: Ref: TASK-030
-- [ ] **TASK-047** · P2 · low · Coverage gate from the baseline (94.4% lines, 86.35% branches); report-only today
-  - Done when: `grep -q thresholds vitest.config.ts` `pnpm exec vitest run --coverage`
-  - Links: Ref: TASK-037
+  - Blocked: a public listing needs the owner's submission and a second harness needs to be run by hand → n/a (manual) → owner submits the plugin, runs the five skills in another harness and records it under "Tested in" in docs/skills.md

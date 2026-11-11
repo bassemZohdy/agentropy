@@ -151,6 +151,17 @@ for (const needle of ['kubectl kustomize', 'rollout restart', 'delete pod', 'a2a
 // FEAT-044.4: the Python-SDK interop test has its own CI job, with the virtualenv created by the test itself.
 if (!ci.includes('AGENTROPY_A2A_PY=auto pnpm exec vitest run packages/testkit/test/a2a-interop-second.test.ts'))
   fail('ci.yml: the Python A2A interop job (AGENTROPY_A2A_PY=auto ... a2a-interop-second.test.ts) is missing');
+// FEAT-042 (R-12): the live model API suite runs in CI only where the key exists: the key comes from a secret into the
+// job's environment, the step is gated on it, and pull requests (which a fork controls) never run it.
+if (!/providers-live\.test\.ts/.test(ci)) fail('ci.yml: the live model API job (providers-live.test.ts) is missing');
+else {
+  if (!/AGENTROPY_LLM_API_KEY:\s*\$\{\{\s*secrets\.AGENTROPY_LLM_API_KEY\s*\}\}/.test(ci))
+    fail('ci.yml: the live model API job must take AGENTROPY_LLM_API_KEY from secrets.AGENTROPY_LLM_API_KEY');
+  if (!/if:\s*env\.AGENTROPY_LLM_API_KEY\s*!=\s*''/.test(ci))
+    fail("ci.yml: the live model API step must be gated on if: env.AGENTROPY_LLM_API_KEY != ''");
+  if (!/github\.event_name\s*!=\s*'pull_request'/.test(ci))
+    fail('ci.yml: the live model API job must not run for pull requests');
+}
 if (!/pnpm audit --prod/.test(ci))
   fail('ci.yml: production dependency audit (pnpm audit --prod) missing');
 let dependabot = '';
