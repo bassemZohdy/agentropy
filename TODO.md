@@ -38,9 +38,8 @@
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-paging.test.ts`
   - [x] **FEAT-044.2** · mid · Message history so `historyLength` has an effect
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-history.test.ts`
-  - [/] **FEAT-044.4** · mid · Interop with a second, non-JS A2A implementation (only `@a2a-js/sdk` 1.3.0 is tested)
+  - [x] **FEAT-044.4** · mid · Interop with a second, non-JS A2A implementation (only `@a2a-js/sdk` 1.3.0 is tested)
     - Done when: `AGENTROPY_A2A_PY=auto pnpm exec vitest run packages/testkit/test/a2a-interop-second.test.ts`
-    - State: attempts 0/3; baseline 610 passing; branch todo/FEAT-044.4-interop-second-non-js from todo/FEAT-044-a2a-completeness-each-part; next: read docs
 - [ ] **FEAT-045** · P2 · high · Optional: memory provider (ADR-0008: memory is a catalog contract with no provider)
   - Done when: `pnpm exec vitest run packages/testkit/test/memory.test.ts`
   - Links: Ref: docs/adr/0008-provider-neutral-runtime.md
