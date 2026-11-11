@@ -19,9 +19,8 @@
   - [x] **TASK-043.1** · mid · Write release.yml: tag trigger, pnpm check and check-pack first, npm provenance under tag next, GHCR image by digest, cosign, GitHub release
     - Done when: `test -f .github/workflows/release.yml` `node scripts/check-deploy.mjs`
     - Links: Ref: docs/release.md
-  - [/] **TASK-043.2** · low · Set publishable packages to 0.1.0 and drop `private` in one reviewed commit
+  - [x] **TASK-043.2** · low · Set publishable packages to 0.1.0 and drop `private` in one reviewed commit
     - Done when: `grep -q '"version": "0.1.0"' packages/core/package.json` `node scripts/check-pack.mjs`
-    - State: attempts 0/3; baseline 589 passing; branch todo/TASK-043.2-set-publishable-packages-0-1 from todo/TASK-043-first-release-0-1; next: build
   - [!] **TASK-043.3** · low · Owner: create the `@agentropy` npm org, trusted publishers per package, repository owner name for the image path
     - Done when: `grep -q 'owner setup done' docs/release.md`
     - Blocked: nothing is published and no npm org exists → `npm view @agentropy/core` finds no package → owner creates the org and trusted publishers, then records it in docs/release.md

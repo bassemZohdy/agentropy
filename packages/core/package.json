@@ -1,7 +1,6 @@
 {
   "name": "@agentropy/core",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "Agentropy contracts: types, JSON Schemas, the error catalog, lifecycle tables and pure resolvers (no I/O).",
   "license": "Apache-2.0",
   "repository": {
