@@ -14,7 +14,7 @@ With `AGENTROPY_OTLP_ENDPOINT` (an OTLP/HTTP collector base URL such as `http://
 docker build -f deploy/Dockerfile -t registry.example.com/agentropy/agentropy-host:0.0.0 .
 ```
 
-Two stages on `node:24-bookworm-slim`: install with `--frozen-lockfile`, build, `pnpm deploy --prod` of the examples package; the final stage runs as UID 1001 with `/data` owned by group 0 and group-writable. The base image is pinned by digest (`node:24-bookworm-slim@sha256:…`).
+Two stages on `node:26-bookworm-slim`: install the pnpm that `packageManager` pins (`npm install --global`; Node 25 and newer images do not ship corepack), install with `--frozen-lockfile`, build, `pnpm deploy --prod` of the examples package; the final stage runs as UID 1001 with `/data` owned by group 0 and group-writable. The base image is pinned by digest (`node:26-bookworm-slim@sha256:…`).
 
 **Supply chain (TASK-030.1):** the base image and the CI PostgreSQL service image are pinned by digest, and every GitHub Action by commit SHA (the tag in a trailing comment). Dependabot (`.github/dependabot.yml`) proposes weekly npm, Actions and base-image updates. CI fails on a known vulnerability in a production dependency (`pnpm audit --prod`). `node scripts/check-deploy.mjs` enforces the pins, the audit step and the Dependabot ecosystems. Development-only advisories are reviewed when they appear and not gated: on 2026-11-06 the only one left was minimatch 10 (a ReDoS) through typescript-eslint, which matches only patterns from the repository's own configuration and has no fixed release within typescript-eslint's range yet.
 
@@ -41,7 +41,7 @@ Several replicas need the PostgreSQL adapter ([ADR-0028](adr/0028-postgresql-sto
 
 Nothing in the runtime calls out at run time except the providers you configure, and the whole test suite runs with the network blocked. To build and install without internet access:
 
-1. **On a connected machine:** mirror the base image by digest into your registry (`docker pull node:24-bookworm-slim@sha256:…`, `docker save`), and fill a pnpm store with `pnpm fetch` from `pnpm-lock.yaml` (or mirror the npm registry, e.g. Verdaccio/Nexus/Artifactory). Corepack needs the pinned pnpm (`packageManager` in `package.json`) — mirror it too, or set `COREPACK_NPM_REGISTRY` to your mirror.
+1. **On a connected machine:** mirror the base image by digest into your registry (`docker pull node:26-bookworm-slim@sha256:…`, `docker save`), and fill a pnpm store with `pnpm fetch` from `pnpm-lock.yaml` (or mirror the npm registry, e.g. Verdaccio/Nexus/Artifactory). The build installs the pinned pnpm (`packageManager` in `package.json`) from the npm registry — mirror that package too, or point npm at your mirror (`npm_config_registry`).
 2. **Move** the saved image, the pnpm store and the repository snapshot into the isolated network.
 3. **Build** with the base image from the internal registry and `pnpm install --offline --frozen-lockfile` (adjust the first stage, or build outside Docker and copy `pnpm deploy` output into the final stage).
 4. **Verify** offline: `pnpm check`, `node scripts/check-deploy.mjs`, then run the image as in CI and probe `/readyz`. With docker, kind and kubectl installed, `bash deploy/kind-smoke.sh` (the `cluster` CI job) applies the manifests to a throwaway kind cluster, runs the A2A smoke test through the Service, rolls the StatefulSet, deletes the pod without grace and checks that the accepted task is still completed on the persistent volume (`KEEP=1` keeps the cluster).
