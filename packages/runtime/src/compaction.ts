@@ -33,6 +33,8 @@ export interface CompactionResult {
   pushConfigs: number;
   /** A2A message history rows (FEAT-044.2). */
   a2aHistory: number;
+  /** Expired memory entries (FEAT-045). */
+  memories: number;
   idempotency: number;
   remoteTasks: number;
   inbox: number;
@@ -62,6 +64,7 @@ export async function compactStore(
     executions: 0,
     pushConfigs: 0,
     a2aHistory: 0,
+    memories: 0,
     idempotency: 0,
     remoteTasks: 0,
     inbox: 0,
@@ -135,6 +138,15 @@ export async function compactStore(
         out.inbox++;
       }
     }
+  });
+  // Memory entries past their expiry (FEAT-045), whatever the retention window: expiry is the entry's own.
+  const nowIso = tasks.o.now();
+  await store.transaction(async (tx) => {
+    for (const m of await tx.find<{ expiresAt?: string }>('memories', {}))
+      if (m.value.expiresAt !== undefined && m.value.expiresAt <= nowIso) {
+        await tx.remove('memories', m.id, m.revision);
+        out.memories++;
+      }
   });
   return out;
 }

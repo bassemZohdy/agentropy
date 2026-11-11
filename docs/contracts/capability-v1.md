@@ -1,4 +1,4 @@
-# Agentropy Capability Contract v1.0 — revision 13
+# Agentropy Capability Contract v1.0 — revision 14
 
 **Status:** Accepted for M1 implementation (2026-11-05). The catalog, profiles and resolver live in `packages/core`; behavior is claimed only where an executable test exists. **Errors:** [Errors v1](errors-v1.md).
 
@@ -19,6 +19,7 @@
 | 11 | 2026-11-05 | FEAT-027.5: `ReasoningProvider` and `WorkflowEngine` SPIs. `reasoning.complete` `{ prompt? , system?, messages?, maxTokens?, temperature?, tools?: toolId[] }` → `{ text, toolCalls?: { toolId, input }[], usage, model }`; only snapshot-pinned tools may be offered and proposed calls are never executed by the capability; task `budget.maxCostUnits` counts model tokens (`BudgetExceeded`, `maxTokens` capped to the remainder). `workflow.start` `{ workflow, input }` is idempotent per step key; completion arrives as a `workflow` event `{ runId, state, output?, code? }`; `workflow.status` `{ runId }` |
 | 12 | 2026-11-06 | FEAT-028.5: `human-input.requestAction` approvals take `requiredApprovals?` (1–5 distinct agreeing approvers) and `allowSelfApproval?` (default false: the delegator cannot approve) |
 | 13 | 2026-11-07 | FEAT-035.3: `reasoning.complete` accepts `route?: { zone?, dataClass?, tier?, latency? }` (plain identifiers set by calling code; other values are dropped) as hints for a routing `ReasoningProvider`; a plain provider ignores them. FEAT-041.3: the call's tokens are reserved against `budget.maxCostUnits` before the model is asked and settled after, so concurrent calls cannot overspend |
+| 14 | 2026-11-11 | FEAT-045.1: the `memory` capability gets operation I/O and a behaviour contract — `remember` `{ key?, text, tags?, ttlMs? }` and `recall` `{ key?, tag?, query?, limit? }`, entries scoped to tenant and acting principal, bounded, retained by TTL and removed by `compact()`; see [Memory provider](#memory-provider-feat-045) |
 
 ## Classification
 
@@ -42,7 +43,7 @@ IDs below are the only valid capability IDs in v1. Other documents must use thes
 | `human-input` | behavior | Create typed HumanActionRequests | `requestAction` (external, step key) | POC |
 | `tool-use` | behavior | Invoke approved tools (incl. MCP) | `listTools` (read), `call` (external, step key) | POC (fake provider); real/MCP M2 |
 | `reasoning` | behavior | Model calls bounded by budget/policy | `complete` (read*), `plan` (read*) | POC (fake provider); real M2 |
-| `memory` | behavior | Durable agent knowledge with retention | `recall` (read), `remember` (internal) | M2 |
+| `memory` | behavior | Durable agent knowledge with retention | `recall` (read), `remember` (internal) | Reference provider on the Store port ([below](#memory-provider-feat-045)) |
 | `workflow` | behavior | Start/await a deterministic workflow on a provider | `start` (external, step key), `status` (read) | M2 |
 | `durability` | guarantee | Survival semantics: `none` \| `durable-acceptance` \| `durable-execution` | — | POC |
 | `isolation` | guarantee | Execution isolation: `logical` \| `process` \| `sandbox` | — | M2 (`logical` only) |
@@ -162,7 +163,19 @@ export interface CapabilityAccess {
 | `conversation.reply` | `{ sessionId, text }` | `{ messageId }` |
 | `session-context.get` / `put` | `{ sessionId, key }` / `{ sessionId, key, value }` | `{ value? }` / `{}` |
 | `tool-use.listTools` | `{}` | `{ tools: ToolDescriptor[] }` — only the task's pinned tools ([Tool v1](tool-v1.md)) |
+| `memory.remember` | `{ key?: string; text: string; tags?: string[]; ttlMs?: number }` (a step key is required when `key` is omitted) | `{ key: string; replaced: boolean }` |
+| `memory.recall` | `{ key?: string; tag?: string; query?: string; limit?: number }` | `{ entries: { key, text, tags, rememberedAt, expiresAt? }[] }` |
 | `tool-use.call` | `{ toolId: string; input: unknown }` (step key required when the tool's `effect` is `external`) | `{ output: unknown }` via `ToolExecutor` |
+
+### Memory provider (FEAT-045)
+
+Status: implemented by `memoryOperationHandlers` (`packages/runtime/src/memory.ts`, enabled with `createLocalApp({ memory: { maxEntries?, defaultTtlMs? } })`) and tested in `packages/testkit/test/memory.test.ts`: round trip by key, tag and query, replace by key, step-key derived keys, every bound, TTL and compaction, and isolation between tenants and principals.
+
+- **Scope.** An entry belongs to a tenant and to the principal that wrote it (the acting identity of the invocation: for an agent's own task its instance identity). Another tenant, and another principal in the same tenant, never sees it; a child task has its own identity and shares nothing. Sharing between agents is not part of v1.
+- **`remember`.** `key` is 1–128 characters of `[A-Za-z0-9._:/-]`; without one the key is derived from the step key, so a replayed step stores once (no key and no step key is `SchemaViolation`). The same key replaces the entry (`replaced: true`), which makes the operation idempotent. `text` is a non-empty string of at most 8 KiB (UTF-8 bytes); `tags` are at most 8, each 1–64 characters of `[a-z0-9._:-]`; `ttlMs` is a positive integer, defaulting to the provider's `defaultTtlMs` (none: the entry is durable). A new key beyond `maxEntries` (default 1,000 per tenant and principal) is `QuotaExceeded`; replacing does not count. Anything else outside these bounds is `SchemaViolation`.
+- **`recall`.** The filters combine with AND: `key` exact, `tag` a member of the entry's tags, `query` a case-insensitive substring of the text. Results are ordered newest `rememberedAt` first, ties by key, and `limit` is 1–20 (default 5). Nothing matching is an empty list, not an error. Matching is by identifier and substring only: no embeddings and no ranking beyond the order above; a semantic provider is a different provider of the same capability.
+- **Retention.** An expired entry is invisible at once and removed by `compact()` (`CompactionResult.memories`). There is no `forget` operation in v1 (the catalog has none): a TTL, an overwrite and compaction are the ways an entry ends.
+- **Untrusted content.** Recalled text was written by earlier tasks and can carry instructions aimed at a model; the provider never interprets it, and handlers must treat it as data when composing prompts. Entries are stored at rest like task inputs, with the same protection of the store.
 
 **Provider execution:** `CapabilityAccess` is runtime-created per Execution and exposes only resolved, authorized bindings. Secrets are resolved at trusted boundaries and never appear in config snapshots.
 

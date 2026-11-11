@@ -68,6 +68,7 @@ import {
   CachingPolicyDecisionPoint,
   recordPolicyInvalidation,
 } from './policy-cache.js';
+import { memoryOperationHandlers, type MemoryOptions } from './memory.js';
 import { reasoningOperationHandlers } from './reasoning.js';
 import { RemoteDelegationService, type RemoteSyncOptions } from './remote.js';
 import {
@@ -127,6 +128,8 @@ export interface LocalAppOptions {
   };
   /** Model provider behind `reasoning.complete` (bounded tools and budget), e.g. `openAICompatibleReasoning(…)`. */
   reasoning?: ReasoningProvider;
+  /** Enables the reference `memory` capability (`remember`, `recall`) on the store (FEAT-045). */
+  memory?: MemoryOptions;
   /** Deterministic workflow engine behind `workflow.start` / `workflow.status`; completions wake waiting tasks. */
   workflow?: WorkflowEngine;
   /** Minimum time between polls of a workflow engine that implements `poll` (default 5 s). */
@@ -538,6 +541,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     ...(o.workflow
       ? workflowOperationHandlers(o.workflow, { store, now })
       : {}),
+    ...(o.memory ? memoryOperationHandlers({ store, now, ...o.memory }) : {}),
     ...o.operations,
   });
   const skillLoader =
