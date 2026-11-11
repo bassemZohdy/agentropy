@@ -64,3 +64,4 @@
 - [ ] **TASK-047** · P2 · low · Coverage gate from the baseline (94.4% lines, 86.35% branches); report-only today
   - Done when: `grep -q thresholds vitest.config.ts` `pnpm exec vitest run --coverage`
   - Links: Ref: TASK-037
+  - State: branch todo/TASK-047-coverage-gate-from-baseline from main; next: start TASK-047
