@@ -33,9 +33,10 @@
   - State: branch todo/FEAT-048-outbound-push-config-at from main; next: build children
   - [x] **FEAT-048.1** · low · Plan: the receiver design, its threat model and the contract change, written down first
     - Done when: `test -f docs/plans/FEAT-048-outbound-push.md` `node scripts/check-doc-links.mjs`
-  - [ ] **FEAT-048.2** · mid · Refresh one remote projection on demand, rate limited, and expose it to the host
+  - [/] **FEAT-048.2** · mid · Refresh one remote projection on demand, rate limited, and expose it to the host
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-refresh.test.ts`
     - Links: Depends: FEAT-048.1
+    - State: attempts 0/3; baseline 618 passing; branch todo/FEAT-048.2-refresh-remote-projection-demand from todo/FEAT-048-outbound-push-config-at; next: read docs
   - [ ] **FEAT-048.3** · mid · Provider push option, HMAC tokens and the notification receiver; contract revision 11 and threat model rows
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-outbound.test.ts`
     - Links: Depends: FEAT-048.2
