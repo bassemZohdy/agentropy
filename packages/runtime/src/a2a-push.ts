@@ -21,6 +21,10 @@ import {
 } from './a2a-protocol.js';
 import type { A2AStreamFrame } from './a2a-server.js';
 
+/** `ListTaskPushNotificationConfigs` page size: the default and the maximum (as `ListTasks`). */
+const PUSH_LIST_DEFAULT = 50;
+const PUSH_LIST_MAX = 100;
+
 /** Push delivery transport; `redirect: 'manual'` keeps a webhook from bouncing deliveries elsewhere. */
 export type A2APushFetch = (
   url: string,
@@ -475,11 +479,50 @@ export function createPushNotifications(
         if (!r) throw new AgentropyError('NotFound', 'Push config not found');
         return view(r.config);
       }
-      case 'ListTaskPushNotificationConfigs':
+      case 'ListTaskPushNotificationConfigs': {
+        // FEAT-044.1: ordered by config ID, a bounded page, and an opaque cursor that only holds the last ID returned
+        // (so a config deleted or added between pages never repeats or skips one after the cursor).
+        const size =
+          p['pageSize'] === undefined ? PUSH_LIST_DEFAULT : p['pageSize'];
+        if (
+          typeof size !== 'number' ||
+          !Number.isInteger(size) ||
+          size < 1 ||
+          size > PUSH_LIST_MAX
+        )
+          throw new AgentropyError(
+            'SchemaViolation',
+            `pageSize must be an integer from 1 to ${PUSH_LIST_MAX}`,
+          );
+        let after: string | undefined;
+        const token = p['pageToken'];
+        if (token !== undefined && token !== '') {
+          try {
+            const v: unknown = JSON.parse(
+              Buffer.from(String(token), 'base64url').toString('utf8'),
+            );
+            if (!Array.isArray(v) || v.length !== 1 || typeof v[0] !== 'string')
+              throw new Error('shape');
+            after = v[0];
+          } catch {
+            throw new AgentropyError('SchemaViolation', 'Invalid pageToken');
+          }
+        }
+        const all = (await repo.list(caller, taskId))
+          .map((r) => view(r.config))
+          .sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+        const rest =
+          after === undefined ? all : all.filter((c) => c.id > after);
+        const page = rest.slice(0, size);
+        const last = page.at(-1);
         return {
-          configs: (await repo.list(caller, taskId)).map((r) => view(r.config)),
-          nextPageToken: '',
+          configs: page,
+          nextPageToken:
+            last && rest.length > page.length
+              ? Buffer.from(JSON.stringify([last.id])).toString('base64url')
+              : '',
         };
+      }
       default: {
         // DeleteTaskPushNotificationConfig
         const key = id ? pushKey(caller, taskId, id) : undefined;

@@ -34,7 +34,7 @@
   - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-paging.test.ts packages/testkit/test/a2a-history.test.ts packages/testkit/test/a2a-push-outbound.test.ts packages/testkit/test/a2a-interop-second.test.ts`
   - Links: Ref: docs/contracts/communication-v1.md
   - State: branch todo/FEAT-044-a2a-completeness-each-part from main; next: build children
-  - [ ] **FEAT-044.1** · mid · Push-config paging for `ListTaskPushNotificationConfigs`
+  - [x] **FEAT-044.1** · mid · Push-config paging for `ListTaskPushNotificationConfigs`
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-paging.test.ts`
   - [ ] **FEAT-044.2** · mid · Message history so `historyLength` has an effect
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-history.test.ts`
