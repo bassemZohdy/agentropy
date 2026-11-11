@@ -148,6 +148,9 @@ try {
 }
 for (const needle of ['kubectl kustomize', 'rollout restart', 'delete pod', 'a2a-smoke.sh'])
   if (!kindSmoke.includes(needle)) fail(`deploy/kind-smoke.sh must exercise: ${needle}`);
+// FEAT-044.4: the Python-SDK interop test has its own CI job, with the virtualenv created by the test itself.
+if (!ci.includes('AGENTROPY_A2A_PY=auto pnpm exec vitest run packages/testkit/test/a2a-interop-second.test.ts'))
+  fail('ci.yml: the Python A2A interop job (AGENTROPY_A2A_PY=auto ... a2a-interop-second.test.ts) is missing');
 if (!/pnpm audit --prod/.test(ci))
   fail('ci.yml: production dependency audit (pnpm audit --prod) missing');
 let dependabot = '';
