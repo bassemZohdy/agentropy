@@ -6,10 +6,10 @@
   - Done when: `gh run list --branch main --workflow ci.yml --limit 1 --json conclusion --jq '.[0].conclusion' | grep -qx success`
   - Links: Ref: .github/workflows/ci.yml
   - Blocked: jobs never start ("recent account payments have failed or your spending limit needs to be increased") → run 42526351089 failed with 0 steps on all 6 jobs → owner fixes Billing & plans in GitHub, then re-runs CI on main
-- [ ] **TASK-042** · P1 · low · Close the superseded PRs #7 (duplicate testkit helpers) and #16 (landed by TASK-048) with evidence comments; #14 waits for CI
+- [/] **TASK-042** · P1 · low · Close the superseded PRs #7 (duplicate testkit helpers) and #16 (landed by TASK-048) with evidence comments; #14 waits for CI
   - Done when: `gh pr view 7 --json state --jq .state | grep -qv OPEN` `gh pr view 16 --json state --jq .state | grep -qv OPEN`
   - Links: Depends: TASK-048 · Ref: docs/review/2026-11-05-legacy-pr-integration.md
-  - State: branch todo/TASK-042-close-superseded-prs-7 from main; next: start TASK-042
+  - State: attempts 0/3; baseline 632 passing; branch todo/TASK-042-close-superseded-prs-7 from main; next: build
 - [!] **TASK-044** · P1 · low · Enable GitHub private vulnerability reporting (SECURITY.md names it as the channel)
   - Done when: `gh api repos/bassemZohdy/agentropy/private-vulnerability-reporting --jq .enabled | grep -qx true`
   - Blocked: reporting channel is off or not visible → the settings API answers HTTP 404 → owner enables it under Settings > Code security
