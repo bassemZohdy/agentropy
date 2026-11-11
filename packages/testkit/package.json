@@ -1,7 +1,6 @@
 {
   "name": "@agentropy/testkit",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "Agentropy testkit: offline fakes and reusable conformance suites for provider authors.",
   "license": "Apache-2.0",
   "repository": {
