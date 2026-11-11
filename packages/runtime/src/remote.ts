@@ -309,38 +309,62 @@ export class RemoteDelegationService {
       })
     ).filter((d) => !d.value.nextSyncAt || d.value.nextSyncAt <= now);
     let changed = 0;
-    for (const doc of open) {
-      const r = doc.value;
-      try {
-        const state = await this.o.router
-          .provider(r.route)
-          .getTask(this.ref(r), {
-            caller: {
-              id: r.callerId,
-              type: r.callerType,
-              tenantId: r.tenantId,
-            },
-            correlationId: r.correlationId,
-          });
-        const before = r.revision;
-        const after = await this.apply(
-          r.taskId,
-          state.normalized,
-          state.remoteState,
-          state.output,
-        );
-        if (after.revision !== before) changed++;
-        else await this.schedule(doc.id, (r.quiet ?? 0) + 1);
-      } catch (err) {
-        // The remote task stays authoritative: an unreachable peer leaves the projection as last observed.
-        await this.schedule(
-          doc.id,
-          (r.quiet ?? 0) + 1,
-          (err as { code?: string }).code ?? 'Internal',
-        );
-      }
-    }
+    for (const doc of open) if (await this.poll(doc)) changed++;
     return changed;
+  }
+
+  /** One poll of a projection: true when the peer's answer changed it; otherwise its next poll is pushed back. */
+  private async poll(doc: StoredDocument<RemoteTaskRecord>): Promise<boolean> {
+    const r = doc.value;
+    try {
+      const state = await this.o.router.provider(r.route).getTask(this.ref(r), {
+        caller: {
+          id: r.callerId,
+          type: r.callerType,
+          tenantId: r.tenantId,
+        },
+        correlationId: r.correlationId,
+      });
+      const before = r.revision;
+      const after = await this.apply(
+        r.taskId,
+        state.normalized,
+        state.remoteState,
+        state.output,
+      );
+      if (after.revision !== before) return true;
+      await this.schedule(doc.id, (r.quiet ?? 0) + 1);
+      return false;
+    } catch (err) {
+      // The remote task stays authoritative: an unreachable peer leaves the projection as last observed.
+      await this.schedule(
+        doc.id,
+        (r.quiet ?? 0) + 1,
+        (err as { code?: string }).code ?? 'Internal',
+      );
+      return false;
+    }
+  }
+
+  private readonly refreshing = new Map<string, Promise<boolean>>();
+
+  /**
+   * Asks the peer for one open projection now, outside the poll schedule (FEAT-048.2: the A2A push notification
+   * receiver calls this). True when the projection changed; false when it did not, is terminal, does not exist or the
+   * peer could not be reached (recorded like a failed poll). Concurrent refreshes of one projection share one call.
+   * Trusted host code only: it takes no principal, and what it applies is whatever the peer, the authority for the
+   * task, answers.
+   */
+  refresh(taskId: string): Promise<boolean> {
+    const running = this.refreshing.get(taskId);
+    if (running) return running;
+    const p = (async () => {
+      const doc = await this.find(taskId);
+      if (!doc || isTerminal(TASK_MACHINE, doc.value.status)) return false;
+      return this.poll(doc);
+    })().finally(() => this.refreshing.delete(taskId));
+    this.refreshing.set(taskId, p);
+    return p;
   }
 
   /** Records when the projection is asked next, and the error of a failed poll (cleared by a good one). */
