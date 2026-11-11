@@ -131,6 +131,8 @@ else if (!new RegExp(`npm install --global pnpm@${pnpmPin.replaceAll('.', '\\.')
 const wfDir = join(root, '.github/workflows');
 for (const file of readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f))) {
   const text = readFileSync(join(wfDir, file), 'utf8');
+  const parsed = YAML.parseDocument(text); // TASK-043.1: a workflow that does not parse never runs
+  if (parsed.errors.length) fail(`${file}: ${parsed.errors[0].message.split('\n')[0]}`);
   for (const m of text.matchAll(/^[ \t]*-?[ \t]*uses:[ \t]*(\S+)/gm))
     if (!m[1].startsWith('./') && !/@[0-9a-f]{40}$/.test(m[1]))
       fail(`${file}: action ${m[1]} must be pinned by commit SHA`);
@@ -160,6 +162,33 @@ for (const eco of ['npm', 'github-actions', 'docker'])
   if (dependabot && !new RegExp(`package-ecosystem:\\s*${eco}\\b`).test(dependabot))
     fail(`.github/dependabot.yml: no ${eco} updates`);
 if (!/CMD \["node", "dist\/host\.js"\]/.test(dockerfile)) fail('Dockerfile: CMD must start dist/host.js');
+
+// TASK-043.1 (R-17, docs/release.md): the tag-driven release workflow. Every action in it is already held to the SHA
+// pin above; this holds the accepted decisions: verify first, trusted publishing with provenance under the `next`
+// tag and no long-lived npm token, a digest-addressed signed image on GHCR without a `latest` tag, and a GitHub release.
+let release = '';
+try {
+  release = readFileSync(join(wfDir, 'release.yml'), 'utf8');
+} catch {
+  fail('.github/workflows/release.yml missing');
+}
+if (release) {
+  const need = [
+    [/^\s{2}push:\s*\n\s{4}tags:/m, 'trigger on a pushed version tag'],
+    [/pnpm check\b/, 'run pnpm check before publishing'],
+    [/node scripts\/check-pack\.mjs/, 'run scripts/check-pack.mjs before publishing'],
+    [/pnpm audit --prod/, 'audit production dependencies before publishing'],
+    [/id-token:\s*write/, 'request an OIDC token (trusted publishing, keyless signing)'],
+    [/pnpm -r publish\b[^\n]*--provenance\b[^\n]*--tag next\b/, 'publish with --provenance under the next dist-tag'],
+    [/ghcr\.io\//, 'publish the image to ghcr.io'],
+    [/cosign sign\b/, 'sign the image digest with cosign'],
+    [/cosign attest\b[^\n]*--type cyclonedx/, 'attach the SBOM as a cyclonedx attestation'],
+    [/gh release create\b/, 'create the GitHub release'],
+  ];
+  for (const [re, what] of need) if (!re.test(release)) fail(`release.yml: must ${what}`);
+  if (/NPM_TOKEN|NODE_AUTH_TOKEN/.test(release)) fail('release.yml: no long-lived npm token, use trusted publishing');
+  if (/:latest\b/.test(release)) fail('release.yml: never tag the image latest');
+}
 
 if (problems.length) {
   for (const p of problems) console.log(`FAIL ${p}`);
