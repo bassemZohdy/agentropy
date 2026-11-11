@@ -148,6 +148,9 @@ try {
 }
 for (const needle of ['kubectl kustomize', 'rollout restart', 'delete pod', 'a2a-smoke.sh'])
   if (!kindSmoke.includes(needle)) fail(`deploy/kind-smoke.sh must exercise: ${needle}`);
+// FEAT-044.4: the Python-SDK interop test has its own CI job, with the virtualenv created by the test itself.
+if (!ci.includes('AGENTROPY_A2A_PY=auto pnpm exec vitest run packages/testkit/test/a2a-interop-second.test.ts'))
+  fail('ci.yml: the Python A2A interop job (AGENTROPY_A2A_PY=auto ... a2a-interop-second.test.ts) is missing');
 // FEAT-042 (R-12): the live model API suite runs in CI only where the key exists: the key comes from a secret into the
 // job's environment, the step is gated on it, and pull requests (which a fork controls) never run it.
 if (!/providers-live\.test\.ts/.test(ci)) fail('ci.yml: the live model API job (providers-live.test.ts) is missing');

@@ -31,6 +31,8 @@ export interface CompactionResult {
   humanActions: number;
   executions: number;
   pushConfigs: number;
+  /** A2A message history rows (FEAT-044.2). */
+  a2aHistory: number;
   idempotency: number;
   remoteTasks: number;
   inbox: number;
@@ -59,6 +61,7 @@ export async function compactStore(
     humanActions: 0,
     executions: 0,
     pushConfigs: 0,
+    a2aHistory: 0,
     idempotency: 0,
     remoteTasks: 0,
     inbox: 0,
@@ -152,6 +155,7 @@ async function compactTask(
       | 'humanActions'
       | 'executions'
       | 'pushConfigs'
+      | 'a2aHistory'
       | 'idempotency',
     count: keyof CompactionResult,
   ) => {
@@ -177,6 +181,7 @@ async function compactTask(
   await drop('humanActions', 'humanActions');
   await drop('executions', 'executions');
   await drop('pushConfigs', 'pushConfigs');
+  await drop('a2aHistory', 'a2aHistory');
   await drop('idempotency', 'idempotency');
   const cp = await tx.get('checkpoints', taskId);
   if (cp) {

@@ -64,6 +64,8 @@ export interface A2ATask {
     message?: A2AMessage;
   };
   artifacts?: { artifactId: string; parts: A2APart[] }[];
+  /** The caller's messages for this task, newest last (FEAT-044.2; only when the endpoint keeps history). */
+  history?: A2AMessage[];
   metadata?: Record<string, unknown>;
 }
 

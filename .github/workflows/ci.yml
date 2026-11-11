@@ -195,6 +195,24 @@ jobs:
       - name: Conductor adapter on a live server
         run: pnpm exec vitest run packages/workflow-conductor/test/conductor-live.test.ts
 
+  a2a-python:
+    # FEAT-044.4: interoperability with the reference Python A2A SDK (a2a-sdk 1.3.0) in both directions over loopback
+    # HTTP. The test creates its own virtualenv (AGENTROPY_A2A_PY=auto) from the runner's python3.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: '10.34.9'
+          run_install: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Interop with the Python reference SDK
+        run: AGENTROPY_A2A_PY=auto pnpm exec vitest run packages/testkit/test/a2a-interop-second.test.ts
+
   model-live:
     # FEAT-042 (R-12): the OpenAI-compatible reasoning adapter against a real endpoint (opt-in live suite). It runs only
     # where the repository defines the secret AGENTROPY_LLM_API_KEY and the variables AGENTROPY_LLM_BASE_URL and

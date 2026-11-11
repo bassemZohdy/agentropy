@@ -25,6 +25,7 @@ import {
   type A2ATask,
   type A2ATaskState,
 } from './a2a-protocol.js';
+import { createA2AHistory, type A2AHistoryOptions } from './a2a-history.js';
 import { createPushNotifications, type A2APushOptions } from './a2a-push.js';
 
 export interface A2AServerOptions {
@@ -33,6 +34,11 @@ export interface A2AServerOptions {
   now?: () => string;
   /** Enables the push-notification config methods (FEAT-029.2); without it they answer -32003. */
   push?: A2APushOptions;
+  /**
+   * Keeps the user messages the endpoint accepted so `historyLength` has an effect (FEAT-044.2); see `a2a-history.ts`.
+   * Without it nothing is kept and `historyLength` is accepted but returns no history.
+   */
+  history?: A2AHistoryOptions;
 }
 
 export interface A2AHttpResponse {
@@ -154,6 +160,29 @@ export function createA2AServer(
         }
       : {}),
   });
+  const history = o.history ? createA2AHistory(o.history) : undefined;
+  /** `historyLength`: unset keeps every message, 0 keeps none, n the n most recent (A2A 1.0). */
+  const historyLength = (v: unknown): number | undefined => {
+    if (v === undefined) return undefined;
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 0)
+      throw new AgentropyError(
+        'SchemaViolation',
+        'historyLength must be a non-negative integer',
+      );
+    return v;
+  };
+  /** The task with the caller's recorded messages, limited by `historyLength`. */
+  const view = async (
+    s: TaskSnapshot & { output?: unknown },
+    caller: TrustedPrincipal,
+    hl: number | undefined,
+    contextId?: string,
+  ): Promise<A2ATask> => {
+    const t = task(s, contextId);
+    const h =
+      history && hl !== 0 ? await history.read(caller, s.taskId, hl) : [];
+    return h.length ? { ...t, history: h } : t;
+  };
   type Req = {
     jsonrpc?: string;
     id?: unknown;
@@ -340,7 +369,7 @@ export function createA2AServer(
   /**
    * A2A `ListTasks` over the tasks the caller may see on this endpoint: filtered by `contextId`, `status` and
    * `statusTimestampAfter`, newest status first, with a cursor (status timestamp and task ID of the last task).
-   * History is not kept, so `historyLength` has no effect; artifacts only with `includeArtifacts`.
+   * `historyLength` applies when the endpoint keeps history (`history` option); artifacts only with `includeArtifacts`.
    */
   const listTasks = async (
     p: Record<string, unknown>,
@@ -388,6 +417,7 @@ export function createA2AServer(
         throw bad('pageToken');
       }
     }
+    const hl = historyLength(p['historyLength']);
     const visible: TaskSnapshot[] = [];
     let cursor: string | undefined;
     while (visible.length < LIST_SCAN) {
@@ -421,11 +451,17 @@ export function createA2AServer(
     const page = rest.slice(0, size as number);
     const tasks = await Promise.all(
       page.map(async (t) => {
+        let out: Omit<A2ATask, 'artifacts'> & Pick<A2ATask, 'artifacts'>;
         if (p['includeArtifacts'] === true && t.status === 'completed')
-          return task(await target.getTask(t.taskId, caller));
-        const { artifacts: _omit, ...plain } = task(t);
-        void _omit;
-        return plain;
+          out = task(await target.getTask(t.taskId, caller));
+        else {
+          const { artifacts: _omit, ...plain } = task(t);
+          void _omit;
+          out = plain;
+        }
+        const h =
+          history && hl !== 0 ? await history.read(caller, t.taskId, hl) : [];
+        return h.length ? { ...out, history: h } : out;
       }),
     );
     const last = page.at(-1);
@@ -491,25 +527,35 @@ export function createA2AServer(
                 },
               };
             }
+            const hl = historyLength(
+              (p['configuration'] as { historyLength?: unknown } | undefined)
+                ?.historyLength,
+            );
             const snap = m.taskId
               ? await continueMessage(m, caller)
               : await target.getTask(await delegateMessage(m, caller), caller);
+            await history?.record(caller, snap.taskId, m);
             return {
               status: 200,
               body: {
                 jsonrpc: '2.0',
                 id,
-                result: { task: task(snap, m.contextId) },
+                result: { task: await view(snap, caller, hl, m.contextId) },
               },
             };
           }
           case 'GetTask': {
             if (typeof p['id'] !== 'string')
               throw new AgentropyError('SchemaViolation', 'id required');
+            const hl = historyLength(p['historyLength']);
             const snap = await target.getTask(p['id'], caller);
             return {
               status: 200,
-              body: { jsonrpc: '2.0', id, result: task(snap) },
+              body: {
+                jsonrpc: '2.0',
+                id,
+                result: await view(snap, caller, hl),
+              },
             };
           }
           case 'ListTasks':
