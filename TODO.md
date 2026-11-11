@@ -30,6 +30,7 @@
 - [ ] **FEAT-048** · P2 · high · Outbound push config at A2A peers: a notification wakes the projection (scheduled by the owner on 2026-11-11)
   - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-outbound.test.ts`
   - Links: From: FEAT-044
+  - State: branch todo/FEAT-048-outbound-push-config-at from main; next: build children
   - [ ] **FEAT-048.1** · low · Plan: the receiver design, its threat model and the contract change, written down first
     - Done when: `test -f docs/plans/FEAT-048-outbound-push.md` `node scripts/check-doc-links.mjs`
   - [ ] **FEAT-048.2** · mid · Refresh one remote projection on demand, rate limited, and expose it to the host
