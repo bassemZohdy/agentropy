@@ -208,7 +208,7 @@ Types, schemas, errors, lifecycle tables and pure resolvers (no I/O). 197 export
 
 ## @agentropy/runtime
 
-Registries, task service, runtime, scheduler, providers and the local app facade. 180 exports.
+Registries, task service, runtime, scheduler, providers and the local app facade. 182 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
@@ -327,6 +327,8 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `McpToolProvider` | class | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) |  |
 | `mcpToolRegistration` | function | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) | A discovered MCP tool as a Tool v1 descriptor and its binding. |
 | `McpTransport` | interface | [runtime/src/mcp.ts](../packages/runtime/src/mcp.ts) | A JSON-RPC transport to one MCP server. |
+| `memoryOperationHandlers` | function | [runtime/src/memory.ts](../packages/runtime/src/memory.ts) |  |
+| `MemoryOptions` | interface | [runtime/src/memory.ts](../packages/runtime/src/memory.ts) |  |
 | `ModelEndpoint` | interface | [runtime/src/model-routing.ts](../packages/runtime/src/model-routing.ts) |  |
 | `ModelRoute` | interface | [runtime/src/model-routing.ts](../packages/runtime/src/model-routing.ts) | Where a request may go and how it prefers to be served. |
 | `NATIVE_TS_FEATURES` | const | [runtime/src/implementation.ts](../packages/runtime/src/implementation.ts) |  |

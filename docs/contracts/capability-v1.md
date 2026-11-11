@@ -169,7 +169,7 @@ export interface CapabilityAccess {
 
 ### Memory provider (FEAT-045)
 
-Status: contract (revision 14). The reference provider and its conformance tests land with FEAT-045.2; behavior is claimed only once they exist.
+Status: implemented by `memoryOperationHandlers` (`packages/runtime/src/memory.ts`, enabled with `createLocalApp({ memory: { maxEntries?, defaultTtlMs? } })`) and tested in `packages/testkit/test/memory.test.ts`: round trip by key, tag and query, replace by key, step-key derived keys, every bound, TTL and compaction, and isolation between tenants and principals.
 
 - **Scope.** An entry belongs to a tenant and to the principal that wrote it (the acting identity of the invocation: for an agent's own task its instance identity). Another tenant, and another principal in the same tenant, never sees it; a child task has its own identity and shares nothing. Sharing between agents is not part of v1.
 - **`remember`.** `key` is 1–128 characters of `[A-Za-z0-9._:/-]`; without one the key is derived from the step key, so a replayed step stores once (no key and no step key is `SchemaViolation`). The same key replaces the entry (`replaced: true`), which makes the operation idempotent. `text` is a non-empty string of at most 8 KiB (UTF-8 bytes); `tags` are at most 8, each 1–64 characters of `[a-z0-9._:-]`; `ttlMs` is a positive integer, defaulting to the provider's `defaultTtlMs` (none: the entry is durable). A new key beyond `maxEntries` (default 1,000 per tenant and principal) is `QuotaExceeded`; replacing does not count. Anything else outside these bounds is `SchemaViolation`.
