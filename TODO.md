@@ -36,9 +36,8 @@
   - State: branch todo/FEAT-044-a2a-completeness-each-part from main; next: build children
   - [x] **FEAT-044.1** · mid · Push-config paging for `ListTaskPushNotificationConfigs`
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-paging.test.ts`
-  - [/] **FEAT-044.2** · mid · Message history so `historyLength` has an effect
+  - [x] **FEAT-044.2** · mid · Message history so `historyLength` has an effect
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-history.test.ts`
-    - State: attempts 0/3; baseline 601 passing; branch todo/FEAT-044.2-message-history-so-historylength from todo/FEAT-044-a2a-completeness-each-part; next: read docs
   - [ ] **FEAT-044.3** · mid · Outbound push-config at peers (`features.pushNotifications`)
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-outbound.test.ts`
   - [ ] **FEAT-044.4** · mid · Interop with a second, non-JS A2A implementation (only `@a2a-js/sdk` 1.3.0 is tested)
