@@ -29,11 +29,10 @@
     - Links: Depends: TASK-043.1, TASK-043.2, TASK-043.3, TASK-040, TASK-044
 - [ ] **FEAT-048** · P2 · high · Outbound push config at A2A peers: a notification wakes the projection (scheduled by the owner on 2026-11-11)
   - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-outbound.test.ts`
-  - Links: From: FEAT-044
+  - Links: Ref: docs/plans/FEAT-048-outbound-push.md · From: FEAT-044
   - State: branch todo/FEAT-048-outbound-push-config-at from main; next: build children
-  - [/] **FEAT-048.1** · low · Plan: the receiver design, its threat model and the contract change, written down first
+  - [x] **FEAT-048.1** · low · Plan: the receiver design, its threat model and the contract change, written down first
     - Done when: `test -f docs/plans/FEAT-048-outbound-push.md` `node scripts/check-doc-links.mjs`
-    - State: attempts 0/3; baseline 618 passing; branch todo/FEAT-048.1-plan-receiver-design-its from todo/FEAT-048-outbound-push-config-at; next: read docs
   - [ ] **FEAT-048.2** · mid · Refresh one remote projection on demand, rate limited, and expose it to the host
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-refresh.test.ts`
     - Links: Depends: FEAT-048.1
