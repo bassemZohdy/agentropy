@@ -15,6 +15,7 @@
 - [ ] **TASK-043** · P1 · high · First release 0.1.0 (owner defaults accepted 2026-11-08)
   - Done when: `npm view @agentropy/core@0.1.0 version`
   - Links: Ref: docs/release.md
+  - State: branch todo/TASK-043-first-release-0-1 from main; next: build children
   - [ ] **TASK-043.1** · mid · Write release.yml: tag trigger, pnpm check and check-pack first, npm provenance under tag next, GHCR image by digest, cosign, GitHub release
     - Done when: `test -f .github/workflows/release.yml` `node scripts/check-deploy.mjs`
     - Links: Ref: docs/release.md
