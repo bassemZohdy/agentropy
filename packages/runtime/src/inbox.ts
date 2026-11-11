@@ -295,7 +295,7 @@ export class InboxProjector implements EventConsumer {
       const entry = publicEntry(doc.value);
       if (resolveDelivery(entry, {}, this.policy).delivery !== 'interrupt')
         continue;
-      let delivered = false;
+      let delivered: boolean;
       try {
         delivered = await this.push!(entry);
       } catch {

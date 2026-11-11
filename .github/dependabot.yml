@@ -9,6 +9,11 @@ updates:
     groups:
       dev-tooling:
         dependency-type: development
+    ignore:
+      # TASK-048: typescript-eslint does not support TypeScript 7 (eslint crashes) and TypeScript 7 no longer includes
+      # Node types by default, so a major bump breaks lint and typecheck. Revisit when typescript-eslint supports it.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
   - package-ecosystem: github-actions
     directory: /
     schedule:
