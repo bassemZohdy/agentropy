@@ -9,6 +9,7 @@
 - [ ] **TASK-048** · P1 · mid · Land the safe dev-tooling bumps of PR #16 without TypeScript 7: ESLint 10, vitest 5.1, @types/node 26, pglite; fix the one new lint error; keep Dependabot off TypeScript 7
   - Done when: `grep -q '"eslint": "^10' package.json` `pnpm check`
   - Links: Ref: packages/runtime/src/inbox.ts · From: TASK-030
+  - State: branch todo/TASK-048-land-safe-dev-tooling from main; next: start TASK-048
 - [ ] **TASK-042** · P1 · low · Close the superseded PRs #7 (duplicate testkit helpers) and #16 (landed by TASK-048) with evidence comments; #14 waits for CI
   - Done when: `gh pr view 7 --json state --jq .state | grep -qv OPEN` `gh pr view 16 --json state --jq .state | grep -qv OPEN`
   - Links: Depends: TASK-048 · Ref: docs/review/2026-11-05-legacy-pr-integration.md
