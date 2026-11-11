@@ -2,6 +2,7 @@
  * A2A client (outbound): `A2ACommunicationProvider` implements the Communication SPI for targets with an
  * `endpoint`, and `a2aAgentCard` builds the AgentCard a server publishes.
  */
+import { a2aPushToken } from './a2a-push-receiver.js';
 import {
   AgentropyError,
   isAgentropyError,
@@ -75,6 +76,20 @@ export interface A2AProviderOptions {
   pollMs?: number;
   /** Polls after the first snapshot before `subscribe` ends without a terminal state (default unlimited). */
   maxPolls?: number;
+  /**
+   * Registers a webhook at the peer after each delegation (FEAT-048): `CreateTaskPushNotificationConfig` with the URL
+   * `<publicUrl><path>/<local task id>` and a per-task HMAC token. Best effort: a peer that refuses or lacks push
+   * leaves the delegation as it was and polling carries on. Pair it with `createA2APushReceiver` using the same secret.
+   */
+  push?: {
+    /** Externally reachable base URL of this runtime's receiver: https (unless `allowHttp`), no credentials, query or fragment. */
+    publicUrl: string;
+    /** Shared secret for the tokens, at least 32 bytes. */
+    secret: string;
+    /** Path of the receiver below `publicUrl` (default `/a2a/push`). */
+    path?: string;
+    allowHttp?: boolean;
+  };
 }
 
 /** Error codes only this runtime may raise about its own authority; from a peer they become `RemoteUnavailable`. */
@@ -83,16 +98,48 @@ const LOCAL_ONLY = new Set<string>([
   'PolicyDecisionUnavailable',
 ]);
 
+/** Validates `push` and returns the base URL a webhook is registered under (no trailing slash). */
+function pushBase(p: NonNullable<A2AProviderOptions['push']>): string {
+  if (Buffer.byteLength(p.secret, 'utf8') < 32)
+    throw new AgentropyError(
+      'InvalidConfiguration',
+      'push.secret must be at least 32 bytes',
+    );
+  let u: URL;
+  try {
+    u = new URL(p.publicUrl);
+  } catch {
+    throw new AgentropyError(
+      'InvalidConfiguration',
+      'push.publicUrl is not a URL',
+    );
+  }
+  if (u.protocol !== 'https:' && !(p.allowHttp && u.protocol === 'http:'))
+    throw new AgentropyError(
+      'InvalidConfiguration',
+      'push.publicUrl must be https (or http with allowHttp)',
+    );
+  if (u.username || u.password || u.search || u.hash)
+    throw new AgentropyError(
+      'InvalidConfiguration',
+      'push.publicUrl must not carry credentials, a query or a fragment',
+    );
+  const path = (p.path ?? '/a2a/push').replace(/\/+$/, '');
+  return `${u.origin}${u.pathname.replace(/\/+$/, '')}${path}`;
+}
+
 export class A2ACommunicationProvider implements AgentCommunicationProvider {
   readonly id = 'a2a';
   readonly features: CommunicationFeatures;
   private seq = 0;
+  private readonly pushUrl: string | undefined;
 
   constructor(private readonly o: A2AProviderOptions = {}) {
+    this.pushUrl = o.push ? pushBase(o.push) : undefined;
     this.features = {
       operations: ['delegate', 'send', 'getTask', 'cancel', 'subscribe'],
       streaming: o.streaming === true,
-      pushNotifications: false,
+      pushNotifications: o.push !== undefined,
       durability: 'provider-dependent',
       protocol: 'a2a',
       protocolVersion: A2A_PROTOCOL_VERSION,
@@ -266,11 +313,25 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
         'A2A peer did not return a task',
       );
     // Remote task mapping: the local projection is keyed by protocol + remote ID; the remote stays authoritative.
-    return {
-      localTaskId: `a2a:${result.task.id}`,
-      route,
-      remoteTaskId: result.task.id,
-    };
+    const localTaskId = `a2a:${result.task.id}`;
+    if (this.o.push && this.pushUrl)
+      try {
+        // A hint on top of polling: any failure (no push at the peer, a refusal, the network) is ignored.
+        await this.call(
+          endpoint,
+          'CreateTaskPushNotificationConfig',
+          {
+            taskId: result.task.id,
+            id: 'agentropy',
+            url: `${this.pushUrl}/${encodeURIComponent(localTaskId)}`,
+            token: a2aPushToken(this.o.push.secret, localTaskId),
+          },
+          ctx,
+        );
+      } catch {
+        // polling stays the fallback
+      }
+    return { localTaskId, route, remoteTaskId: result.task.id };
   }
 
   async send(
