@@ -1,7 +1,6 @@
 {
   "name": "@agentropy/runtime",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "Agentropy runtime: registries, task service, scheduler, communication providers (direct, A2A) and the local app facade.",
   "license": "Apache-2.0",
   "repository": {

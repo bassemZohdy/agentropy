@@ -83,6 +83,24 @@ const libraries = readdirSync(join(root, 'packages')).filter((d) => {
   return d !== 'examples' && j.exports;
 });
 
+// TASK-043.2: the libraries are published together, so they share one version, and they are not private; the
+// examples package is only shipped inside the container image and must never reach npm.
+const versions = new Set(
+  libraries.map(
+    (d) =>
+      JSON.parse(readFileSync(join(root, 'packages', d, 'package.json'), 'utf8'))
+        .version,
+  ),
+);
+if (versions.size !== 1)
+  fail(`libraries must share one version, found ${[...versions].join(', ')}`);
+if (
+  !JSON.parse(
+    readFileSync(join(root, 'packages/examples/package.json'), 'utf8'),
+  ).private
+)
+  fail('packages/examples must stay "private": it ships only in the image');
+
 const work = mkdtempSync(join(tmpdir(), 'agentropy-pack-'));
 const tarballs = {};
 try {
@@ -99,6 +117,7 @@ try {
       fail(`${at}: repository.directory must be ${at}`);
     if (j.engines?.node !== '>=24') fail(`${at}: engines.node must be >=24`);
     if (j.type !== 'module') fail(`${at}: type must be module`);
+    if (j.private) fail(`${at}: must not be "private", it is published (TASK-043.2)`);
     const dot = j.exports?.['.'];
     if (
       dot?.types !== './dist/index.d.ts' ||

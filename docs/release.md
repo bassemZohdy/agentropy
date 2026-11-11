@@ -1,6 +1,6 @@
 # Release packaging
 
-**Status:** FEAT-030 (2026-11-06), decisions recorded 2026-11-08 (TASK-032). The library packages are publish-ready artifacts; **nothing is published yet**. Every package stays `"private": true` at version `0.0.0` until the first release is cut under the [accepted decisions](#owner-decisions).
+**Status:** FEAT-030 (2026-11-06), decisions recorded 2026-11-08 (TASK-032). The six library packages are at version `0.1.0` and no longer `"private"` (TASK-043.2); `@agentropy/examples` and the workspace root stay private. **Nothing is published yet**: that waits for the owner setup and the tag, under the [accepted decisions](#owner-decisions).
 
 ## What is packaged
 
@@ -21,7 +21,7 @@ Each library is ESM-only (`"type": "module"`), needs Node.js 24 or newer (`engin
 
 `node scripts/check-pack.mjs` (CI, after `pnpm build`):
 
-1. checks each library's metadata (scope, description, license, repository directory, engines, module type, exports, files);
+1. checks each library's metadata (scope, description, license, repository directory, engines, module type, not private, exports, files), that all libraries share one version, and that `@agentropy/examples` stays private;
 2. packs it with `pnpm pack` and inspects the tarball: required files present; no `src/`, `test/`, test files or build info; no `workspace:` ranges left; its SBOM lists every direct dependency, and every component has a purl and a license from the allow-list in `scripts/sbom.mjs` (Apache-2.0, MIT, ISC, BSD-2/3-Clause, 0BSD, BlueOak-1.0.0);
 3. installs all tarballs into a fresh npm project (no workspace, no links) and runs a durable task through `@agentropy/runtime` on `@agentropy/store-sqlite`, importing every other package.
 

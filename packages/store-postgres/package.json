@@ -1,7 +1,6 @@
 {
   "name": "@agentropy/store-postgres",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "Agentropy Store adapter for PostgreSQL on a driver-neutral client port.",
   "license": "Apache-2.0",
   "repository": {
