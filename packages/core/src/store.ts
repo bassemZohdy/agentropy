@@ -52,6 +52,8 @@ export const STORE_COLLECTIONS = {
   policyInvalidations: ['tenantId'],
   /** A2A push notification configs (FEAT-034.3); webhook secrets are stored only sealed. */
   pushConfigs: ['tenantId', 'taskId'],
+  /** A2A message history (FEAT-044.2): user messages kept per sending principal when the endpoint enables it. */
+  a2aHistory: ['tenantId', 'taskId'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type CollectionName = keyof typeof STORE_COLLECTIONS;

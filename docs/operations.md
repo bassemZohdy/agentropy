@@ -46,7 +46,7 @@ Trace from user request through delegation, agent instance, task, attempts, prov
 |---|---|---|
 | `tasks` | always (the system of record for `getTask`; marked `compactedAt`) | never |
 | `audit`, `auditHeads`, `auditReceipts` | governed by audit retention, holds and disposal (`auditLog.dispose`) | never by `compact` |
-| `outbox`, `wakeups`, `subscriptions`, `mailbox`, `effects`, `checkpoints`, `usage`, `humanActions`, `executions`, `pushConfigs`, `idempotency` (delegation records) | while the task is live | rows of tasks that ended before the window (outbox: published rows only) |
+| `outbox`, `wakeups`, `subscriptions`, `mailbox`, `effects`, `checkpoints`, `usage`, `humanActions`, `executions`, `pushConfigs`, `a2aHistory`, `idempotency` (delegation records) | while the task is live | rows of tasks that ended before the window (outbox: published rows only) |
 | `mailbox` (consumed), `inboundEvents` | inside the window | consumed rows; dedupe records older than the window (duplicate events are only detected inside it) |
 | `remoteTasks` | while non-terminal | terminal projections last observed before the window |
 | `inbox` | until resolved or acknowledged | entries resolved or acknowledged before the window |
