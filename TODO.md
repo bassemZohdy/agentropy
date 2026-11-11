@@ -64,7 +64,7 @@
 - [/] **TASK-046** · P2 · low · Clear the dev advisory GHSA-g3hv-75wg-m249 (minimatch via typescript-eslint); `pnpm audit` reports 1 moderate
   - Done when: `pnpm audit`
   - Links: Ref: TASK-030
-  - State: attempts 0/3; baseline 595 passing; branch todo/TASK-046-clear-dev-advisory-ghsa from main; next: read docs
+  - State: attempts 0/3; baseline 595 passing; branch todo/TASK-046-clear-dev-advisory-ghsa from main; next: drain
 - [ ] **TASK-047** · P2 · low · Coverage gate from the baseline (94.4% lines, 86.35% branches); report-only today
   - Done when: `grep -q thresholds vitest.config.ts` `pnpm exec vitest run --coverage`
   - Links: Ref: TASK-037
