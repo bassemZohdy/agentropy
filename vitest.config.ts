@@ -26,13 +26,16 @@ export default defineConfig({
     setupFiles: ['./vitest.setup.ts'],
     // PGlite-backed suites (embedded WASM PostgreSQL) take seconds per test on shared CI runners.
     testTimeout: 30_000,
-    // TASK-033.4: `vitest run --coverage` reports V8 coverage of the library sources (report only, no threshold).
+    // TASK-033.4: `vitest run --coverage` reports V8 coverage of the library sources. TASK-047: it also fails below the
+    // thresholds, set about 1.5 points under the 2026-11-11 baseline (93.23 % statements, 86.28 % branches, 94.02 %
+    // functions, 94.68 % lines) so a real drop fails CI and platform noise does not. Raise them when the baseline rises.
     coverage: {
       provider: 'v8',
       include: ['packages/*/src/**/*.ts'],
       exclude: ['packages/examples/**'],
       reporter: ['text-summary', 'json-summary'],
       reportsDirectory: 'coverage',
+      thresholds: { statements: 92, branches: 85, functions: 93, lines: 93 },
     },
   },
 });
