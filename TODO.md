@@ -27,10 +27,17 @@
   - [ ] **TASK-043.4** · mid · Cut v0.1.0 (tag, workflow publishes packages and image), verify provenance and signature
     - Done when: `gh release view v0.1.0`
     - Links: Depends: TASK-043.1, TASK-043.2, TASK-043.3, TASK-040, TASK-044
-- [!] **FEAT-048** · P2 · high · Outbound push config at A2A peers: the host receives their webhooks (deferred, design first)
+- [ ] **FEAT-048** · P2 · high · Outbound push config at A2A peers: a notification wakes the projection (scheduled by the owner on 2026-11-11)
   - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-outbound.test.ts`
-  - Links: Ref: docs/contracts/communication-v1.md · From: FEAT-044
-  - Blocked: needs an inbound webhook endpoint, token verification and threat-model rows; the owner deferred it on 2026-11-11 → n/a (manual) → owner schedules it, then /todo-plan the receiver design
+  - Links: From: FEAT-044
+  - [ ] **FEAT-048.1** · low · Plan: the receiver design, its threat model and the contract change, written down first
+    - Done when: `test -f docs/plans/FEAT-048-outbound-push.md` `node scripts/check-doc-links.mjs`
+  - [ ] **FEAT-048.2** · mid · Refresh one remote projection on demand, rate limited, and expose it to the host
+    - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-refresh.test.ts`
+    - Links: Depends: FEAT-048.1
+  - [ ] **FEAT-048.3** · mid · Provider push option, HMAC tokens and the notification receiver; contract revision 11 and threat model rows
+    - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-outbound.test.ts`
+    - Links: Depends: FEAT-048.2
 - [!] **TASK-045** · P2 · low · Skills: list the plugin in a public marketplace; run the five skills in a second harness (TASK-039 leftover)
   - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
   - Links: Ref: docs/skills.md
