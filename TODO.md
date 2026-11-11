@@ -53,11 +53,13 @@
 - [ ] **FEAT-046** · P2 · high · Optional: broker relay adapter (ADR-0011: Kafka or NATS), no mandatory broker dependency
   - Done when: `pnpm exec vitest run packages/testkit/test/broker-relay.test.ts`
   - Links: Ref: docs/adr/0011-versioned-agent-messaging.md
-  - [ ] **FEAT-046.1** · low · Owner picks the broker; record it as ADR-0031
+  - [!] **FEAT-046.1** · low · Owner picks the broker; record it as ADR-0031
     - Done when: `test -f docs/adr/0031-broker-adapter.md` `node scripts/check-doc-links.mjs`
+    - Blocked: the broker (Kafka, NATS or none) is the owner's decision → n/a (manual) → owner chooses and records ADR-0031, or drops FEAT-046
   - [ ] **FEAT-046.2** · mid · Adapter passes the outbox relay conformance suite (ordering, dedup, redelivery)
     - Done when: `pnpm exec vitest run packages/testkit/test/broker-relay.test.ts`
     - Links: Depends: FEAT-046.1
-- [ ] **TASK-045** · P2 · low · Skills: list the plugin in a public marketplace; run the five skills in a second harness (TASK-039 leftover)
+- [!] **TASK-045** · P2 · low · Skills: list the plugin in a public marketplace; run the five skills in a second harness (TASK-039 leftover)
   - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
   - Links: Ref: docs/skills.md
+  - Blocked: a public listing needs the owner's submission and a second harness needs to be run by hand → n/a (manual) → owner submits the plugin, runs the five skills in another harness and records it under "Tested in" in docs/skills.md
