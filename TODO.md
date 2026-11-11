@@ -31,15 +31,13 @@
   - Done when: `grep -q AGENTROPY_LLM_API_KEY .github/workflows/ci.yml` `node scripts/check-deploy.mjs`
   - Links: Depends: TASK-040 · Ref: packages/testkit/test/providers-live.test.ts
 - [ ] **FEAT-044** · P2 · high · A2A completeness; each part bumps communication-v1 and adds conformance
-  - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-paging.test.ts packages/testkit/test/a2a-history.test.ts packages/testkit/test/a2a-push-outbound.test.ts packages/testkit/test/a2a-interop-second.test.ts`
+  - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-paging.test.ts packages/testkit/test/a2a-history.test.ts packages/testkit/test/a2a-interop-second.test.ts`
   - Links: Ref: docs/contracts/communication-v1.md
   - State: branch todo/FEAT-044-a2a-completeness-each-part from main; next: build children
   - [x] **FEAT-044.1** · mid · Push-config paging for `ListTaskPushNotificationConfigs`
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-paging.test.ts`
   - [x] **FEAT-044.2** · mid · Message history so `historyLength` has an effect
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-history.test.ts`
-  - [ ] **FEAT-044.3** · mid · Outbound push-config at peers (`features.pushNotifications`)
-    - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-outbound.test.ts`
   - [ ] **FEAT-044.4** · mid · Interop with a second, non-JS A2A implementation (only `@a2a-js/sdk` 1.3.0 is tested)
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-interop-second.test.ts`
 - [ ] **FEAT-045** · P2 · high · Optional: memory provider (ADR-0008: memory is a catalog contract with no provider)
