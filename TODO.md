@@ -9,6 +9,7 @@
 - [ ] **TASK-042** · P1 · low · Close the superseded PRs #7 (duplicate testkit helpers) and #16 (landed by TASK-048) with evidence comments; #14 waits for CI
   - Done when: `gh pr view 7 --json state --jq .state | grep -qv OPEN` `gh pr view 16 --json state --jq .state | grep -qv OPEN`
   - Links: Depends: TASK-048 · Ref: docs/review/2026-11-05-legacy-pr-integration.md
+  - State: branch todo/TASK-042-close-superseded-prs-7 from main; next: start TASK-042
 - [!] **TASK-044** · P1 · low · Enable GitHub private vulnerability reporting (SECURITY.md names it as the channel)
   - Done when: `gh api repos/bassemZohdy/agentropy/private-vulnerability-reporting --jq .enabled | grep -qx true`
   - Blocked: reporting channel is off or not visible → the settings API answers HTTP 404 → owner enables it under Settings > Code security
