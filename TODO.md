@@ -31,9 +31,8 @@
   - Done when: `pnpm exec vitest run packages/testkit/test/memory.test.ts`
   - Links: Ref: docs/adr/0008-provider-neutral-runtime.md
   - State: branch todo/FEAT-045-optional-memory-provider-adr from main; next: build children
-  - [/] **FEAT-045.1** · low · Memory behaviour contract: revise capability-v1 and ADR-0008 evidence
+  - [x] **FEAT-045.1** · low · Memory behaviour contract: revise capability-v1 and ADR-0008 evidence
     - Done when: `grep -q 'Memory provider' docs/contracts/capability-v1.md` `node scripts/check-doc-links.mjs`
-    - State: attempts 0/3; baseline 610 passing; branch todo/FEAT-045.1-memory-behaviour-contract-revise from todo/FEAT-045-optional-memory-provider-adr; next: read docs
   - [ ] **FEAT-045.2** · mid · Reference memory provider on the Store port with a conformance suite
     - Done when: `pnpm exec vitest run packages/testkit/test/memory.test.ts`
     - Links: Depends: FEAT-045.1
