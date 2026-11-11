@@ -36,9 +36,10 @@
   - [x] **FEAT-048.2** · mid · Refresh one remote projection on demand, rate limited, and expose it to the host
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-refresh.test.ts`
     - Links: Depends: FEAT-048.1
-  - [ ] **FEAT-048.3** · mid · Provider push option, HMAC tokens and the notification receiver; contract revision 11 and threat model rows
+  - [/] **FEAT-048.3** · mid · Provider push option, HMAC tokens and the notification receiver; contract revision 11 and threat model rows
     - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-outbound.test.ts`
     - Links: Depends: FEAT-048.2
+    - State: attempts 0/3; baseline 623 passing; branch todo/FEAT-048.3-provider-push-option-hmac from todo/FEAT-048-outbound-push-config-at; next: read docs
 - [!] **TASK-045** · P2 · low · Skills: list the plugin in a public marketplace; run the five skills in a second harness (TASK-039 leftover)
   - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
   - Links: Ref: docs/skills.md
