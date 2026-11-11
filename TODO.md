@@ -33,9 +33,10 @@
   - State: branch todo/FEAT-045-optional-memory-provider-adr from main; next: build children
   - [x] **FEAT-045.1** · low · Memory behaviour contract: revise capability-v1 and ADR-0008 evidence
     - Done when: `grep -q 'Memory provider' docs/contracts/capability-v1.md` `node scripts/check-doc-links.mjs`
-  - [ ] **FEAT-045.2** · mid · Reference memory provider on the Store port with a conformance suite
+  - [/] **FEAT-045.2** · mid · Reference memory provider on the Store port with a conformance suite
     - Done when: `pnpm exec vitest run packages/testkit/test/memory.test.ts`
     - Links: Depends: FEAT-045.1
+    - State: attempts 0/3; baseline 610 passing; branch todo/FEAT-045.2-reference-memory-provider-store from todo/FEAT-045-optional-memory-provider-adr; next: read docs
 - [!] **FEAT-048** · P2 · high · Outbound push config at A2A peers: the host receives their webhooks (deferred, design first)
   - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-outbound.test.ts`
   - Links: Ref: docs/contracts/communication-v1.md · From: FEAT-044
