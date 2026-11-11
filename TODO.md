@@ -30,6 +30,7 @@
 - [ ] **FEAT-045** · P2 · high · Optional: memory provider (ADR-0008: memory is a catalog contract with no provider)
   - Done when: `pnpm exec vitest run packages/testkit/test/memory.test.ts`
   - Links: Ref: docs/adr/0008-provider-neutral-runtime.md
+  - State: branch todo/FEAT-045-optional-memory-provider-adr from main; next: build children
   - [ ] **FEAT-045.1** · low · Memory behaviour contract: revise capability-v1 and ADR-0008 evidence
     - Done when: `grep -q 'Memory provider' docs/contracts/capability-v1.md` `node scripts/check-doc-links.mjs`
   - [ ] **FEAT-045.2** · mid · Reference memory provider on the Store port with a conformance suite
