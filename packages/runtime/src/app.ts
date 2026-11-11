@@ -331,6 +331,12 @@ export interface LocalApp {
     taskId: string,
     caller: TrustedPrincipal,
   ): Promise<{ operation: string; stepKey?: string; at: string }[]>;
+  /**
+   * Refreshes one open remote projection from its peer now (FEAT-048.2); true when it changed. For trusted host
+   * code, such as the A2A push notification receiver after it authenticated a notification; not an AgentService
+   * operation, and it takes no principal.
+   */
+  refreshRemote(taskId: string): Promise<boolean>;
   /** Operator compaction of consumed and expired runtime records (trusted services only). */
   compact(
     retainMs: number,
@@ -771,6 +777,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
         at: r.value.at,
       }));
     },
+    refreshRemote: (taskId) => remoteOrFail().refresh(taskId),
     async compact(retainMs, caller) {
       if (caller?.type !== 'service')
         throw new AgentropyError(

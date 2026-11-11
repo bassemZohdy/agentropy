@@ -208,7 +208,7 @@ Types, schemas, errors, lifecycle tables and pure resolvers (no I/O). 197 export
 
 ## @agentropy/runtime
 
-Registries, task service, runtime, scheduler, providers and the local app facade. 182 exports.
+Registries, task service, runtime, scheduler, providers and the local app facade. 186 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
@@ -226,6 +226,9 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `A2APushConfig` | interface | [runtime/src/a2a-push.ts](../packages/runtime/src/a2a-push.ts) | A2A `TaskPushNotificationConfig` (credentials are write-only: reads return the scheme alone). |
 | `A2APushFetch` | type | [runtime/src/a2a-push.ts](../packages/runtime/src/a2a-push.ts) | Push delivery transport; `redirect: 'manual'` keeps a webhook from bouncing deliveries elsewhere. |
 | `A2APushOptions` | interface | [runtime/src/a2a-push.ts](../packages/runtime/src/a2a-push.ts) |  |
+| `A2APushReceiver` | interface | [runtime/src/a2a-push-receiver.ts](../packages/runtime/src/a2a-push-receiver.ts) |  |
+| `A2APushReceiverOptions` | interface | [runtime/src/a2a-push-receiver.ts](../packages/runtime/src/a2a-push-receiver.ts) |  |
+| `a2aPushToken` | function | [runtime/src/a2a-push-receiver.ts](../packages/runtime/src/a2a-push-receiver.ts) | The token a peer must present for one remote projection (`localTaskId`, e.g. |
 | `A2ASecretSealer` | interface | [runtime/src/a2a-push.ts](../packages/runtime/src/a2a-push.ts) | Seals and opens webhook secrets at rest (FEAT-034.3). |
 | `A2AServer` | interface | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) |  |
 | `A2AServerOptions` | interface | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) |  |
@@ -261,6 +264,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `coreOperationHandlers` | function | [runtime/src/wakeups.ts](../packages/runtime/src/wakeups.ts) | Handlers for delegation, event-handling and scheduling operations (Capability v1 operation I/O). |
 | `createA2AHistory` | function | [runtime/src/a2a-history.ts](../packages/runtime/src/a2a-history.ts) |  |
 | `createA2AHttpHandler` | function | [runtime/src/a2a-http.ts](../packages/runtime/src/a2a-http.ts) |  |
+| `createA2APushReceiver` | function | [runtime/src/a2a-push-receiver.ts](../packages/runtime/src/a2a-push-receiver.ts) |  |
 | `createA2AServer` | function | [runtime/src/a2a-server.ts](../packages/runtime/src/a2a-server.ts) |  |
 | `createActivationIngress` | function | [runtime/src/ingress.ts](../packages/runtime/src/ingress.ts) |  |
 | `CreateInstanceRequest` | interface | [runtime/src/registry.ts](../packages/runtime/src/registry.ts) |  |
