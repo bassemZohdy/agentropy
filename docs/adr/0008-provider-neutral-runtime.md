@@ -1,6 +1,6 @@
 # ADR-0008: Provider-neutral runtime with explicit durability contracts
 
-- Status: Accepted (2026-11-06, TASK-034.1); memory has a capability contract but no provider yet
+- Status: Accepted (2026-11-06, TASK-034.1); memory has a reference provider on the Store port (FEAT-045)
 - Date: 2026-11-04
 
 ## Context
@@ -24,4 +24,4 @@ Language/runtime, initial persistence, first workflow provider and supported por
 - Portable SPIs exist and have more than one implementation: `Store` (SQLite, PostgreSQL), agent implementation providers (native TypeScript, Conductor workflows, model-backed agents), communication providers (internal, A2A), capability providers; see `packages/core/src`.
 - Requested guarantees are resolved at acceptance; a runtime that cannot honour one refuses the task instead of degrading it (`packages/runtime/test/task-service.test.ts`, `packages/testkit/test/delivery.test.ts`).
 - Durability is tested by crash and restart: `packages/testkit/test/recovery.test.ts`, `packages/testkit/test/postgres-runtime.test.ts`; the [conformance kit](../conformance-kit.md) packages these checks for other providers.
-- Not proven: memory is a catalog behaviour contract with no provider; cross-provider state migration remains out of scope, as proposed.
+- Memory: the capability has a reference provider on the Store port (`memoryOperationHandlers`, enabled with `createLocalApp({ memory })`; FEAT-045): entries scoped to tenant and acting principal, bounded, expiring by TTL and removed by `compact()`, tested in `packages/testkit/test/memory.test.ts`. Not proven: a semantic (embedding) provider, sharing between agents and a `forget` operation; cross-provider state migration remains out of scope, as proposed.

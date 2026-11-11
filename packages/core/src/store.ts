@@ -54,6 +54,8 @@ export const STORE_COLLECTIONS = {
   pushConfigs: ['tenantId', 'taskId'],
   /** A2A message history (FEAT-044.2): user messages kept per sending principal when the endpoint enables it. */
   a2aHistory: ['tenantId', 'taskId'],
+  /** Agent memory (FEAT-045): entries per tenant and acting principal (`ownerId`), with an optional expiry. */
+  memories: ['tenantId', 'ownerId'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type CollectionName = keyof typeof STORE_COLLECTIONS;
