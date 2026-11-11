@@ -24,9 +24,9 @@ The receiver does **not** read the payload of a notification. A valid notificati
    - authenticates **before reading the body**: the token is recomputed and compared in constant time; a missing or wrong token is `401` and the body is never read;
    - bounds the body (default 64 KiB, `413`) and drains it unread: it is discarded, not parsed;
    - calls `refresh(localTaskId)` at most once per `minIntervalMs` (default 1 s) per task, in memory; faster notifications are coalesced and still answered `202`;
-   - answers `202` once the refresh is scheduled or coalesced, `404` when the projection does not exist (a compacted or never-created task), `405` for other methods.
+   - answers `202` to any authentic token once the refresh is scheduled or coalesced (a missing projection is no different to the peer, and the token already proves the task existed), `405` for other methods. *Revised during FEAT-048.3: the first plan had a `404` for a missing projection.*
 5. **Refresh.** `RemoteDelegationService.refresh(localTaskId)` asks the provider for that projection now and applies the answer; a terminal projection is left alone. `LocalApp.refreshRemote(localTaskId)` exposes it to trusted host code only (the host calls it after the receiver authenticated the notification); it is not an `AgentService` operation and takes no principal.
-6. **Host.** The example host mounts the receiver when `AGENTROPY_PUSH_PUBLIC_URL` and `AGENTROPY_PUSH_SECRET` are set. It is not required for the library and is out of FEAT-048's tests beyond a smoke check.
+6. **Host.** *Revised during FEAT-048.3:* the example host does not mount the receiver. A deployment mounts it next to `createA2AHttpHandler` and passes `(id) => app.refreshRemote(id)`; the contract says so.
 
 ## Threat model (rows added with FEAT-048.3)
 

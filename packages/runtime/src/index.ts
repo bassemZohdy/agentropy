@@ -24,6 +24,7 @@ export * from './workflow.js';
 export * from './quotas.js';
 export * from './a2a.js';
 export * from './a2a-history.js';
+export * from './a2a-push-receiver.js';
 export * from './remote.js';
 export * from './federation.js';
 export * from './compaction.js';
