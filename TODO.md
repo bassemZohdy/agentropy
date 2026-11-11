@@ -33,6 +33,7 @@
 - [ ] **FEAT-043** · P2 · low · Fixture cost benchmark of the model routing evaluation (FEAT-035 leftover)
   - Done when: `pnpm exec vitest run packages/testkit/test/model-routing-cost.test.ts`
   - Links: Ref: docs/review/2026-11-06-model-routing-evaluation.md
+  - State: branch todo/FEAT-043-fixture-cost-benchmark-model from main; next: start FEAT-043
 - [ ] **FEAT-044** · P2 · high · A2A completeness; each part bumps communication-v1 and adds conformance
   - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-paging.test.ts packages/testkit/test/a2a-history.test.ts packages/testkit/test/a2a-push-outbound.test.ts packages/testkit/test/a2a-interop-second.test.ts`
   - Links: Ref: docs/contracts/communication-v1.md
