@@ -119,6 +119,13 @@ for (const f of froms)
 const users = [...dockerfile.matchAll(/^USER\s+(\S+)/gm)].map((m) => m[1]);
 if (!users.length || ['root', '0'].includes(users.at(-1))) fail('Dockerfile: final stage must run as a non-root USER');
 if (!/--frozen-lockfile/.test(dockerfile)) fail('Dockerfile: install must use --frozen-lockfile');
+// TASK-041: Node 25 and newer images do not ship corepack (`corepack enable` exits 127), so the image installs the
+// pnpm that package.json pins by itself.
+if (/\bcorepack\b/.test(dockerfile)) fail('Dockerfile: do not use corepack, Node 25+ images do not ship it (TASK-041)');
+const pnpmPin = /^pnpm@(\d+\.\d+\.\d+)$/.exec(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).packageManager ?? '')?.[1];
+if (!pnpmPin) fail('package.json: packageManager must pin pnpm@<major.minor.patch>');
+else if (!new RegExp(`npm install --global pnpm@${pnpmPin.replaceAll('.', '\\.')}(\\s|$)`).test(dockerfile))
+  fail(`Dockerfile: install the pinned pnpm with "npm install --global pnpm@${pnpmPin}" (TASK-041)`);
 
 // TASK-030.1 (R-15): third-party actions and service images pinned immutably; update automation configured.
 const wfDir = join(root, '.github/workflows');
