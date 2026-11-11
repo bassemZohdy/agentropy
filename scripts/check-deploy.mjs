@@ -148,6 +148,17 @@ try {
 }
 for (const needle of ['kubectl kustomize', 'rollout restart', 'delete pod', 'a2a-smoke.sh'])
   if (!kindSmoke.includes(needle)) fail(`deploy/kind-smoke.sh must exercise: ${needle}`);
+// FEAT-042 (R-12): the live model API suite runs in CI only where the key exists: the key comes from a secret into the
+// job's environment, the step is gated on it, and pull requests (which a fork controls) never run it.
+if (!/providers-live\.test\.ts/.test(ci)) fail('ci.yml: the live model API job (providers-live.test.ts) is missing');
+else {
+  if (!/AGENTROPY_LLM_API_KEY:\s*\$\{\{\s*secrets\.AGENTROPY_LLM_API_KEY\s*\}\}/.test(ci))
+    fail('ci.yml: the live model API job must take AGENTROPY_LLM_API_KEY from secrets.AGENTROPY_LLM_API_KEY');
+  if (!/if:\s*env\.AGENTROPY_LLM_API_KEY\s*!=\s*''/.test(ci))
+    fail("ci.yml: the live model API step must be gated on if: env.AGENTROPY_LLM_API_KEY != ''");
+  if (!/github\.event_name\s*!=\s*'pull_request'/.test(ci))
+    fail('ci.yml: the live model API job must not run for pull requests');
+}
 if (!/pnpm audit --prod/.test(ci))
   fail('ci.yml: production dependency audit (pnpm audit --prod) missing');
 let dependabot = '';

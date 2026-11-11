@@ -30,7 +30,7 @@
 - [/] **FEAT-042** · P2 · mid · Live model API suite in CI, key-gated (R-12): job runs `providers-live.test.ts` only when the secret exists
   - Done when: `grep -q AGENTROPY_LLM_API_KEY .github/workflows/ci.yml` `node scripts/check-deploy.mjs`
   - Links: Ref: packages/testkit/test/providers-live.test.ts
-  - State: attempts 0/3; baseline 595 passing; branch todo/FEAT-042-live-model-api-suite from main; next: build
+  - State: attempts 0/3; baseline 595 passing; branch todo/FEAT-042-live-model-api-suite from main; next: drain
 - [ ] **FEAT-044** · P2 · high · A2A completeness; each part bumps communication-v1 and adds conformance
   - Done when: `pnpm exec vitest run packages/testkit/test/a2a-push-paging.test.ts packages/testkit/test/a2a-history.test.ts packages/testkit/test/a2a-push-outbound.test.ts packages/testkit/test/a2a-interop-second.test.ts`
   - Links: Ref: docs/contracts/communication-v1.md
