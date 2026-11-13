@@ -208,7 +208,7 @@ Types, schemas, errors, lifecycle tables and pure resolvers (no I/O). 197 export
 
 ## @agentropy/runtime
 
-Registries, task service, runtime, scheduler, providers and the local app facade. 186 exports.
+Registries, task service, runtime, scheduler, providers and the local app facade. 187 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
@@ -272,6 +272,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `decodeCheckpoint` | function | [runtime/src/runtime.ts](../packages/runtime/src/runtime.ts) | Applies the handler's checkpoint codec to a stored checkpoint (FEAT-028.3); never reinterprets silently. |
 | `DEFAULT_LIMITS` | const | [runtime/src/limits.ts](../packages/runtime/src/limits.ts) |  |
 | `DEFAULT_PRIORITY_POLICY` | const | [runtime/src/priority.ts](../packages/runtime/src/priority.ts) | Default floors: approvals someone must act on and failed delegated work are at least `high`. |
+| `DEFAULT_REMOTE_TIMEOUT_MS` | const | [runtime/src/remote.ts](../packages/runtime/src/remote.ts) | Longest one call to a peer may take unless configured otherwise. |
 | `DEFAULT_RETRY` | const | [runtime/src/task-service.ts](../packages/runtime/src/task-service.ts) |  |
 | `DefaultCommunicationRouter` | class | [runtime/src/communication.ts](../packages/runtime/src/communication.ts) |  |
 | `DefaultToolExecutor` | class | [runtime/src/tools.ts](../packages/runtime/src/tools.ts) |  |

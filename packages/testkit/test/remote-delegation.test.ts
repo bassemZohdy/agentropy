@@ -8,7 +8,7 @@ import {
   type AgentDefinition,
   type TrustedPrincipal,
 } from '@agentropy/core';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   BrokerCommunicationProvider,
   InMemoryBroker,
@@ -88,8 +88,12 @@ function runtimeA(
   server: A2AServer,
   opts: {
     offline?: () => boolean;
+    /** While it returns a promise, the peer accepts the connection and never answers (the signal is ignored). */
+    hang?: () => Promise<unknown> | undefined;
     clock?: FakeClock;
     sync?: { minMs?: number; maxMs?: number };
+    /** Longest a call to the peer may take (FIX-053). */
+    timeoutMs?: number;
   } = {},
 ) {
   const wire: string[] = [];
@@ -100,6 +104,11 @@ function runtimeA(
     fetch: async (_url, init) => {
       if (opts.offline?.()) throw new TypeError('fetch failed');
       wire.push(init.body);
+      const hung = opts.hang?.();
+      if (hung) {
+        await hung;
+        throw new TypeError('fetch failed');
+      }
       const principal =
         init.headers.authorization === 'Bearer tok-a'
           ? peerIdentity
@@ -121,7 +130,11 @@ function runtimeA(
     now: (opts.clock ?? new FakeClock('2026-11-06T00:00:00.000Z')).iso,
     profiles: BUILTIN_PROFILES,
     // The clock stands still in most tests, so they poll on every pass; the backoff test sets its own.
-    communication: { router, sync: opts.sync ?? { minMs: 0, maxMs: 0 } },
+    communication: {
+      router,
+      sync: opts.sync ?? { minMs: 0, maxMs: 0 },
+      ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+    },
   });
   /** Delegates to the remote summarizer and completes with its result. */
   const coordinator: Agent<{ doc: string }> = {
@@ -446,5 +459,109 @@ describe('remote projection polling backoff (FEAT-039.2)', () => {
     clock.advanceBy(60_000);
     await a.wakeups.poll();
     expect(polls()).toBe(3); // terminal: never asked again
+  });
+});
+
+describe('a peer that never answers (FIX-053)', () => {
+  const remote = {
+    target: { remote: { endpoint: ENDPOINT, definitionId: 'summarizer' } },
+    input: { doc: 'd' },
+    idempotencyKey: 'k',
+    correlationId: 'c',
+  };
+  /** A local agent on runtime A, to show that dispatch goes on. */
+  const local: Agent = {
+    handle: async () => ({ kind: 'completed', output: 'local done' }),
+  };
+  const submitLocal = async (a: ReturnType<typeof runtimeA>['a']) => {
+    a.define(def('localworker'), local);
+    const inst = await a.createInstance(
+      {
+        definition: { id: 'localworker', version: '1.0.0' },
+        ownerId: alice.id,
+        idempotencyKey: 'lw',
+      },
+      alice,
+    );
+    return a.delegate(
+      {
+        target: { instanceId: inst.id },
+        input: {},
+        idempotencyKey: 'l1',
+        correlationId: 'l1',
+      },
+      alice,
+    );
+  };
+
+  it('a refresh that hangs costs one timed-out call (RemoteUnavailable); the scheduler tick completes and local tasks are dispatched meanwhile', async () => {
+    const { server } = await runtimeB();
+    let freeAll!: () => void;
+    const hangs = new Promise<void>((r) => (freeAll = r));
+    let hanging = false;
+    const { a, wire } = runtimeA(server, {
+      hang: () => (hanging ? hangs : undefined),
+      timeoutMs: 1_000,
+    });
+    await a.delegate(remote, alice); // accepted while the peer still answers
+    const calls = () =>
+      wire.filter(
+        (w) => (JSON.parse(w) as { method: string }).method === 'GetTask',
+      ).length;
+    hanging = true;
+    const task = await submitLocal(a);
+    const stop = a.start(5);
+    try {
+      // The peer's GetTask is pending (the refresh started), yet the local task is dispatched and completes.
+      await vi.waitFor(
+        async () => {
+          expect(calls()).toBe(1);
+          expect((await a.getTask(task.taskId, alice)).status).toBe(
+            'completed',
+          );
+        },
+        { timeout: 3_000 },
+      );
+      expect(await a.getResult(task.taskId, alice)).toBe('local done');
+      const [pending] = await projections(a);
+      expect(pending?.lastError).toBeUndefined(); // the call has not timed out yet
+      expect(a.schedulerStatus().consecutiveFailures).toBe(0);
+    } finally {
+      freeAll();
+    }
+    await stop(); // waits for the refresh in flight
+    const [after] = await projections(a);
+    expect(after).toMatchObject({ lastError: 'RemoteUnavailable' });
+    expect(calls()).toBe(1); // one refresh, not one per tick
+  });
+
+  it('a call to a peer that ignores the abort signal still ends at the timeout with RemoteUnavailable', async () => {
+    const { server } = await runtimeB();
+    const never = new Promise<void>(() => undefined);
+    let hanging = false;
+    const { a } = runtimeA(server, {
+      hang: () => (hanging ? never : undefined),
+      timeoutMs: 50,
+    });
+    const h = await a.delegate(remote, alice);
+    hanging = true;
+    const started = Date.now();
+    await a.runUntilIdle(); // refresh the projection: bounded by the timeout
+    expect(Date.now() - started).toBeLessThan(2_000);
+    const [stale] = await projections(a);
+    expect(stale).toMatchObject({
+      status: 'created',
+      lastError: 'RemoteUnavailable',
+    });
+    // Delegating and cancelling are bounded the same way, and say why.
+    await expect(
+      a.delegate({ ...remote, idempotencyKey: 'k2' }, alice),
+    ).rejects.toMatchObject({
+      code: 'RemoteUnavailable',
+      details: { reason: 'timeout' },
+    });
+    await expect(a.cancel(h.taskId, alice)).rejects.toMatchObject({
+      code: 'RemoteUnavailable',
+    });
   });
 });
