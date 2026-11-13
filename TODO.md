@@ -27,6 +27,7 @@
 - [ ] **FIX-051** · P1 · high · Lease heartbeat on its own timer, kept until the pool is empty (also while stop() waits), so a slow tick or shutdown cannot let another worker take a live execution
   - Done when: a tick blocked longer than leaseMs keeps the lease and a second worker recovers nothing; a worker that really stalled is still recovered and its late result fenced; `pnpm exec vitest run packages/testkit/test/multi-worker.test.ts`
   - Links: Ref: docs/runtime-contract.md
+  - State: branch todo/FIX-051-lease-heartbeat-on-its from main; next: start FIX-051
 - [ ] **FIX-052** · P1 · low · Wake-up poll contains a failing sweep: it is reported as a scheduler error and the poll still fires due wake-ups and the pool tick runs
   - Done when: a sweep that throws is counted once and a due timer fires in the same poll; `pnpm exec vitest run packages/runtime/test/wakeups.test.ts`
 - [ ] **FIX-053** · P1 · mid · Remote delegation bounds every peer call with a timeout and abort signal and refreshes projections outside the tick's critical path
