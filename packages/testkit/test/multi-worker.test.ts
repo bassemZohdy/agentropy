@@ -16,7 +16,7 @@ import {
   type Store,
   type TrustedPrincipal,
 } from '@agentropy/core';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   CachingPolicyDecisionPoint,
   createLocalApp,
@@ -303,6 +303,118 @@ describe.each(stores)('multi-worker pool on %s (M3-02)', (_name, make) => {
     await w1.runtime.idle();
     expect((await w2.getTask(id, user('t-1'))).status).toBe('cancelled');
     await c.store.close();
+  });
+});
+
+describe('lease heartbeat of a started worker (FIX-051)', () => {
+  /** The lease expiry of the one execution in the store. */
+  const leaseOf = async (c: Cluster) =>
+    (
+      await c.store.transaction((tx) =>
+        tx.find<{ leaseExpiresAt?: string }>('executions', {}),
+      )
+    )[0]?.value.leaseExpiresAt ?? '';
+
+  /** w1 holds its handler until `finish` opens; w2 would complete a task it recovered at once. */
+  const pair = () => {
+    const started = gate();
+    const finish = gate();
+    let runs = 0;
+    const held: Agent = {
+      handle: async () => {
+        runs++;
+        started.open();
+        await finish.opened;
+        return { kind: 'completed', output: 'from w1' };
+      },
+    };
+    const eager: Agent = {
+      handle: async () => {
+        runs++;
+        return { kind: 'completed', output: 'from w2' };
+      },
+    };
+    const c = cluster(sqliteTempStore(), [held, eager]);
+    const [w1, w2] = c.workers as [LocalApp, LocalApp];
+    return { c, w1, w2, started, finish, runs: () => runs };
+  };
+
+  it('a worker whose tick is blocked longer than the lease keeps it; another worker recovers nothing', async () => {
+    const { c, w1, w2, started, finish, runs } = pair();
+    const hold = gate();
+    let block = false;
+    let blocked = 0;
+    w1.wakeups.addSweep(async () => {
+      if (!block) return;
+      blocked++;
+      await hold.opened;
+    });
+    const inst = await c.instance('t-1');
+    const id = await c.submit(inst, 't-1', 'k');
+    const stop = w1.start(5, { heartbeatMs: 10 });
+    await started.opened;
+    // From here on w1's scheduler tick hangs in a sweep (a slow peer, policy point or sink): no tick renews anything.
+    block = true;
+    await vi.waitFor(() => expect(blocked).toBe(1));
+    const granted = await leaseOf(c);
+    c.clock.advanceBy(6_000);
+    // The heartbeat does not wait for the tick: the lease (10 s) is extended although the tick is stuck.
+    await vi.waitFor(async () =>
+      expect((await leaseOf(c)) > granted).toBe(true),
+    );
+    c.clock.advanceBy(6_000); // past the lease as first granted
+    expect(await w2.runtime.tick()).toBe(0);
+    await w2.runtime.idle();
+    expect((await c.executions()).map((e) => [e.workerId, e.state])).toEqual([
+      ['w1', 'running'],
+    ]);
+    hold.open();
+    finish.open();
+    await vi.waitFor(async () =>
+      expect((await w2.getTask(id, user('t-1'))).status).toBe('completed'),
+    );
+    await stop();
+    expect(await w2.getResult(id, user('t-1'))).toBe('from w1');
+    expect(runs()).toBe(1);
+    await c.store.close();
+  });
+
+  it('a stopping worker keeps the leases of the executions it waits for', async () => {
+    const { c, w1, w2, started, finish, runs } = pair();
+    const inst = await c.instance('t-1');
+    const id = await c.submit(inst, 't-1', 'k');
+    const stop = w1.start(5, { heartbeatMs: 10 });
+    await started.opened;
+    const granted = await leaseOf(c);
+    let stopped = false;
+    const stopping = stop().then(() => (stopped = true));
+    c.clock.advanceBy(6_000);
+    await vi.waitFor(async () =>
+      expect((await leaseOf(c)) > granted).toBe(true),
+    );
+    c.clock.advanceBy(6_000);
+    expect(await w2.runtime.tick()).toBe(0);
+    expect(stopped).toBe(false); // still waiting for its execution
+    finish.open();
+    await stopping;
+    expect(await w2.getResult(id, user('t-1'))).toBe('from w1');
+    expect(runs()).toBe(1);
+    // Once the pool is empty and the worker stopped, nothing renews any more.
+    const settled = await leaseOf(c);
+    c.clock.advanceBy(6_000);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(await leaseOf(c)).toBe(settled);
+    await c.store.close();
+  });
+
+  it('refuses a heartbeat interval that is not shorter than the lease', () => {
+    const { c, w1 } = pair();
+    for (const heartbeatMs of [0, 1.5, 10_000, 20_000])
+      expect(() => w1.start(5, { heartbeatMs })).toThrowError(
+        expect.objectContaining({ code: 'InvalidConfiguration' }),
+      );
+    expect(w1.schedulerStatus().running).toBe(false);
+    void c.store.close();
   });
 });
 

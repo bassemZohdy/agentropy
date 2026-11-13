@@ -7,7 +7,7 @@ import { AgentropyError } from '@agentropy/core';
 export interface RuntimeLimits {
   /** Concurrent executions per process. */
   poolSize: number;
-  /** Execution lease; renewed by the heartbeat on every tick. */
+  /** Execution lease; renewed by the heartbeat: on every tick and, in a started app, on a timer of its own (FIX-051). */
   leaseMs: number;
   /** Time a cancelled handler gets to stop before its lease is fenced. */
   cancelGraceMs: number;
@@ -119,7 +119,7 @@ export function resolveLimits(
       throw bad(`gateRetry.${k}`, g[k], '[1, ∞)');
   if (g.maxMs < g.initialMs)
     throw bad('gateRetry.maxMs', g.maxMs, `[${g.initialMs}, ∞)`);
-  // The heartbeat runs once per tick; a lease shorter than the cancel grace would fence a stopping handler early.
+  // A lease shorter than the cancel grace would fence a stopping handler early.
   if (limits.cancelGraceMs > limits.leaseMs)
     throw bad(
       'cancelGraceMs',
