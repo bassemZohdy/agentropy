@@ -40,7 +40,7 @@ Rules that matter:
 
 ## Call remote agents (outbound)
 
-- `A2ACommunicationProvider` is the client. A peer's `AuthorityExpired` or `PolicyDecisionUnavailable` is reported as `RemoteUnavailable`, and an unreadable acknowledgement becomes a typed error.
+- `A2ACommunicationProvider` is the client. It needs `allowEndpoint: (url: URL) => boolean`, the endpoints it may call (exact origins, `https:` unless `allowHttp: true`): an agent can name any endpoint in `delegation.delegate`, and anything outside the list is `PermissionDenied` before the credential is looked up or a request is made. Redirects are not followed. A peer's `AuthorityExpired` or `PolicyDecisionUnavailable` is reported as `RemoteUnavailable`, and an unreadable acknowledgement becomes a typed error.
 - Discovery uses agent cards, not a registry protocol of Agentropy's own. Configure `AgentDirectoryFederation({ peers: [{ id, cardUrl, tenants, allowedOrigins? }] })`. Only configured `https` card URLs are fetched, each peer is visible to its listed tenants only, and cards are untrusted data (size and field limits apply).
 - `discover(query, caller)` runs the same `definition:discover` policy check as local discovery and fails closed. Each result has a `target.remote` you pass to `delegate`.
 - Cards are cached and refreshed every 5 minutes. A failed fetch keeps the last good card, marked stale, for up to 24 hours.

@@ -354,6 +354,8 @@ describe('A2A HTTP binding (FEAT-034.1)', () => {
     const h = await host();
     h.release();
     const provider = new A2ACommunicationProvider({
+      allowEndpoint: (u: URL) => u.origin === h.base,
+      allowHttp: true,
       credentialRef: 'peer',
       credentials: { resolve: async () => ({ token: 'tok-a' }) },
       fetch,

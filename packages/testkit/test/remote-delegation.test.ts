@@ -94,16 +94,37 @@ function runtimeA(
     sync?: { minMs?: number; maxMs?: number };
     /** Longest a call to the peer may take (FIX-053). */
     timeoutMs?: number;
+    /** Which endpoints the A2A provider may call (FIX-054); default: exactly the peer's origin. */
+    allowEndpoint?: (url: URL) => boolean;
+    allowHttp?: boolean;
+    /** Answers instead of the peer, to see what the provider does with it. */
+    reply?: () => { status: number } | undefined;
   } = {},
 ) {
   const wire: string[] = [];
+  const fetched: { url: string; redirect?: string }[] = [];
+  const lookups = { credentials: 0 };
   const a2a = new A2ACommunicationProvider({
     credentialRef: 'peer-b',
-    credentials: { resolve: async () => ({ token: 'tok-a' }) },
+    credentials: {
+      resolve: async () => {
+        lookups.credentials++;
+        return { token: 'tok-a' };
+      },
+    },
     maxPolls: 0,
-    fetch: async (_url, init) => {
+    allowEndpoint:
+      opts.allowEndpoint ?? ((u) => u.origin === new URL(ENDPOINT).origin),
+    ...(opts.allowHttp ? { allowHttp: true } : {}),
+    fetch: async (url, init) => {
       if (opts.offline?.()) throw new TypeError('fetch failed');
       wire.push(init.body);
+      fetched.push({
+        url,
+        ...(init.redirect ? { redirect: init.redirect } : {}),
+      });
+      const canned = opts.reply?.();
+      if (canned) return { status: canned.status, json: async () => ({}) };
       const hung = opts.hang?.();
       if (hung) {
         await hung;
@@ -182,7 +203,7 @@ function runtimeA(
     }),
     coordinator,
   );
-  return { a, pdp, audit, wire };
+  return { a, pdp, audit, wire, fetched, lookups };
 }
 
 async function startCoordinator(
@@ -563,5 +584,147 @@ describe('a peer that never answers (FIX-053)', () => {
     await expect(a.cancel(h.taskId, alice)).rejects.toMatchObject({
       code: 'RemoteUnavailable',
     });
+  });
+});
+
+describe('the endpoints the A2A provider may call (FIX-054)', () => {
+  /** An agent that delegates to whatever endpoint its input names: the agent supplies the endpoint. */
+  const prober = (calls: { n: number }): Agent<{ endpoint: string }> => ({
+    handle: async (inv, ctx) => {
+      calls.n++;
+      await ctx.capabilities.invoke(
+        'delegation',
+        'delegate',
+        {
+          target: {
+            remote: {
+              endpoint: inv.input.endpoint,
+              definitionId: 'summarizer',
+            },
+          },
+          input: { doc: 'secret' },
+        },
+        { stepKey: 'probe' },
+      );
+      return { kind: 'completed', output: 'sent' };
+    },
+  });
+  const remote = (endpoint: string, key = 'k') => ({
+    target: { remote: { endpoint, definitionId: 'summarizer' } },
+    input: { doc: 'd' },
+    idempotencyKey: key,
+    correlationId: key,
+  });
+  const nothingLeft = (r: ReturnType<typeof runtimeA>) => {
+    expect(r.wire).toEqual([]); // no request was made
+    expect(r.fetched).toEqual([]);
+    expect(r.lookups.credentials).toBe(0); // and the credential was never looked up
+  };
+
+  it('an endpoint an agent names that the list does not admit is PermissionDenied: no request, no credential lookup, no retry', async () => {
+    const { server } = await runtimeB();
+    const r = runtimeA(server);
+    const calls = { n: 0 };
+    r.a.define(
+      def('prober', {
+        capabilities: [{ id: 'delegation', versionRange: '^1.0.0' }],
+      }),
+      prober(calls),
+    );
+    const inst = await r.a.createInstance(
+      {
+        definition: { id: 'prober', version: '1.0.0' },
+        ownerId: alice.id,
+        idempotencyKey: 'p',
+      },
+      alice,
+    );
+    const handle = await r.a.delegate(
+      {
+        target: { instanceId: inst.id },
+        input: { endpoint: 'https://evil.example/a2a' },
+        idempotencyKey: 'probe',
+        correlationId: 'probe',
+      },
+      alice,
+    );
+    await r.a.runUntilIdle();
+    const task = await r.a.getTask(handle.taskId, alice);
+    expect(task.status).toBe('failed');
+    expect(task.outcome?.code).toBe('PermissionDenied'); // not retried as a transport failure
+    expect(calls.n).toBe(1);
+    nothingLeft(r);
+    // The agent-supplied address is not echoed into the error.
+    expect(JSON.stringify(task.outcome)).not.toContain('evil.example');
+  });
+
+  it('http is refused even when the list admits it, unless the provider allows http', async () => {
+    const { server } = await runtimeB();
+    const strict = runtimeA(server, { allowEndpoint: () => true });
+    await expect(
+      strict.a.delegate(remote('http://b.example/a2a'), alice),
+    ).rejects.toMatchObject({
+      code: 'PermissionDenied',
+      details: { reason: 'endpoint' },
+    });
+    nothingLeft(strict);
+    const lax = runtimeA(server, {
+      allowEndpoint: (u) => u.origin === 'http://b.example',
+      allowHttp: true,
+    });
+    await lax.a.delegate(remote('http://b.example/a2a'), alice);
+    expect(lax.fetched[0]?.url).toBe('http://b.example/a2a');
+  });
+
+  it('refuses credentials in the URL, an address that is not a URL, and a predicate that throws', async () => {
+    const { server } = await runtimeB();
+    const r = runtimeA(server, { allowEndpoint: () => true });
+    for (const endpoint of [
+      'https://user:pw@b.example/a2a',
+      'https://:pw@b.example/a2a',
+      'not a url',
+    ])
+      await expect(
+        r.a.delegate(remote(endpoint, endpoint), alice),
+      ).rejects.toMatchObject({ code: 'PermissionDenied' });
+    const throwing = runtimeA(server, {
+      allowEndpoint: () => {
+        throw new Error('list unavailable');
+      },
+    });
+    await expect(
+      throwing.a.delegate(remote(ENDPOINT), alice),
+    ).rejects.toMatchObject({ code: 'PermissionDenied' }); // fails closed
+    nothingLeft(r);
+    nothingLeft(throwing);
+  });
+
+  it('an admitted endpoint works, is fetched without following redirects, and a redirect answer is RemoteUnavailable', async () => {
+    const { server } = await runtimeB();
+    const r = runtimeA(server);
+    await r.a.delegate(remote(ENDPOINT), alice);
+    expect(r.fetched[0]).toEqual({ url: ENDPOINT, redirect: 'manual' });
+    expect(r.lookups.credentials).toBeGreaterThan(0);
+    let redirect = false;
+    const moved = runtimeA(server, {
+      reply: () => (redirect ? { status: 302 } : undefined),
+    });
+    redirect = true;
+    await expect(
+      moved.a.delegate(remote(ENDPOINT, 'k2'), alice),
+    ).rejects.toMatchObject({ code: 'RemoteUnavailable' });
+  });
+
+  it('the provider cannot be built without a list', () => {
+    for (const bad of [undefined, 'https://b.example', {}])
+      expect(
+        () =>
+          new A2ACommunicationProvider({
+            allowEndpoint: bad,
+          } as never),
+      ).toThrowError(expect.objectContaining({ code: 'InvalidConfiguration' }));
+    expect(() => new A2ACommunicationProvider()).toThrowError(
+      expect.objectContaining({ code: 'InvalidConfiguration' }),
+    );
   });
 });

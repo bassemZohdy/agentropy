@@ -159,6 +159,8 @@ ${stderr}`);
 
   it('Agentropy’s A2A provider delegates to a Python server and reads its result', async () => {
     const provider = new A2ACommunicationProvider({
+      allowEndpoint: (u: URL) => u.origin === `http://127.0.0.1:${peerPort}`,
+      allowHttp: true,
       fetch: liveFetch as never,
       maxPolls: 5,
     });
@@ -181,6 +183,8 @@ ${stderr}`);
 
   it('a peer’s refusal comes back as a typed error: a finished task cannot be cancelled', async () => {
     const provider = new A2ACommunicationProvider({
+      allowEndpoint: (u: URL) => u.origin === `http://127.0.0.1:${peerPort}`,
+      allowHttp: true,
       fetch: liveFetch as never,
       maxPolls: 5,
     });

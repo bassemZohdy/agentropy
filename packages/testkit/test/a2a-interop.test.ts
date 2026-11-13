@@ -325,7 +325,11 @@ describe('A2A interop with the reference SDK (@a2a-js/sdk 1.3.0)', () => {
         json: async () => res as unknown,
       };
     };
-    const provider = new A2ACommunicationProvider({ fetch, maxPolls: 3 });
+    const provider = new A2ACommunicationProvider({
+      allowEndpoint: (u: URL) => u.origin === BASE,
+      fetch,
+      maxPolls: 3,
+    });
     const route = {
       providerId: provider.id,
       protocol: 'a2a',

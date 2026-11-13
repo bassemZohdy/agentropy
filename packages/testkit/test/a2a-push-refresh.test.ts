@@ -68,6 +68,7 @@ async function rig() {
   const wire: string[] = [];
   let down = false;
   const a2a = new A2ACommunicationProvider({
+    allowEndpoint: (u: URL) => u.origin === new URL(ENDPOINT).origin,
     credentialRef: 'peer-b',
     credentials: { resolve: async () => ({ token: 'tok-a' }) },
     maxPolls: 0,
