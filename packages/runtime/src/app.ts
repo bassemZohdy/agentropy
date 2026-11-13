@@ -360,10 +360,19 @@ export interface LocalApp {
    * and the running executions and never rejects. A tick that throws is counted (`agentropy.scheduler.errors`),
    * handed to `options.onError` and does not stop the loop (FEAT-037.1). One tick runs at a time: an interval that
    * fires while a tick is still in flight is skipped, so slow ticks never queue behind each other (FIX-050).
+   *
+   * Leases are renewed on a timer of their own, every `options.heartbeatMs` (default a third of `leaseMs`; an integer
+   * below `leaseMs`), from the start until the stop function has seen the last running execution settle. A tick held
+   * up by a slow store, policy point, peer or sink, and a shutdown that waits for long work, therefore cannot let
+   * another worker on the store recover an execution this one is still running (FIX-051). A failed heartbeat is
+   * counted and handed to `options.onError` like a failed tick.
    */
   start(
     intervalMs?: number,
-    options?: { onError?: (error: AgentropyError) => void },
+    options?: {
+      onError?: (error: AgentropyError) => void;
+      heartbeatMs?: number;
+    },
   ): () => Promise<void>;
   /** Snapshot of the loop's health: last successful tick, failures in a row, last error code. */
   schedulerStatus(): SchedulerStatus;
@@ -809,6 +818,18 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     },
     schedulerStatus: () => ({ ...scheduler }),
     start(intervalMs = 250, options = {}) {
+      const heartbeatMs =
+        options.heartbeatMs ?? Math.max(1, Math.floor(limits.leaseMs / 3));
+      if (
+        !Number.isInteger(heartbeatMs) ||
+        heartbeatMs < 1 ||
+        heartbeatMs >= limits.leaseMs
+      )
+        throw new AgentropyError(
+          'InvalidConfiguration',
+          `heartbeatMs must be an integer in [1, leaseMs=${limits.leaseMs})`,
+          { details: { field: 'heartbeatMs', value: String(heartbeatMs) } },
+        );
       let stopped = false;
       // The tick in flight, if any. An interval that finds one skips its turn: a tick slower than the interval must
       // not queue further ticks behind it (they would all run before `stop` settles) (FIX-050).
@@ -820,6 +841,18 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
       delete scheduler.lastError;
       // One tick never rejects: a failing store or a bug in one tick is reported and the next interval starts a new
       // one, instead of the rejection escaping as an unhandled rejection.
+      const failed = (err: unknown): AgentropyError => {
+        const error = toAgentropyError(err);
+        tasks.telemetry.count(METRICS.schedulerErrors, 1, {
+          'agentropy.error.code': error.code,
+        });
+        try {
+          options.onError?.(error);
+        } catch {
+          // A failing error hook must not take the loop down either.
+        }
+        return error;
+      };
       const tick = async () => {
         try {
           await wakeups.poll();
@@ -828,19 +861,26 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
           scheduler.consecutiveFailures = 0;
           delete scheduler.lastError;
         } catch (err) {
-          const error = toAgentropyError(err);
           scheduler.consecutiveFailures++;
-          scheduler.lastError = error.code;
-          tasks.telemetry.count(METRICS.schedulerErrors, 1, {
-            'agentropy.error.code': error.code,
-          });
-          try {
-            options.onError?.(error);
-          } catch {
-            // A failing error hook must not take the loop down either.
-          }
+          scheduler.lastError = failed(err).code;
         }
       };
+      // The lease heartbeat has its own timer (FIX-051): a tick may take longer than a lease (a slow sweep, drain or
+      // policy decision), and after `stop` no tick runs at all while running executions are waited for. One renewal
+      // at a time; nothing to do while the pool is empty.
+      let beating: Promise<void> | undefined;
+      const heartbeat = setInterval(() => {
+        if (beating || runtime.activeCount === 0) return;
+        beating = runtime
+          .renewLeases()
+          .then(
+            () => undefined,
+            (err: unknown) => void failed(err),
+          )
+          .finally(() => {
+            beating = undefined;
+          });
+      }, heartbeatMs);
       const timer = setInterval(() => {
         if (stopped || inFlight) return;
         inFlight = tick().finally(() => {
@@ -852,6 +892,8 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
         clearInterval(timer);
         await inFlight;
         await runtime.idle();
+        clearInterval(heartbeat);
+        await beating;
         scheduler.running = false;
       };
     },

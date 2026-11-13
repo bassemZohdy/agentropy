@@ -312,7 +312,8 @@ export class AgentRuntime {
 
   /**
    * Lease heartbeat (M2-01): extend the lease of every execution this pool is still running, so another worker
-   * sharing the store does not recover it as lost while it makes progress. Fenced by state and epoch.
+   * sharing the store does not recover it as lost while it makes progress. Fenced by state and epoch. Called by
+   * every tick and, independently of ticks, by the heartbeat timer of a started app (FIX-051).
    */
   async renewLeases(): Promise<number> {
     if (!this.running.size) return 0;
