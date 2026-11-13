@@ -22,6 +22,7 @@ import {
   bearerTokens,
   defineAgents,
   healthHandler,
+  hostRequestListener,
   schedulerStalled,
   tokenPrincipals,
   shutdownHost,
@@ -419,5 +420,73 @@ describe('container host (M3-08)', () => {
       status: 200,
       body: { status: 'ready', outboxStuck: 1 },
     });
+  });
+
+  it('a request whose handler rejects is answered 500 and never becomes an unhandled rejection (FIX-049)', async () => {
+    const answer = (headersSent: boolean) => {
+      const seen: { status?: number; body?: string; destroyed?: boolean } = {};
+      const res = {
+        headersSent,
+        writeHead: (status: number) => {
+          seen.status = status;
+          return res;
+        },
+        end: (body?: string) => {
+          if (body !== undefined) seen.body = body;
+        },
+        destroy: () => {
+          seen.destroyed = true;
+        },
+      } as unknown as ServerResponse;
+      return { res, seen };
+    };
+    const req = { method: 'GET', url: '/a2a' } as IncomingMessage;
+    const logged: string[] = [];
+    const error = vi.spyOn(console, 'error').mockImplementation((line) => {
+      logged.push(String(line));
+    });
+    try {
+      const failing = {
+        handle: async () => {
+          throw new Error('secret detail');
+        },
+        openStreams: () => 0,
+      };
+      const health = vi.fn(async () => undefined);
+      const listener = hostRequestListener(failing, health);
+      const fresh = answer(false);
+      await listener(req, fresh.res);
+      expect(fresh.seen.status).toBe(500);
+      expect(fresh.seen.body).toBe('{"error":"internal error"}');
+      // A response that already started cannot be answered again: its connection is cut.
+      const started = answer(true);
+      await listener(req, started.res);
+      expect(started.seen.status).toBeUndefined();
+      expect(started.seen.destroyed).toBe(true);
+      expect(health).not.toHaveBeenCalled();
+      // One line per failure, without the error's message.
+      expect(logged).toHaveLength(2);
+      expect(logged.join()).not.toContain('secret detail');
+      expect(JSON.parse(logged[0]!)).toMatchObject({
+        level: 'error',
+        event: 'http.request',
+      });
+      // A handler that does not serve the path leaves it to the health handler; one that does ends there.
+      const passing = hostRequestListener(
+        { handle: async () => false, openStreams: () => 0 },
+        health,
+      );
+      await passing(req, answer(false).res);
+      expect(health).toHaveBeenCalledTimes(1);
+      const served = hostRequestListener(
+        { handle: async () => true, openStreams: () => 0 },
+        health,
+      );
+      await served(req, answer(false).res);
+      await hostRequestListener(undefined, health)(req, answer(false).res);
+      expect(health).toHaveBeenCalledTimes(2);
+    } finally {
+      error.mockRestore();
+    }
   });
 });

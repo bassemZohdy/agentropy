@@ -9,7 +9,7 @@
 - [/] **FIX-049** · P0 · low · A2A HTTP handler and push receiver answer 400 for a request target that is not a valid URL, and the host contains a rejected request, instead of ending the process
   - Done when: an unauthenticated GET // gets 400, the handler promise never rejects and the next request is served; `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts packages/examples/test/host.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
-  - State: attempts 0/3; baseline 632 passing; branch todo/FIX-049-a2a-http-handler-push from main; next: read docs
+  - State: attempts 0/3; baseline 632 passing; branch todo/FIX-049-a2a-http-handler-push from main; next: drain
 - [!] **TASK-044** · P1 · low · Enable GitHub private vulnerability reporting (SECURITY.md names it as the channel)
   - Done when: `gh api repos/bassemZohdy/agentropy/private-vulnerability-reporting --jq .enabled | grep -qx true`
   - Blocked: reporting channel is off or not visible → the settings API answers HTTP 404 → owner enables it under Settings > Code security

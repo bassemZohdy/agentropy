@@ -24,7 +24,8 @@
  *
  * Endpoints: GET /healthz (process alive), GET /readyz (store answers a transaction, the scheduler loop is not
  * stalled, not shutting down); with AGENTROPY_A2A_TOKENS also POST /a2a (A2A JSON-RPC, SSE streaming) and
- * GET /.well-known/agent-card.json. A scheduler tick that fails is logged to stderr and the loop goes on.
+ * GET /.well-known/agent-card.json. A scheduler tick that fails is logged to stderr and the loop goes on. A request
+ * whose handler fails is answered 500 and logged as one JSON line (`hostRequestListener`).
  * SIGTERM (see `shutdownHost`): readiness drops, the listener closes and open connections (A2A streams) are cut, the
  * scheduler stops and running executions finish, then the store closes. An unhandled rejection is logged as one
  * JSON line and ends the process with status 1.
@@ -131,6 +132,41 @@ export function healthHandler(
       });
     }
     return send(404, { error: 'not found' });
+  };
+}
+
+/**
+ * The host's request listener (FIX-049): the A2A endpoint first, when there is one, then the health handler. A
+ * handler that rejects is contained here: the request is answered `500` without details (or its connection is cut
+ * when the response already started) and logged as one line, so no request can end the process through the
+ * unhandled-rejection handler. The returned promise never rejects.
+ */
+export function hostRequestListener(
+  a2a: A2AHttpHandler | undefined,
+  health: (req: IncomingMessage, res: ServerResponse) => Promise<void>,
+): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+  return async (req, res) => {
+    try {
+      if (a2a && (await a2a.handle(req, res))) return;
+      await health(req, res);
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          event: 'http.request',
+          error: err instanceof Error ? err.name : 'Error',
+        }),
+      );
+      try {
+        if (res.headersSent) res.destroy();
+        else {
+          res.writeHead(500, { 'content-type': 'application/json' });
+          res.end('{"error":"internal error"}');
+        }
+      } catch {
+        // The connection is already gone.
+      }
+    }
   };
 }
 
@@ -387,13 +423,8 @@ export async function main(env = process.env): Promise<void> {
       ),
   });
   const a2a = await a2aEndpoint(app, env);
-  const health = healthHandler(app, state);
-  const server = createServer((req, res) => {
-    void (async () => {
-      if (a2a && (await a2a.handle(req, res))) return;
-      await health(req, res);
-    })();
-  });
+  const listener = hostRequestListener(a2a, healthHandler(app, state));
+  const server = createServer((req, res) => void listener(req, res));
   server.listen(Number(env.PORT ?? 8080));
   const shutdown = () =>
     shutdownHost({ state, server, stop, app, flush: otel.shutdown });
