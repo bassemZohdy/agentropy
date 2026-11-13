@@ -358,7 +358,8 @@ export interface LocalApp {
   /**
    * Periodic scheduler loop for a long-running process; returns a stop function that waits for the current tick
    * and the running executions and never rejects. A tick that throws is counted (`agentropy.scheduler.errors`),
-   * handed to `options.onError` and does not stop the loop (FEAT-037.1).
+   * handed to `options.onError` and does not stop the loop (FEAT-037.1). One tick runs at a time: an interval that
+   * fires while a tick is still in flight is skipped, so slow ticks never queue behind each other (FIX-050).
    */
   start(
     intervalMs?: number,
@@ -809,14 +810,16 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     schedulerStatus: () => ({ ...scheduler }),
     start(intervalMs = 250, options = {}) {
       let stopped = false;
-      let running: Promise<void> = Promise.resolve();
+      // The tick in flight, if any. An interval that finds one skips its turn: a tick slower than the interval must
+      // not queue further ticks behind it (they would all run before `stop` settles) (FIX-050).
+      let inFlight: Promise<void> | undefined;
       scheduler.running = true;
       scheduler.startedAt = now();
       scheduler.intervalMs = intervalMs;
       scheduler.consecutiveFailures = 0;
       delete scheduler.lastError;
-      // One tick never rejects: a failing store or a bug in one tick is reported and the next tick runs, instead of
-      // the rejection poisoning the chain (every later tick skipped) and escaping as an unhandled rejection.
+      // One tick never rejects: a failing store or a bug in one tick is reported and the next interval starts a new
+      // one, instead of the rejection escaping as an unhandled rejection.
       const tick = async () => {
         try {
           await wakeups.poll();
@@ -839,13 +842,15 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
         }
       };
       const timer = setInterval(() => {
-        if (stopped) return;
-        running = running.then(tick);
+        if (stopped || inFlight) return;
+        inFlight = tick().finally(() => {
+          inFlight = undefined;
+        });
       }, intervalMs);
       return async () => {
         stopped = true;
         clearInterval(timer);
-        await running;
+        await inFlight;
         await runtime.idle();
         scheduler.running = false;
       };
