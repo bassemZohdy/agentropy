@@ -27,6 +27,7 @@
 - [ ] **FIX-054** · P1 · high · A2A provider calls only endpoints its required allow-list admits (https unless allowed), so an agent-supplied remote endpoint cannot receive the runtime's credential
   - Done when: delegation to an endpoint outside the list is PermissionDenied before any request or credential lookup, an http endpoint is refused, an admitted one works; `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
   - Links: Ref: docs/contracts/communication-v1.md
+  - State: branch todo/FIX-054-a2a-provider-calls-only from main; next: start FIX-054
 - [ ] **FIX-055** · P1 · low · Host PostgreSQL pool listens for pool error events (a dropped idle connection must not end the process) and sets connection, statement and lock timeouts
   - Done when: an error event from the pool is logged as one JSON line and the next transaction succeeds; `pnpm exec vitest run packages/testkit/test/host-postgres.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
