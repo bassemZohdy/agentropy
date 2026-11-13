@@ -27,6 +27,7 @@
 - [ ] **FIX-053** · P1 · mid · Remote delegation bounds every peer call with a timeout and abort signal and refreshes projections outside the tick's critical path
   - Done when: a peer that never answers costs one timed-out refresh (RemoteUnavailable) while the tick completes and local tasks are dispatched; `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
+  - State: branch todo/FIX-053-remote-delegation-bounds-every from main; next: start FIX-053
 - [ ] **FIX-054** · P1 · high · A2A provider calls only endpoints its required allow-list admits (https unless allowed), so an agent-supplied remote endpoint cannot receive the runtime's credential
   - Done when: delegation to an endpoint outside the list is PermissionDenied before any request or credential lookup, an http endpoint is refused, an admitted one works; `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
   - Links: Ref: docs/contracts/communication-v1.md
