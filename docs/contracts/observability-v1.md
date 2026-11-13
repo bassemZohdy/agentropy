@@ -1,4 +1,4 @@
-# Agentropy Observability Contract v1 — revision 5 (traces, metrics, propagation)
+# Agentropy Observability Contract v1 — revision 6 (traces, metrics, propagation)
 
 **Status:** Accepted for M2 implementation (2026-11-05). Resolves design follow-ups D-12, D-13 and D-14 ([design follow-ups](../plans/DESIGN-FOLLOWUPS.md)). Implemented by `Telemetry` in `@agentropy/core` and the OpenTelemetry adapter `openTelemetry()` in `@agentropy/runtime`; verified by `packages/testkit/test/telemetry.test.ts` against the OpenTelemetry SDK.
 
@@ -11,6 +11,7 @@
 | 3 | 2026-11-06 | `agentropy.scheduler.errors` counter for scheduler ticks that threw (FEAT-037.1) |
 | 4 | 2026-11-07 | `agentropy.outbox.failures` counter for failed outbox deliveries (FEAT-039.4) |
 | 5 | 2026-11-08 | `agentropy.outbox.poisoned` counter for outbox rows given up on after `poisonAfter` failed deliveries |
+| 6 | 2026-11-14 | `agentropy.scheduler.errors` also counts a wake-up poll sweep that threw (workflow poll, remote sync, human-action expiry); the poll goes on (FIX-052) |
 
 ## Port (normative)
 

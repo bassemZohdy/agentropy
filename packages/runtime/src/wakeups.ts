@@ -20,6 +20,7 @@ import {
   type WakeReason,
   METRICS,
   sanitizeTraceparent,
+  toAgentropyError,
 } from '@agentropy/core';
 import { compactStore, type CompactionResult } from './compaction.js';
 import type { StoredHumanAction } from './human-actions.js';
@@ -75,6 +76,12 @@ export interface WakeupServiceOptions {
    * the first poll) it evaluates every armed registration instead, as a backstop.
    */
   fullScanMs?: number;
+  /**
+   * Called with the failure of a sweep (FIX-052). A sweep that throws is counted as `agentropy.scheduler.errors`
+   * (code only, never the message) and handed here; the poll goes on with the remaining sweeps and then evaluates
+   * the wake-ups. A throwing hook is ignored.
+   */
+  onError?: (error: AgentropyError) => void;
 }
 
 export interface OfferResult {
@@ -96,9 +103,25 @@ export class WakeupService {
     private readonly options: WakeupServiceOptions = {},
   ) {}
 
-  /** Work run at the start of every poll, e.g. human-action expiry, so due state changes are seen by this poll. */
+  /**
+   * Work run at the start of every poll, e.g. human-action expiry, so due state changes are seen by this poll. A
+   * sweep that throws is reported (`options.onError`, `agentropy.scheduler.errors`) and does not stop the poll:
+   * an unreachable workflow engine or remote peer must not keep due timers from firing (FIX-052).
+   */
   addSweep(sweep: () => Promise<unknown>): void {
     this.sweeps.push(sweep);
+  }
+
+  private reportSweepFailure(err: unknown): void {
+    const error = toAgentropyError(err);
+    this.tasks.telemetry.count(METRICS.schedulerErrors, 1, {
+      'agentropy.error.code': error.code,
+    });
+    try {
+      this.options.onError?.(error);
+    } catch {
+      // A failing error hook must not stop the poll either.
+    }
   }
 
   private get store() {
@@ -111,7 +134,12 @@ export class WakeupService {
   /** Evaluate every armed registration once; returns how many fired. Safe to call repeatedly and concurrently. */
   async poll(options: { sweeps?: boolean } = {}): Promise<number> {
     if (options.sweeps !== false)
-      for (const sweep of this.sweeps) await sweep();
+      for (const sweep of this.sweeps)
+        try {
+          await sweep();
+        } catch (err) {
+          this.reportSweepFailure(err);
+        }
     const now = this.now();
     const at = Date.parse(now);
     const full = at - this.lastFullScan >= (this.options.fullScanMs ?? 60_000);

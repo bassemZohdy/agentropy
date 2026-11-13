@@ -436,6 +436,9 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
   const wakeups = new WakeupService(tasks, instances, {
     mailboxLimit: limits.mailboxLimit,
     maxEventBytes: limits.maxEventBytes,
+    // A failing sweep (workflow poll, remote sync, human-action expiry) goes to the same hook as other contained
+    // failures of the pool (FIX-052).
+    ...(o.runtime?.onError ? { onError: o.runtime.onError } : {}),
   });
   const inbox = new InboxService(tasks, {
     ...(o.inbox?.policy ? { policy: o.inbox.policy } : {}),

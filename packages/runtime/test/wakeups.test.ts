@@ -8,14 +8,17 @@ import {
   BuiltinCapabilityProvider,
   coreOperationHandlers,
 } from '../src/index.js';
-import type {
-  Agent,
-  AgentDisposition,
-  Store,
-  StoreTx,
-  WakeReason,
+import {
+  METRICS,
+  type Agent,
+  type AgentDisposition,
+  type Store,
+  type StoreTx,
+  type Telemetry,
+  type WakeReason,
 } from '@agentropy/core';
 import { SqliteStore } from '@agentropy/store-sqlite';
+import { createLocalApp } from '../src/app.js';
 import { describe, expect, it, vi } from 'vitest';
 import { alice, code, harness, sqliteTempStore } from './harness.js';
 
@@ -670,5 +673,112 @@ describe('event ingestion cost (FEAT-039.4)', () => {
     expect(sweeps).toBe(0); // the ingestion poll skipped the sweeps
     await h.wakeups.poll();
     expect(sweeps).toBe(1); // the scheduler's own poll still runs them
+  });
+});
+
+describe('a failing sweep (FIX-052)', () => {
+  /** A telemetry that keeps the scheduler-error counts it is given. */
+  const recorder = () => {
+    const errors: (string | number | boolean | undefined)[] = [];
+    const telemetry: Telemetry = {
+      startSpan: () => ({
+        traceparent: undefined,
+        setAttributes() {},
+        fail() {},
+        end() {},
+      }),
+      count: (name, _value, attributes) => {
+        if (name === METRICS.schedulerErrors)
+          errors.push(attributes?.['agentropy.error.code']);
+      },
+      record() {},
+    };
+    return { errors, telemetry };
+  };
+
+  const timerAgent: Agent = {
+    handle: async (inv) =>
+      inv.activation === 1
+        ? {
+            kind: 'waiting',
+            wakeup: {
+              anyOf: [{ kind: 'timer', at: '2026-11-05T01:00:00.000Z' }],
+            },
+            checkpoint: null,
+          }
+        : { kind: 'completed', output: 'woken' },
+  };
+
+  it('is reported once as a scheduler error, and the poll still fires the due timer', async () => {
+    const { errors, telemetry } = recorder();
+    const reported: string[] = [];
+    const h = harness({ builtin: true });
+    // Same wiring as createLocalApp: the service reports through the app's telemetry and error hook.
+    const wakeups = new WakeupService(
+      new TaskService({ ...h.tasks.o, telemetry }),
+      h.instances,
+      { onError: (e) => reported.push(e.code) },
+    );
+    let calls = 0;
+    wakeups.addSweep(async () => {
+      calls++;
+      throw new Error('peer down: secret detail');
+    });
+    h.define('sleeper', timerAgent);
+    const t = await h.delegate((await h.instance('sleeper')).id, {}, 'k');
+    await h.runtime.runUntilIdle();
+    expect(await status(h, t.taskId)).toBe('waiting');
+    h.clock.advanceBy(60 * 60 * 1000);
+    await expect(wakeups.poll()).resolves.toBe(1); // the timer fired although the sweep threw
+    await h.runtime.runUntilIdle();
+    expect(await h.tasks.getResult(t.taskId, alice)).toBe('woken');
+    expect(calls).toBe(1);
+    expect(errors).toEqual(['Internal']); // counted once, with the Errors v1 code and no message
+    expect(reported).toEqual(['Internal']);
+  });
+
+  it('a failing error hook does not stop the poll either, and the sweeps after the failing one still run', async () => {
+    const { telemetry } = recorder();
+    const h = harness({ builtin: true });
+    const wakeups = new WakeupService(
+      new TaskService({ ...h.tasks.o, telemetry }),
+      h.instances,
+      {
+        onError: () => {
+          throw new Error('hook failed');
+        },
+      },
+    );
+    const ran: string[] = [];
+    wakeups.addSweep(async () => {
+      ran.push('first');
+      throw new Error('boom');
+    });
+    wakeups.addSweep(async () => void ran.push('second'));
+    await expect(wakeups.poll()).resolves.toBe(0);
+    expect(ran).toEqual(['first', 'second']);
+  });
+
+  it('LocalApp: a throwing sweep is counted and handed to the runtime error hook, the tick succeeds and the loop is not stalled', async () => {
+    const { errors, telemetry } = recorder();
+    const seen: string[] = [];
+    const app = createLocalApp({
+      store: new SqliteStore({ path: ':memory:' }),
+      pdp: { decide: async () => ({ effect: 'allow' }) },
+      telemetry,
+      runtime: { onError: (e) => seen.push(e.code) },
+    });
+    app.wakeups.addSweep(async () => {
+      throw new Error('workflow engine down');
+    });
+    const stop = app.start(5, { onError: (e) => seen.push(`tick:${e.code}`) });
+    await vi.waitFor(() =>
+      expect(app.schedulerStatus().lastTickAt).toBeDefined(),
+    );
+    await stop();
+    expect(app.schedulerStatus().consecutiveFailures).toBe(0);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(new Set(errors)).toEqual(new Set(['Internal']));
+    expect(new Set(seen)).toEqual(new Set(['Internal'])); // never as a failed tick
   });
 });
