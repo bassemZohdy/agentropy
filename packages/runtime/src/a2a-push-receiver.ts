@@ -17,6 +17,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { AgentropyError } from '@agentropy/core';
+import { requestPath } from './http-path.js';
 
 /** Header the peer sends the token in (A2A 1.0 push notifications). */
 const TOKEN_HEADER = 'x-a2a-notification-token';
@@ -147,7 +148,13 @@ export function createA2APushReceiver(
   return {
     notify,
     async handle(req, res) {
-      const path = new URL(req.url ?? '/', 'http://receiver.invalid').pathname;
+      const path = requestPath(req.url);
+      // Not a valid request target: nobody's path, answered here instead of thrown at the host (FIX-049).
+      if (path === undefined) {
+        req.resume();
+        reply(res, 400);
+        return true;
+      }
       if (!path.startsWith(`${base}/`)) return false;
       let id: string;
       try {

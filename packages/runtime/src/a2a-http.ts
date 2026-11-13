@@ -6,6 +6,7 @@
  * - `GET /.well-known/agent-card.json`: the AgentCard, when one is configured.
  * - The principal comes only from `authenticate(req)` (the application's bearer, mTLS or gateway check); a request
  *   it does not authenticate is answered `401` by the server. Request bodies are bounded; open streams are bounded.
+ * - A request target that is not a valid URL (`//`) is answered `400` instead of making the handler reject (FIX-049).
  *
  * The handler returns `false` for paths it does not serve, so a host can route the rest (health probes, metrics).
  */
@@ -13,6 +14,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { TrustedPrincipal } from '@agentropy/core';
 import type { A2AHttpResponse, A2AServer } from './a2a-server.js';
 import { sseFrames } from './a2a-sse.js';
+import { requestPath } from './http-path.js';
 
 /** Well-known AgentCard path (A2A 1.0, section 8.2). */
 export const AGENT_CARD_PATH = '/.well-known/agent-card.json';
@@ -116,7 +118,12 @@ export function createA2AHttpHandler(
   return {
     openStreams: () => streams,
     async handle(req, res) {
-      const path = new URL(req.url ?? '/', 'http://localhost').pathname;
+      const path = requestPath(req.url);
+      if (path === undefined) {
+        req.resume();
+        json(res, 400, { error: 'bad request' });
+        return true;
+      }
       if (path === AGENT_CARD_PATH && o.agentCard) {
         if (req.method !== 'GET' && req.method !== 'HEAD') {
           json(res, 405, { error: 'method not allowed' }, { allow: 'GET' });

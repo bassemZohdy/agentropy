@@ -1,8 +1,15 @@
 // FEAT-034.1: the A2A HTTP binding on a real loopback socket. JSON-RPC POST, SSE streaming, the well-known
 // AgentCard, principal mapping from a bearer token, and the request-level guards (method, content type, size,
 // parse errors, stream bound). The Agentropy A2A client talks to it over real fetch as a second peer would.
-import { createServer, request, type Server } from 'node:http';
+import {
+  createServer,
+  request,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { Readable } from 'node:stream';
 import {
   BUILTIN_PROFILES,
   type AgentDefinition,
@@ -15,6 +22,7 @@ import {
   AGENT_CARD_PATH,
   agentCardForDefinition,
   createA2AHttpHandler,
+  createA2APushReceiver,
   createA2AServer,
   createLocalApp,
   localAppTarget,
@@ -415,5 +423,63 @@ describe('A2A HTTP binding hardening (TASK-035.2)', () => {
       },
     );
     expect(anon.status).toBe(401); // not 413: the oversized body was never looked at
+  });
+});
+
+describe('A2A HTTP binding: invalid request target (FIX-049)', () => {
+  /** A request and a response as the handler sees them, without a socket. */
+  const exchange = (url: string, method = 'GET') => {
+    const req = Object.assign(Readable.from([]), {
+      url,
+      method,
+      headers: {},
+    }) as unknown as IncomingMessage;
+    const seen: { status?: number; body?: string } = {};
+    const res = {
+      headersSent: false,
+      writeHead: (status: number) => {
+        seen.status = status;
+        return res;
+      },
+      end: (body?: string) => {
+        if (body !== undefined) seen.body = body;
+      },
+    } as unknown as ServerResponse;
+    return { req, res, seen };
+  };
+
+  it('a target that is not a valid URL is answered 400 by the handler, which never rejects', async () => {
+    const h = await host();
+    for (const target of ['//', '//[', 'http://[::1']) {
+      const x = exchange(target);
+      await expect(h.http.handle(x.req, x.res)).resolves.toBe(true);
+      expect(x.seen.status).toBe(400);
+    }
+    // Over a socket, unauthenticated: 400, and the endpoint goes on serving.
+    const bad = await fetch(`${h.base}//`);
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: 'bad request' });
+    expect((await fetch(`${h.base}${AGENT_CARD_PATH}`)).status).toBe(200);
+    expect(
+      (await post(h.base, rpc('GetTask', { id: 'x' }), { authorization: '' }))
+        .status,
+    ).toBe(401);
+  });
+
+  it('the push receiver answers 400 for such a target and refreshes nothing', async () => {
+    let refreshed = 0;
+    const receiver = createA2APushReceiver({
+      secret: 's'.repeat(32),
+      refresh: async () => {
+        refreshed++;
+      },
+    });
+    for (const target of ['//', '//[']) {
+      const x = exchange(target, 'POST');
+      await expect(receiver.handle(x.req, x.res)).resolves.toBe(true);
+      expect(x.seen.status).toBe(400);
+    }
+    await receiver.idle();
+    expect(refreshed).toBe(0);
   });
 });
