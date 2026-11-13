@@ -6,6 +6,10 @@
   - Done when: `gh run list --branch main --workflow ci.yml --limit 1 --json conclusion --jq '.[0].conclusion' | grep -qx success`
   - Links: Ref: .github/workflows/ci.yml
   - Blocked: jobs never start ("recent account payments have failed or your spending limit needs to be increased") → run 42526351089 failed with 0 steps on all 6 jobs → owner fixes Billing & plans in GitHub, then re-runs CI on main
+- [ ] **FIX-049** · P0 · low · A2A HTTP handler and push receiver answer 400 for a request target that is not a valid URL, and the host contains a rejected request, instead of ending the process
+  - Done when: an unauthenticated GET // gets 400, the handler promise never rejects and the next request is served; `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts packages/examples/test/host.test.ts`
+  - Links: Ref: docs/review/2026-11-13-project-review.md
+  - State: branch todo/FIX-049-a2a-http-handler-push from main; next: start FIX-049
 - [!] **TASK-044** · P1 · low · Enable GitHub private vulnerability reporting (SECURITY.md names it as the channel)
   - Done when: `gh api repos/bassemZohdy/agentropy/private-vulnerability-reporting --jq .enabled | grep -qx true`
   - Blocked: reporting channel is off or not visible → the settings API answers HTTP 404 → owner enables it under Settings > Code security
@@ -24,7 +28,92 @@
   - [ ] **TASK-043.4** · mid · Cut v0.1.0 (tag, workflow publishes packages and image), verify provenance and signature
     - Done when: `gh release view v0.1.0`
     - Links: Depends: TASK-043.1, TASK-043.2, TASK-043.3, TASK-040, TASK-044
+- [ ] **FIX-050** · P1 · mid · Scheduler loop runs one tick at a time: an interval is skipped while a tick is in flight, so slow ticks do not queue and stop() returns after the current one
+  - Done when: with a tick slower than the interval at most one tick is pending and stop settles within one tick; `pnpm exec vitest run packages/runtime/test/scheduler-loop.test.ts`
+  - Links: Ref: docs/review/2026-11-13-project-review.md
+- [ ] **FIX-051** · P1 · high · Lease heartbeat on its own timer, kept until the pool is empty (also while stop() waits), so a slow tick or shutdown cannot let another worker take a live execution
+  - Done when: a tick blocked longer than leaseMs keeps the lease and a second worker recovers nothing; a worker that really stalled is still recovered and its late result fenced; `pnpm exec vitest run packages/testkit/test/multi-worker.test.ts`
+  - Links: Ref: docs/runtime-contract.md
+- [ ] **FIX-052** · P1 · low · Wake-up poll contains a failing sweep: it is reported as a scheduler error and the poll still fires due wake-ups and the pool tick runs
+  - Done when: a sweep that throws is counted once and a due timer fires in the same poll; `pnpm exec vitest run packages/runtime/test/wakeups.test.ts`
+- [ ] **FIX-053** · P1 · mid · Remote delegation bounds every peer call with a timeout and abort signal and refreshes projections outside the tick's critical path
+  - Done when: a peer that never answers costs one timed-out refresh (RemoteUnavailable) while the tick completes and local tasks are dispatched; `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
+  - Links: Ref: docs/review/2026-11-13-project-review.md
+- [ ] **FIX-054** · P1 · high · A2A provider calls only endpoints its required allow-list admits (https unless allowed), so an agent-supplied remote endpoint cannot receive the runtime's credential
+  - Done when: delegation to an endpoint outside the list is PermissionDenied before any request or credential lookup, an http endpoint is refused, an admitted one works; `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
+  - Links: Ref: docs/contracts/communication-v1.md
+- [ ] **FIX-055** · P1 · low · Host PostgreSQL pool listens for pool error events (a dropped idle connection must not end the process) and sets connection, statement and lock timeouts
+  - Done when: an error event from the pool is logged as one JSON line and the next transaction succeeds; `pnpm exec vitest run packages/testkit/test/host-postgres.test.ts`
+  - Links: Ref: docs/review/2026-11-13-project-review.md
+- [ ] **FIX-056** · P1 · low · A completed disposition whose output cannot be serialized fails the task once with SchemaViolation instead of re-running the handler until attempts are spent
+  - Done when: a handler returning a BigInt output runs once and the task is failed SchemaViolation with no execution left running; `pnpm exec vitest run packages/runtime/test/runtime.test.ts`
+  - Links: Ref: docs/review/2026-11-13-project-review.md
+- [ ] **FIX-057** · P1 · mid · Instance directory: only a trusted service creates an instance for another owner, and create, suspend, resume, retire, drain and share pass a policy check and write an audit intent
+  - Done when: a user creating an instance with another ownerId is PermissionDenied, a denied lifecycle call changes nothing, each allowed one is in the audit log; `pnpm exec vitest run packages/testkit/test/governance.test.ts`
+  - Links: Ref: docs/contracts/agent-v1.md
+- [ ] **FIX-058** · P1 · low · Human-action sweep reads only pending and claimed requests through the status index, not every past-due request ever resolved
+  - Done when: a sweep over one open and many resolved past-due requests reads one row and still expires it; `pnpm exec vitest run packages/runtime/test/hot-paths.test.ts`
+  - Links: Ref: docs/review/2026-11-13-project-review.md
+- [ ] **FIX-059** · P1 · mid · MCP HTTP transport starts a new session when the server answers 404 for its session ID, and sends the package version in clientInfo
+  - Done when: after a 404 for the session the same call re-initializes once and succeeds, and a second 404 fails ProviderUnavailable; `pnpm exec vitest run packages/runtime/test/mcp-tools.test.ts`
+  - Links: Ref: docs/review/2026-11-13-project-review.md
+- [ ] **FIX-060** · P1 · mid · Conductor adapter binds a run to its tenant unambiguously, reports a run that no longer exists as failed NotFound, and bounds its reported set
+  - Done when: tenant a cannot read a run of tenant a:b and that run's completion is published to a:b; a deleted run is reported once; `pnpm exec vitest run packages/workflow-conductor/test/conductor.test.ts`
+  - Links: Ref: docs/review/2026-11-13-project-review.md
+- [ ] **TASK-061** · P1 · low · Each publishable package gets a README and npm metadata (keywords, homepage, bugs), required by check-pack, before the first publish
+  - Done when: check-pack fails for a package without README.md or the metadata and every tarball contains its README; `node scripts/check-pack.mjs --no-install`
+  - Links: Ref: docs/release.md
 - [!] **TASK-045** · P2 · low · Skills: list the plugin in a public marketplace; run the five skills in a second harness (TASK-039 leftover)
   - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
   - Links: Ref: docs/skills.md
   - Blocked: a public listing needs the owner's submission and a second harness needs to be run by hand → n/a (manual) → owner submits the plugin, runs the five skills in another harness and records it under "Tested in" in docs/skills.md
+- [ ] **FIX-062** · P2 · mid · A2A ListTasks pages from the newest task, so a caller with more than 10,000 visible tasks still sees the latest and a correct totalSize
+  - Done when: with the scan bound lowered in the test the newest task is on the first page and paging reaches the oldest; `pnpm exec vitest run packages/testkit/test/a2a.test.ts`
+  - Links: Ref: docs/review/2026-11-13-project-review.md
+- [ ] **FIX-063** · P2 · low · TaskService guards: fan-out counted inside the accepting transaction, Unauthenticated from getTaskByIdempotencyKey without a principal, no auto-created instance left by a refused delegation
+  - Done when: concurrent delegations cannot exceed maxFanOut, a missing principal is Unauthenticated, a denied delegation by definition leaves no instance; `pnpm exec vitest run packages/runtime/test/task-service.test.ts`
+- [ ] **FIX-064** · P2 · mid · Outbox relay and audit forwarder work within a time budget per drain call, and the relay renews its leader lease while it drains
+  - Done when: a backlog larger than the budget is spread over several drain calls in order, and a drain longer than leaseMs keeps the lease; `pnpm exec vitest run packages/runtime/test/outbox-inbox.test.ts`
+  - Links: Ref: docs/review/2026-11-13-project-review.md
+- [ ] **FIX-065** · P2 · low · TaskEventStream removes a task's listener entry when its last subscriber leaves
+  - Done when: after many subscriptions end the stream holds no listener entries; `pnpm exec vitest run packages/runtime/test/outbox-inbox.test.ts`
+- [ ] **TASK-066** · P2 · mid · Compaction reads only what is due through indexes and in batches, validates retainMs, and reports counts that survive a transaction re-run
+  - Done when: a run over already compacted tasks reads none of them, a negative or non-numeric retainMs is SchemaViolation; `pnpm exec vitest run packages/testkit/test/operations.test.ts`
+  - Links: Ref: docs/operations.md
+- [ ] **TASK-067** · P2 · high · Audit verify, export, anchor and dispose work in pages with the chain position kept in the head row, not a tenant's whole log in one transaction
+  - Done when: anchor reads a bounded number of rows, dispose removes a long prefix in bounded transactions and verify still passes; a rewritten row is still reported; `pnpm exec vitest run packages/testkit/test/audit-retention.test.ts`
+  - Links: Ref: docs/contracts/security-v1.md
+- [ ] **TASK-068** · P2 · mid · Peer replies are bounded while they are read (MCP, A2A client, federation cards, model responses), the reasoning timeout covers the body, a non-JSON A2A reply is RemoteUnavailable and remote output is capped at maxOutputBytes
+  - Done when: an over-limit reply is refused without being buffered whole and a stalled body times out; `pnpm exec vitest run packages/testkit/test/bounded-replies.test.ts`
+  - Links: Ref: docs/review/2026-11-13-project-review.md
+  - State: next: decompose
+- [ ] **TASK-069** · P2 · mid · MemoryStore rolls a failed transaction back with an undo log instead of cloning the whole store before every transaction
+  - Done when: the Store conformance suite passes and a transaction on a large store copies only the documents it touches; `pnpm exec vitest run packages/store-sqlite/test/memory-store.test.ts`
+  - Links: Ref: docs/review/2026-11-13-project-review.md
+- [ ] **FEAT-070** · P2 · high · Cancel or terminal failure of a parent propagates to its open child tasks, local and remote, as specified in a revision of Agent v1
+  - Done when: cancelling a waiting parent cancels its running child and fences the child's late result; a task of another parent is untouched; `pnpm exec vitest run packages/testkit/test/cancel-propagation.test.ts`
+  - Links: Ref: docs/contracts/agent-v1.md
+  - State: next: decompose
+- [ ] **FEAT-071** · P2 · mid · Built-in capability operations declare input schemas that are validated before the provider runs, so malformed handler input is a non-retryable SchemaViolation
+  - Done when: delegation.getTask with a null input fails SchemaViolation after one attempt and reasoning.complete refuses a non-integer maxTokens; `pnpm exec vitest run packages/runtime/test/capability-input.test.ts`
+  - Links: Ref: docs/contracts/capability-v1.md
+- [ ] **FEAT-072** · P2 · mid · Graceful shutdown hands work over: after a bounded drain the host aborts the remaining handlers and expires their leases so another replica resumes them at once
+  - Done when: an execution still running at the drain bound is aborted, its lease expired and shutdown completes; `pnpm exec vitest run packages/examples/test/host.test.ts`
+  - Links: Ref: docs/deployment.md · Depends: FIX-051
+- [ ] **FEAT-073** · P2 · mid · Host validates its numeric environment settings at start, detects the main module by path, and can run compaction on a schedule
+  - Done when: a non-numeric AGENTROPY_TICK_MS stops the start with InvalidConfiguration and a configured schedule calls compact; `pnpm exec vitest run packages/examples/test/host.test.ts`
+  - Links: Ref: docs/deployment.md
+- [ ] **FEAT-074** · P2 · high · Tool and skill lifecycle status (active, suspended, revoked) is kept in the store, so a revocation survives a restart and reaches every worker
+  - Done when: a tool revoked through one app is refused by a second app on the same store, also after both restart; an unverified tool still cannot be activated; `pnpm exec vitest run packages/testkit/test/hardening.test.ts`
+  - Links: Ref: docs/contracts/tool-v1.md
+  - State: next: decompose
+- [ ] **FEAT-075** · P2 · mid · Audit forwarding is observable: a failure metric in Observability v1 and an auditStuck count on /readyz
+  - Done when: a refusing sink is counted per attempt and /readyz reports auditStuck while it lasts; `pnpm exec vitest run packages/runtime/test/audit-forwarder.test.ts packages/examples/test/host.test.ts`
+  - Links: Ref: docs/contracts/observability-v1.md
+- [ ] **TASK-076** · P2 · mid · Kubernetes manifests get a startup probe and a PodDisruptionBudget for the PostgreSQL variant, and the kind smoke script can apply that variant
+  - Done when: check-deploy fails without the probe or the budget and passes with them; `node scripts/check-deploy.mjs`
+  - Links: Ref: docs/deployment.md
+- [ ] **TASK-077** · P2 · low · CI cancels superseded runs per ref, gives every job a timeout and runs the offline suite on Node 26 (the image's runtime)
+  - Done when: check-deploy fails for a workflow job without timeout-minutes, without the concurrency group or without the Node 26 job; `node scripts/check-deploy.mjs`
+- [ ] **TASK-078** · P2 · low · A2A HTTP binding counts a stream before awaiting it (maxStreams cannot be passed by concurrent requests) and sends WWW-Authenticate on 401
+  - Done when: concurrent streaming requests beyond maxStreams get 503 and a 401 carries the header; `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts`
