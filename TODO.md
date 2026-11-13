@@ -27,6 +27,7 @@
 - [ ] **FIX-050** · P1 · mid · Scheduler loop runs one tick at a time: an interval is skipped while a tick is in flight, so slow ticks do not queue and stop() returns after the current one
   - Done when: with a tick slower than the interval at most one tick is pending and stop settles within one tick; `pnpm exec vitest run packages/runtime/test/scheduler-loop.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
+  - State: branch todo/FIX-050-scheduler-loop-runs-one from main; next: start FIX-050
 - [ ] **FIX-051** · P1 · high · Lease heartbeat on its own timer, kept until the pool is empty (also while stop() waits), so a slow tick or shutdown cannot let another worker take a live execution
   - Done when: a tick blocked longer than leaseMs keeps the lease and a second worker recovers nothing; a worker that really stalled is still recovered and its late result fenced; `pnpm exec vitest run packages/testkit/test/multi-worker.test.ts`
   - Links: Ref: docs/runtime-contract.md
