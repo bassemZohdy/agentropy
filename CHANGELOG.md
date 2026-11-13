@@ -65,6 +65,7 @@ This project follows a human-readable changelog. Release versions will be introd
 
 ### Fixed
 
+- **FIX-050** (fix): Scheduler loop runs one tick at a time: an interval is skipped while a tick is in flight, so slow ticks do not queue and stop() returns after the current one. Ref: docs/review/2026-11-13-project-review.md. Validated: `pnpm exec vitest run packages/runtime/test/scheduler-loop.test.ts`. Notes: `LocalApp.start()` chained a tick onto a promise on every interval, so a tick slower than the interval queued ticks without bound and `stop()` ran all of them before it settled (review finding N-02); it now keeps at most one tick in flight, and a failed tick still leaves the next interval free to start one.
 - **FIX-049** (fix): A2A HTTP handler and push receiver answer 400 for a request target that is not a valid URL, and the host contains a rejected request, instead of ending the process. Ref: docs/review/2026-11-13-project-review.md. Validated: `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts packages/examples/test/host.test.ts`. Notes: an unauthenticated `GET //` made `new URL` throw before the handler's `try`, and the host's unhandled-rejection handler then exited with status 1 (review finding N-01); `createA2AHttpHandler` and `createA2APushReceiver` now answer `400` for such a target, and `hostRequestListener` answers `500` and logs one line (`event: http.request`, no message) when a handler rejects.
 
 ## Unreleased — 2026-11-04 (pre-todo-skills history)
