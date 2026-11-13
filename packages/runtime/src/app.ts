@@ -150,6 +150,8 @@ export interface LocalAppOptions {
     router: CommunicationRouter;
     /** Refresh pace of remote task projections (default 1 s after a change, doubling to 30 s when quiet). */
     sync?: RemoteSyncOptions;
+    /** Longest one call to a remote peer may take (default 30 s); longer is `RemoteUnavailable` (FIX-053). */
+    timeoutMs?: number;
   };
   /** Per-tenant quotas (M2-11): active tasks, accept rate, live instances. */
   quotas?: QuotaResolver;
@@ -457,10 +459,14 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
         tasks,
         router: o.communication.router,
         ...(o.communication.sync ? { sync: o.communication.sync } : {}),
+        ...(o.communication.timeoutMs !== undefined
+          ? { timeoutMs: o.communication.timeoutMs }
+          : {}),
       })
     : undefined;
   // Remote projections refresh before wake-ups are evaluated, so a parent waiting on a remote child wakes promptly.
-  if (remote) wakeups.addSweep(() => remote.sync());
+  // A network sweep: the scheduler loop starts it without waiting, so a slow peer cannot hold the tick (FIX-053).
+  if (remote) wakeups.addSweep(() => remote.sync(), { background: true });
   const stream = new TaskEventStream(tasks);
   const relay = new OutboxRelay({
     store,
@@ -604,12 +610,15 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     const engine = o.workflow;
     let lastPoll = -Infinity;
     if (engine.poll)
-      wakeups.addSweep(async () => {
-        const at = Date.parse(now());
-        if (at - lastPoll < (o.workflowPollMs ?? 5_000)) return;
-        lastPoll = at;
-        await engine.poll!();
-      });
+      wakeups.addSweep(
+        async () => {
+          const at = Date.parse(now());
+          if (at - lastPoll < (o.workflowPollMs ?? 5_000)) return;
+          lastPoll = at;
+          await engine.poll!();
+        },
+        { background: true },
+      );
   }
   const scheduler: SchedulerStatus = { running: false, consecutiveFailures: 0 };
   const app: LocalApp = {
@@ -858,7 +867,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
       };
       const tick = async () => {
         try {
-          await wakeups.poll();
+          await wakeups.poll({ detach: true });
           await runtime.tick();
           scheduler.lastTickAt = now();
           scheduler.consecutiveFailures = 0;
@@ -894,6 +903,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
         stopped = true;
         clearInterval(timer);
         await inFlight;
+        await wakeups.settle(); // background sweeps in flight (bounded by their own timeouts)
         await runtime.idle();
         clearInterval(heartbeat);
         await beating;

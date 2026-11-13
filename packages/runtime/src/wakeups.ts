@@ -93,8 +93,15 @@ export interface OfferResult {
   dropped: number;
 }
 
+interface Sweep {
+  run: () => Promise<unknown>;
+  /** Started without waiting by a detached poll, one at a time (FIX-053). */
+  background: boolean;
+  running?: Promise<void>;
+}
+
 export class WakeupService {
-  private readonly sweeps: (() => Promise<unknown>)[] = [];
+  private readonly sweeps: Sweep[] = [];
   private lastFullScan = -Infinity;
 
   constructor(
@@ -107,9 +114,30 @@ export class WakeupService {
    * Work run at the start of every poll, e.g. human-action expiry, so due state changes are seen by this poll. A
    * sweep that throws is reported (`options.onError`, `agentropy.scheduler.errors`) and does not stop the poll:
    * an unreachable workflow engine or remote peer must not keep due timers from firing (FIX-052).
+   *
+   * A `background` sweep is one that waits on the network (the remote projection sync, a workflow engine's poll).
+   * A poll started with `detach` (the scheduler loop) starts it without waiting for it and never runs two of the
+   * same sweep at once, so a slow peer cannot hold the tick or local dispatch; any other poll waits for it, which
+   * keeps `runUntilIdle` and direct polls deterministic (FIX-053). `settle` waits for those in flight.
    */
-  addSweep(sweep: () => Promise<unknown>): void {
-    this.sweeps.push(sweep);
+  addSweep(
+    sweep: () => Promise<unknown>,
+    options: { background?: boolean } = {},
+  ): void {
+    this.sweeps.push({ run: sweep, background: options.background === true });
+  }
+
+  /** Waits for the background sweeps a detached poll left running (the loop's stop calls it). */
+  async settle(): Promise<void> {
+    await Promise.all(this.sweeps.map((s) => s.running));
+  }
+
+  private async runSweep(s: Sweep): Promise<void> {
+    try {
+      await s.run();
+    } catch (err) {
+      this.reportSweepFailure(err);
+    }
   }
 
   private reportSweepFailure(err: unknown): void {
@@ -131,15 +159,24 @@ export class WakeupService {
     return this.tasks.o.now();
   }
 
-  /** Evaluate every armed registration once; returns how many fired. Safe to call repeatedly and concurrently. */
-  async poll(options: { sweeps?: boolean } = {}): Promise<number> {
+  /**
+   * Evaluate every armed registration once; returns how many fired. Safe to call repeatedly and concurrently. With
+   * `detach`, background sweeps are started but not waited for (see `addSweep`).
+   */
+  async poll(
+    options: { sweeps?: boolean; detach?: boolean } = {},
+  ): Promise<number> {
     if (options.sweeps !== false)
-      for (const sweep of this.sweeps)
-        try {
-          await sweep();
-        } catch (err) {
-          this.reportSweepFailure(err);
+      for (const s of this.sweeps) {
+        if (!s.background) {
+          await this.runSweep(s);
+          continue;
         }
+        s.running ??= this.runSweep(s).finally(() => {
+          s.running = undefined;
+        });
+        if (!options.detach) await s.running;
+      }
     const now = this.now();
     const at = Date.parse(now);
     const full = at - this.lastFullScan >= (this.options.fullScanMs ?? 60_000);

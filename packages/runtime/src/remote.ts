@@ -9,6 +9,10 @@
  * `delegation:delegate` policy action as local delegation (resource type `remote-agent`), and route selection
  * (tenant boundary, required guarantees). The remote call is idempotent by the delegation's idempotency key, so a
  * crash between the remote acceptance and the local projection write is repaired by retrying the same step.
+ *
+ * Every call to the peer (delegate, getTask, cancel) is bounded by `timeoutMs` (FIX-053): the provider gets an
+ * AbortSignal that fires at the limit, and a provider that ignores it is given up on all the same, so a peer that
+ * accepts the connection and never answers costs one `RemoteUnavailable` and never holds the caller.
  */
 import {
   AgentropyError,
@@ -61,6 +65,12 @@ export interface RemoteSyncOptions {
   maxMs?: number;
 }
 
+/** Longest one call to a peer may take unless configured otherwise. */
+export const DEFAULT_REMOTE_TIMEOUT_MS = 30_000;
+
+/** Projections refreshed at once by one `sync`. */
+const SYNC_CONCURRENCY = 8;
+
 type RemoteTarget = NonNullable<DelegationRequest['target']['remote']>;
 
 /** Statuses of a projection that still needs refreshing. */
@@ -72,8 +82,53 @@ export class RemoteDelegationService {
       tasks: TaskService;
       router: CommunicationRouter;
       sync?: RemoteSyncOptions;
+      /** Longest one call to a peer may take (default 30 s); a longer one fails `RemoteUnavailable` (FIX-053). */
+      timeoutMs?: number;
     },
-  ) {}
+  ) {
+    const ms = o.timeoutMs;
+    if (ms !== undefined && (!Number.isInteger(ms) || ms < 1))
+      throw new AgentropyError(
+        'InvalidConfiguration',
+        'communication.timeoutMs must be a positive integer',
+        { details: { field: 'timeoutMs', value: String(ms) } },
+      );
+  }
+
+  /**
+   * Runs one call to a peer within `timeoutMs`. The provider's context carries a signal that fires at the limit (and
+   * when the caller's own signal fires); the call is also raced against the limit, so a provider that ignores the
+   * signal cannot hold the caller. What the abandoned call does later is contained.
+   */
+  private async bounded<T>(
+    ctx: CallContext,
+    call: (ctx: CallContext) => Promise<T>,
+  ): Promise<T> {
+    const abort = new AbortController();
+    const onCallerAbort = () => abort.abort(ctx.signal?.reason);
+    if (ctx.signal?.aborted) onCallerAbort();
+    else ctx.signal?.addEventListener('abort', onCallerAbort, { once: true });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const limit = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        const timedOut = new AgentropyError(
+          'RemoteUnavailable',
+          'The remote peer did not answer in time',
+          { details: { reason: 'timeout' } },
+        );
+        abort.abort(timedOut);
+        reject(timedOut);
+      }, this.o.timeoutMs ?? DEFAULT_REMOTE_TIMEOUT_MS);
+    });
+    const running = call({ ...ctx, signal: abort.signal });
+    running.catch(() => undefined); // a call given up on may still fail later: nobody is waiting for it
+    try {
+      return await Promise.race([running, limit]);
+    } finally {
+      clearTimeout(timer);
+      ctx.signal?.removeEventListener('abort', onCallerAbort);
+    }
+  }
 
   /** Next refresh time after a poll that saw `quiet` quiet polls in a row (FEAT-039.2). */
   private due(quiet: number): string | undefined {
@@ -148,16 +203,18 @@ export class RemoteDelegationService {
     // Never forward local authority: the provider authenticates as this runtime.
     const { delegatedAuthorityRef: _g, ...withoutGrant } = caller;
     void _g;
-    const ref = await this.o.router.provider(route).delegate(
-      route,
-      {
-        target: {},
-        input: request.input,
-        idempotencyKey: request.idempotencyKey,
-        correlationId: request.correlationId,
-        ...(request.deadline ? { deadline: request.deadline } : {}),
-      },
-      { ...ctx, caller: withoutGrant },
+    const ref = await this.bounded({ ...ctx, caller: withoutGrant }, (c) =>
+      this.o.router.provider(route).delegate(
+        route,
+        {
+          target: {},
+          input: request.input,
+          idempotencyKey: request.idempotencyKey,
+          correlationId: request.correlationId,
+          ...(request.deadline ? { deadline: request.deadline } : {}),
+        },
+        c,
+      ),
     );
     const now = this.now();
     const record: RemoteTaskRecord = {
@@ -276,9 +333,10 @@ export class RemoteDelegationService {
     const r = await this.get(taskId, caller);
     if (isTerminal(TASK_MACHINE, r.status))
       throw new AgentropyError('InvalidState', `Task is ${r.status}`);
-    const state = await this.o.router
-      .provider(r.route)
-      .cancel(this.ref(r), { caller, correlationId: r.correlationId });
+    const state = await this.bounded(
+      { caller, correlationId: r.correlationId },
+      (c) => this.o.router.provider(r.route).cancel(this.ref(r), c),
+    );
     return this.snapshot(
       await this.apply(
         r.taskId,
@@ -308,8 +366,18 @@ export class RemoteDelegationService {
         return rows;
       })
     ).filter((d) => !d.value.nextSyncAt || d.value.nextSyncAt <= now);
+    // A few at a time: peers that hang each cost their own timeout, not one after the other (FIX-053).
     let changed = 0;
-    for (const doc of open) if (await this.poll(doc)) changed++;
+    let next = 0;
+    await Promise.all(
+      Array.from(
+        { length: Math.min(SYNC_CONCURRENCY, open.length) },
+        async () => {
+          for (let doc = open[next++]; doc; doc = open[next++])
+            if (await this.poll(doc)) changed++;
+        },
+      ),
+    );
     return changed;
   }
 
@@ -317,14 +385,17 @@ export class RemoteDelegationService {
   private async poll(doc: StoredDocument<RemoteTaskRecord>): Promise<boolean> {
     const r = doc.value;
     try {
-      const state = await this.o.router.provider(r.route).getTask(this.ref(r), {
-        caller: {
-          id: r.callerId,
-          type: r.callerType,
-          tenantId: r.tenantId,
+      const state = await this.bounded(
+        {
+          caller: {
+            id: r.callerId,
+            type: r.callerType,
+            tenantId: r.tenantId,
+          },
+          correlationId: r.correlationId,
         },
-        correlationId: r.correlationId,
-      });
+        (c) => this.o.router.provider(r.route).getTask(this.ref(r), c),
+      );
       const before = r.revision;
       const after = await this.apply(
         r.taskId,
