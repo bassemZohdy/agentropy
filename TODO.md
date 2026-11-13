@@ -24,10 +24,10 @@
   - [ ] **TASK-043.4** · mid · Cut v0.1.0 (tag, workflow publishes packages and image), verify provenance and signature
     - Done when: `gh release view v0.1.0`
     - Links: Depends: TASK-043.1, TASK-043.2, TASK-043.3, TASK-040, TASK-044
-- [ ] **FIX-053** · P1 · mid · Remote delegation bounds every peer call with a timeout and abort signal and refreshes projections outside the tick's critical path
+- [/] **FIX-053** · P1 · mid · Remote delegation bounds every peer call with a timeout and abort signal and refreshes projections outside the tick's critical path
   - Done when: a peer that never answers costs one timed-out refresh (RemoteUnavailable) while the tick completes and local tasks are dispatched; `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
-  - State: branch todo/FIX-053-remote-delegation-bounds-every from main; next: start FIX-053
+  - State: attempts 0/3; baseline 644 passing; branch todo/FIX-053-remote-delegation-bounds-every from main; next: read docs
 - [ ] **FIX-054** · P1 · high · A2A provider calls only endpoints its required allow-list admits (https unless allowed), so an agent-supplied remote endpoint cannot receive the runtime's credential
   - Done when: delegation to an endpoint outside the list is PermissionDenied before any request or credential lookup, an http endpoint is refused, an admitted one works; `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
   - Links: Ref: docs/contracts/communication-v1.md
