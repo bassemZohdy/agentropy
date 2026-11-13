@@ -67,9 +67,11 @@ describe('scheduler loop (FIX-050)', () => {
       pdp: new FakePolicy(),
     });
     let n = 0;
-    app.wakeups.addSweep(async () => {
-      if (++n === 1) throw new Error('first tick fails');
-    });
+    app.wakeups.addSweep(async () => void n++); // counts the ticks that start
+    // A tick fails when the pool's tick throws (a sweep that throws is contained since FIX-052 and fails nothing).
+    vi.spyOn(app.runtime, 'tick').mockRejectedValueOnce(
+      new Error('first tick fails'),
+    );
     const errors: string[] = [];
     const stop = app.start(5, { onError: (e) => errors.push(e.code) });
     await vi.waitFor(() => expect(n).toBeGreaterThanOrEqual(3));

@@ -26,7 +26,7 @@
     - Links: Depends: TASK-043.1, TASK-043.2, TASK-043.3, TASK-040, TASK-044
 - [/] **FIX-052** · P1 · low · Wake-up poll contains a failing sweep: it is reported as a scheduler error and the poll still fires due wake-ups and the pool tick runs
   - Done when: a sweep that throws is counted once and a due timer fires in the same poll; `pnpm exec vitest run packages/runtime/test/wakeups.test.ts`
-  - State: attempts 0/3; baseline 641 passing; branch todo/FIX-052-wake-up-poll-contains from main; next: read docs
+  - State: attempts 0/3; baseline 641 passing; branch todo/FIX-052-wake-up-poll-contains from main; next: drain
 - [ ] **FIX-053** · P1 · mid · Remote delegation bounds every peer call with a timeout and abort signal and refreshes projections outside the tick's critical path
   - Done when: a peer that never answers costs one timed-out refresh (RemoteUnavailable) while the tick completes and local tasks are dispatched; `pnpm exec vitest run packages/testkit/test/remote-delegation.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
