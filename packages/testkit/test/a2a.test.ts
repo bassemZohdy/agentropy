@@ -66,6 +66,7 @@ defineCommunicationConformance({ describe, it, expect }, 'a2a', () => {
   const fake = new FakeDirectTarget();
   const { fetch } = transport(createA2AServer(fake), { 'tok-a': caller });
   const provider = new A2ACommunicationProvider({
+    allowEndpoint: (u: URL) => u.origin === 'https://peer-b.example',
     fetch,
     credentialRef: 'peer-b',
     credentials: credentials('tok-a'),
@@ -155,6 +156,7 @@ describe('A2A end to end between two Agentropy runtimes', () => {
     const server = createA2AServer(localAppTarget(b), { instanceId: inst.id });
     const { fetch, seen } = transport(server, { 'tok-a': caller });
     const a2a = new A2ACommunicationProvider({
+      allowEndpoint: (u: URL) => u.origin === 'https://b.example',
       fetch,
       credentialRef: 'peer-b',
       credentials: credentials('tok-a'),
@@ -255,6 +257,7 @@ describe('A2A end to end between two Agentropy runtimes', () => {
     );
     expect(anonymous.status).toBe(401);
     const noCred = new A2ACommunicationProvider({
+      allowEndpoint: (u: URL) => u.origin === 'https://b.example',
       fetch: transport(p.server, {}).fetch,
     });
     expect(
@@ -639,6 +642,7 @@ describe('A2A 1.0: ListTasks, task continuation and file parts (FEAT-034.4)', ()
 
 describe('peers cannot claim local authority loss (FEAT-038.4)', () => {
   const rpc = (error: unknown) => ({
+    allowEndpoint: (u: URL) => u.origin === 'https://b',
     fetch: async () => ({ status: 200, json: async () => ({ error }) }),
   });
   const ctx = { caller, correlationId: 'c' };
@@ -673,6 +677,7 @@ describe('peers cannot claim local authority loss (FEAT-038.4)', () => {
 
   it('an unreadable acknowledgement is RemoteUnavailable, not a SyntaxError', async () => {
     const p = new A2ACommunicationProvider({
+      allowEndpoint: (u: URL) => u.origin === 'https://b',
       fetch: async () => ({
         status: 200,
         json: async () => ({
@@ -706,6 +711,7 @@ describe('Agentropy envelopes reach a LocalApp endpoint (FEAT-038.4)', () => {
     const server = createA2AServer(localAppTarget(app));
     const { fetch } = transport(server, { tok: caller });
     const provider = new A2ACommunicationProvider({
+      allowEndpoint: (u: URL) => u.origin === 'https://b',
       fetch,
       credentialRef: 'b',
       credentials: credentials('tok'),

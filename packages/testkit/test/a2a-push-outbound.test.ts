@@ -100,6 +100,7 @@ async function rig(o: { peerPush?: boolean; minIntervalMs?: number } = {}) {
         }),
   });
   const a2a = new A2ACommunicationProvider({
+    allowEndpoint: (u: URL) => u.origin === new URL(ENDPOINT).origin,
     credentialRef: 'peer-b',
     credentials: { resolve: async () => ({ token: 'tok-a' }) },
     maxPolls: 0,
@@ -206,7 +207,7 @@ describe('outbound push configuration (FEAT-048.3)', () => {
     const bad =
       (push: { publicUrl: string; secret: string; allowHttp?: boolean }) =>
       () =>
-        new A2ACommunicationProvider({ push });
+        new A2ACommunicationProvider({ allowEndpoint: () => false, push });
     expect(bad({ publicUrl: 'http://a.example', secret: SECRET })).toThrow(
       /https/,
     );
@@ -220,6 +221,7 @@ describe('outbound push configuration (FEAT-048.3)', () => {
     expect(bad({ publicUrl: 'not a url', secret: SECRET })).toThrow();
     expect(
       new A2ACommunicationProvider({
+        allowEndpoint: () => false,
         push: {
           publicUrl: 'http://127.0.0.1:1',
           secret: SECRET,
@@ -227,9 +229,10 @@ describe('outbound push configuration (FEAT-048.3)', () => {
         },
       }).features.pushNotifications,
     ).toBe(true);
-    expect(new A2ACommunicationProvider().features.pushNotifications).toBe(
-      false,
-    );
+    expect(
+      new A2ACommunicationProvider({ allowEndpoint: () => false }).features
+        .pushNotifications,
+    ).toBe(false);
   });
 
   it('tokens are per task and per secret, and url-safe', () => {

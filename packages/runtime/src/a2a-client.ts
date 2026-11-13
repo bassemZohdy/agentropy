@@ -1,6 +1,10 @@
 /**
  * A2A client (outbound): `A2ACommunicationProvider` implements the Communication SPI for targets with an
  * `endpoint`, and `a2aAgentCard` builds the AgentCard a server publishes.
+ *
+ * The provider calls only endpoints its `allowEndpoint` list admits (FIX-054): a delegation target can name any
+ * address (a handler supplies it), and the call carries this runtime's credential, so an address outside the list
+ * is refused with `PermissionDenied` before the credential is looked up and before any request is made.
  */
 import { a2aPushToken } from './a2a-push-receiver.js';
 import {
@@ -50,6 +54,8 @@ type FetchLike = (
     headers: Record<string, string>;
     body: string;
     signal?: AbortSignal;
+    /** Always `manual`: a redirect is never followed to an endpoint the list did not admit (FIX-054). */
+    redirect: 'manual';
   },
 ) => Promise<FetchResponse>;
 
@@ -62,6 +68,14 @@ interface A2AStreamResponse {
 }
 
 export interface A2AProviderOptions {
+  /**
+   * Required (FIX-054): which endpoints this provider may call. Match exact origins, and never admit internal
+   * addresses an agent could name (the list is the deployment's SSRF guard, as `push.allowUrl` is for webhooks). A
+   * predicate that throws denies. Where an admitted name resolves (DNS rebinding) is the deployment's concern.
+   */
+  allowEndpoint: (url: URL) => boolean;
+  /** Admit `http:` endpoints (default false: `https:` only). URLs with embedded credentials are always refused. */
+  allowHttp?: boolean;
   fetch?: FetchLike;
   /** Credential for this runtime's identity at the peer (resolved per call, sent as a Bearer token). */
   credentialRef?: string;
@@ -134,7 +148,15 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
   private seq = 0;
   private readonly pushUrl: string | undefined;
 
-  constructor(private readonly o: A2AProviderOptions = {}) {
+  constructor(private readonly o: A2AProviderOptions) {
+    // Enforced at run time too: a plain JavaScript caller, or a test that is not type checked, must not get a
+    // provider that calls any address.
+    if (typeof o?.allowEndpoint !== 'function')
+      throw new AgentropyError(
+        'InvalidConfiguration',
+        'A2ACommunicationProvider needs allowEndpoint, the list of endpoints it may call',
+        { details: { field: 'allowEndpoint' } },
+      );
     this.pushUrl = o.push ? pushBase(o.push) : undefined;
     this.features = {
       operations: ['delegate', 'send', 'getTask', 'cancel', 'subscribe'],
@@ -148,6 +170,39 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
 
   supports(target: AgentRef, operation: CommunicationOperation): boolean {
     return !!target.endpoint && this.features.operations.includes(operation);
+  }
+
+  /**
+   * The endpoint as a URL the list admits, or `PermissionDenied` (`details.reason: "endpoint"`). The address came from
+   * an agent or a registry, so it is not echoed into the error. Every outbound request goes through here.
+   */
+  private admit(endpoint: string): URL {
+    const denied = () =>
+      new AgentropyError(
+        'PermissionDenied',
+        'The remote endpoint is not allowed',
+        {
+          details: { reason: 'endpoint' },
+        },
+      );
+    let url: URL;
+    try {
+      url = new URL(endpoint);
+    } catch {
+      throw denied();
+    }
+    const scheme =
+      url.protocol === 'https:' ||
+      (url.protocol === 'http:' && this.o.allowHttp === true);
+    if (!scheme || url.username || url.password) throw denied();
+    let admitted: boolean;
+    try {
+      admitted = this.o.allowEndpoint(new URL(url.href)) === true;
+    } catch {
+      admitted = false; // a list that cannot answer admits nothing
+    }
+    if (!admitted) throw denied();
+    return url;
   }
 
   private async call<T>(
@@ -167,6 +222,8 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
     ctx: CallContext,
     accept = 'application/json',
   ): Promise<FetchResponse> {
+    // Before anything else: no credential lookup and no request for an endpoint the list does not admit.
+    const url = this.admit(endpoint);
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       accept,
@@ -198,7 +255,7 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
       res = await (
         this.o.fetch ??
         ((u, i) => fetch(u, i) as unknown as Promise<FetchResponse>)
-      )(endpoint, {
+      )(url.href, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -208,6 +265,7 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
           params,
         }),
         ...(ctx.signal ? { signal: ctx.signal } : {}),
+        redirect: 'manual',
       });
     } catch (err) {
       if (isAgentropyError(err)) throw err;
@@ -216,10 +274,21 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
       });
     }
     // An error reply's body is never read: release its connection (a real fetch Response holds it until read).
-    if (res.status === 401 || res.status === 403 || res.status >= 500)
+    const redirected = res.status >= 300 && res.status < 400;
+    if (
+      res.status === 401 ||
+      res.status === 403 ||
+      res.status >= 500 ||
+      redirected
+    )
       void (res.body as { cancel?: () => Promise<unknown> } | null | undefined)
         ?.cancel?.()
         ?.catch(() => undefined);
+    // The endpoint was admitted, the place it points to may not be: a redirect is not followed (FIX-054).
+    if (redirected)
+      throw new AgentropyError('RemoteUnavailable', 'A2A peer redirected', {
+        details: { status: res.status },
+      });
     if (res.status === 401 || res.status === 403)
       throw new AgentropyError(
         'AuthorityExpired',

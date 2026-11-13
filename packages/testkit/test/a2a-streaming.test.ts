@@ -378,6 +378,7 @@ describe('A2A streaming, outbound', () => {
     const p = await peer();
     const t = sseTransport(p.server, { 'tok-a': caller }, o);
     const a2a = new A2ACommunicationProvider({
+      allowEndpoint: (u: URL) => u.origin === new URL(target.endpoint!).origin,
       fetch: t.fetch,
       credentialRef: 'peer-b',
       credentials,
@@ -464,6 +465,7 @@ describe('A2A streaming, outbound', () => {
   it('rejects oversized SSE events', async () => {
     const huge = 'x'.repeat((1 << 20) + 10);
     const a2a = new A2ACommunicationProvider({
+      allowEndpoint: (u: URL) => u.origin === new URL(target.endpoint!).origin,
       streaming: true,
       fetch: async () => ({
         status: 200,
@@ -492,6 +494,7 @@ defineCommunicationConformance(
     const fake = new FakeDirectTarget();
     const { fetch } = sseTransport(createA2AServer(fake), { 'tok-a': caller });
     const provider = new A2ACommunicationProvider({
+      allowEndpoint: (u: URL) => u.origin === new URL(target.endpoint!).origin,
       fetch,
       credentialRef: 'peer-b',
       credentials,

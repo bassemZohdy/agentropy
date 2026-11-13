@@ -250,6 +250,7 @@ describe('discover, then delegate (M3-09 end to end)', () => {
     const router = new DefaultCommunicationRouter();
     router.register(
       new A2ACommunicationProvider({
+        allowEndpoint: (u: URL) => u.origin === new URL(ENDPOINT).origin,
         credentialRef: 'peer-b',
         credentials: { resolve: async () => ({ token: 'tok-a' }) },
         maxPolls: 0,
