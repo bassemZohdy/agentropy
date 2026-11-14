@@ -31,6 +31,7 @@
 - [ ] **FEAT-071** · P2 · mid · Built-in capability operations declare input schemas that are validated before the provider runs, so malformed handler input is a non-retryable SchemaViolation
   - Done when: delegation.getTask with a null input fails SchemaViolation after one attempt and reasoning.complete refuses a non-integer maxTokens; `pnpm exec vitest run packages/runtime/test/capability-input.test.ts`
   - Links: Ref: docs/contracts/capability-v1.md
+  - State: branch todo/FEAT-071-builtin-capability-operations-declare-input from main; next: start FEAT-071
 - [ ] **FEAT-072** · P2 · mid · Graceful shutdown hands work over: after a bounded drain the host aborts the remaining handlers and expires their leases so another replica resumes them at once
   - Done when: an execution still running at the drain bound is aborted, its lease expired and shutdown completes; `pnpm exec vitest run packages/examples/test/host.test.ts`
   - Links: Ref: docs/deployment.md · Depends: FIX-051
