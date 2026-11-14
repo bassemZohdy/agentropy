@@ -426,3 +426,82 @@ describe('skill registration bounds (FEAT-041.3)', () => {
     ).toBe('SchemaViolation');
   });
 });
+
+describe('skill status lives in the store (FEAT-074)', () => {
+  /** One process: its own registry over the shared store. */
+  const process_ = (store: ReturnType<typeof sqliteTempStore>) => {
+    const pdp: PolicyDecisionPoint = {
+      decide: async () => ({ effect: 'allow' }),
+    };
+    const registry = new InMemorySkillRegistry(
+      { pdp, audit: { record: async () => undefined }, now: () => 'now' },
+      (_m, publisher) => publisher === 'acme',
+      { store },
+    );
+    return {
+      registry,
+      loader: new FileSystemSkillLoader(registry),
+      register: () =>
+        registry.register(
+          join(fixtures, 'pdf-processing'),
+          { version: '1.0.0', publisher: 'acme' },
+          admin,
+        ),
+    };
+  };
+
+  it('FEAT-074: a skill revoked through one app is refused by a second app on the same store, also after both restart', async () => {
+    const store = sqliteTempStore();
+    const a = process_(store);
+    const b = process_(store);
+    const rec = await a.register();
+    const ref = { id: rec.id, version: '1.0.0' };
+    await a.registry.activate(ref, admin);
+    expect((await b.register()).status).toBe('active');
+    const pin: SkillPin = { ...ref, digest: rec.digest };
+    expect((await b.loader.metadata(pin)).name).toBeDefined();
+    await a.registry.revoke(ref, admin);
+    expect(await code(b.loader.metadata(pin))).toBe('PermissionDenied');
+    expect(await b.registry.discover({}, admin)).toEqual([]);
+
+    const a2 = process_(store);
+    expect((await a2.register()).status).toBe('revoked');
+    expect(await code(a2.registry.activate(ref, admin))).toBe('InvalidState');
+    expect(await code(a2.loader.metadata(pin))).toBe('PermissionDenied');
+    // A second revoke says so, from any worker.
+    expect(await code(b.registry.revoke(ref, admin))).toBe('InvalidState');
+  });
+
+  it('FEAT-074: an unverified skill is not made active by a stored row', async () => {
+    const store = sqliteTempStore();
+    const bad = new InMemorySkillRegistry(
+      {
+        pdp: { decide: async () => ({ effect: 'allow' }) },
+        audit: { record: async () => undefined },
+        now: () => 'now',
+      },
+      () => false,
+      { store },
+    );
+    const rec = await bad.register(
+      join(fixtures, 'pdf-processing'),
+      { version: '1.0.0', publisher: 'someone' },
+      admin,
+    );
+    expect(
+      await code(bad.activate({ id: rec.id, version: '1.0.0' }, admin)),
+    ).toBe('PermissionDenied');
+    await store.transaction((tx) =>
+      tx.insert('lifecycle', `skill:${rec.id}@1.0.0`, {
+        kind: 'skill',
+        id: rec.id,
+        version: '1.0.0',
+        status: 'active',
+        digest: rec.digest,
+      }),
+    );
+    expect(
+      (await bad.refreshed({ id: rec.id, version: '1.0.0' }))?.status,
+    ).toBe('registered');
+  });
+});

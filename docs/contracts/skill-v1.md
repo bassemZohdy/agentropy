@@ -1,4 +1,4 @@
-# Agentropy Skill Contract v1 — revision 1
+# Agentropy Skill Contract v1 — revision 2
 
 **Status:** Accepted for M1 implementation (2026-11-05) of registry, metadata-first loading and resolution. Script execution is **not** supported in v1 (`UnsupportedOperation`).
 **Decision:** [ADR-0026](../adr/0026-protocol-agnostic-tool-integration.md#agent-skills-standard-alignment-accepted-2026-11-05). **Format:** [Agent Skills specification](https://agentskills.io/specification), validated against the published text of 2026-11-05 (the specification carries no version identifier; Agentropy records `specVersion: "agentskills-2026-11-05"`). **Errors:** [Errors v1](errors-v1.md).
@@ -8,6 +8,7 @@
 | Rev | Date | Change |
 |---|---|---|
 | 1 | 2026-11-05 | `SkillRecord`, `SkillPin`, `SkillRegistry`, `SkillLoader`, `SkillAccess`, resolution and loading rules |
+| 2 | 2026-11-14 | FEAT-074 (review N-26): the status an operator sets (activate, revoke) is kept in the store when the registry is given one (`new InMemorySkillRegistry(security, verify, { store })`), one row per version in the `lifecycle` collection, so a revoke or suspend reaches every worker on the store at once and survives a restart: the executor (and skill loader) act on the stored status, not on the process's memory; `register` after a restart adopts it (a suspended or revoked version comes back as such) and returns the effective record, so a bootstrap activates only a `registered` version; `revoked` is final; a row names the content digest it was set for and never applies to different content; a stored `active` does not make unverified content usable |
 
 ## Boundaries
 

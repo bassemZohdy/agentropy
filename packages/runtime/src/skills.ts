@@ -20,9 +20,19 @@ import {
   type SkillPin,
   type SkillRecord,
   type SkillRequirements,
+  type Store,
   type TrustedPrincipal,
   type VersionedRef,
 } from '@agentropy/core';
+import {
+  conflicts,
+  effectiveStatus,
+  lifecycleKey,
+  moveLifecycle,
+  readLifecycle,
+  readLifecycles,
+  type LifecycleRow,
+} from './lifecycle.js';
 import semver from 'semver';
 import { parse as parseYaml } from 'yaml';
 import { recordAudit, type SecurityServices } from './tools.js';
@@ -140,6 +150,11 @@ export class InMemorySkillRegistry {
       metadata: SkillMetadata,
       publisher: string,
     ) => boolean,
+    /**
+     * With a `store`, activation and revocation are kept there (FEAT-074): another worker refuses a revoked skill at
+     * once, and `register` after a restart adopts the stored status; `revoked` is final.
+     */
+    private readonly options: { store?: Store } = {},
   ) {}
 
   private async guard(
@@ -215,13 +230,30 @@ export class InMemorySkillRegistry {
     const existing = this.entries.get(key);
     if (existing) {
       if (existing.record.digest === digest)
-        return structuredClone(existing.record);
+        return (
+          (await this.refreshed({ id, version: opts.version })) ??
+          structuredClone(existing.record)
+        );
       throw new AgentropyError(
         'InvalidConfiguration',
         `${key} is already registered with different content`,
         { details: { reason: 'immutable', id } },
       );
     }
+    const row = this.options.store
+      ? (
+          await readLifecycle(this.options.store, 'skill', {
+            id,
+            version: opts.version,
+          })
+        )?.value
+      : undefined;
+    if (conflicts(row, digest))
+      throw new AgentropyError(
+        'InvalidConfiguration',
+        `${key} is already registered with different content`,
+        { details: { reason: 'immutable', id } },
+      );
     await this.guard(admin, 'register', id);
     const record: SkillRecord = {
       id,
@@ -239,8 +271,35 @@ export class InMemorySkillRegistry {
       status: 'registered',
       revision: 1,
     };
+    record.status = effectiveStatus(
+      'registered',
+      row,
+      digest,
+      record.provenance.verified,
+    ) as SkillRecord['status'];
     this.entries.set(key, { record, root });
     return structuredClone(record);
+  }
+
+  /** The record with the status the store has (this process's own when it has no store). */
+  async refreshed(ref: VersionedRef): Promise<SkillRecord | undefined> {
+    const e = this.entries.get(`${ref.id}@${ref.version}`);
+    if (!e) return undefined;
+    if (this.options.store) {
+      const row = (await readLifecycle(this.options.store, 'skill', ref))
+        ?.value;
+      const status = effectiveStatus(
+        e.record.status,
+        row,
+        e.record.digest,
+        e.record.provenance.verified,
+      ) as SkillRecord['status'];
+      if (status !== e.record.status) {
+        e.record.status = status;
+        e.record.revision += 1;
+      }
+    }
+    return structuredClone(e.record);
   }
 
   async activate(
@@ -254,13 +313,23 @@ export class InMemorySkillRegistry {
         'Unverified skills cannot be activated',
         { details: { reason: 'unverified' } },
       );
-    if (e.record.status !== 'registered')
+    const known = (await this.refreshed(ref))!.status;
+    if (known !== 'registered')
       throw new AgentropyError(
         'InvalidState',
-        `Cannot activate a ${e.record.status} skill`,
-        { details: { status: e.record.status } },
+        `Cannot activate a ${known} skill`,
+        { details: { status: known } },
       );
     await this.guard(admin, 'activate', ref.id);
+    if (this.options.store)
+      await moveLifecycle(this.options.store, 'skill', ref, {
+        from: ['registered'],
+        to: 'active',
+        local: e.record.status,
+        digest: e.record.digest,
+        by: admin.id,
+        at: this.security.now(),
+      });
     e.record.status = 'active';
     e.record.revision += 1;
     return structuredClone(e.record);
@@ -271,11 +340,20 @@ export class InMemorySkillRegistry {
     admin: TrustedPrincipal,
   ): Promise<SkillRecord> {
     const e = this.require(ref);
-    if (e.record.status === 'revoked')
+    if ((await this.refreshed(ref))!.status === 'revoked')
       throw new AgentropyError('InvalidState', 'Skill already revoked', {
         details: { status: 'revoked' },
       });
     await this.guard(admin, 'revoke', ref.id);
+    if (this.options.store)
+      await moveLifecycle(this.options.store, 'skill', ref, {
+        from: ['registered', 'active'],
+        to: 'revoked',
+        local: e.record.status,
+        digest: e.record.digest,
+        by: admin.id,
+        at: this.security.now(),
+      });
     e.record.status = 'revoked';
     e.record.revision += 1;
     return structuredClone(e.record);
@@ -299,9 +377,20 @@ export class InMemorySkillRegistry {
   ): Promise<Pick<SkillRecord, 'id' | 'version' | 'metadata'>[]> {
     void caller;
     const text = query.text?.toLowerCase();
+    const rows = this.options.store
+      ? await readLifecycles(this.options.store, 'skill')
+      : new Map<string, LifecycleRow>();
     return [...this.entries.values()]
       .map((e) => e.record)
-      .filter((r) => r.status !== 'revoked')
+      .filter(
+        (r) =>
+          effectiveStatus(
+            r.status,
+            rows.get(lifecycleKey('skill', r)),
+            r.digest,
+            r.provenance.verified,
+          ) !== 'revoked',
+      )
       .filter((r) =>
         text
           ? `${r.metadata.name} ${r.metadata.description}`
@@ -321,8 +410,9 @@ export class InMemorySkillRegistry {
   }
 
   /** Internal: root directory of a pinned, non-revoked skill. */
-  rootFor(pin: SkillPin): { record: SkillRecord; root: string } {
+  async rootFor(pin: SkillPin): Promise<{ record: SkillRecord; root: string }> {
     const e = this.require(pin);
+    await this.refreshed(pin); // revoked on another worker counts
     if (e.record.status === 'revoked')
       throw new AgentropyError(
         'PermissionDenied',
@@ -355,7 +445,7 @@ export class FileSystemSkillLoader implements SkillLoader {
   constructor(private readonly registry: InMemorySkillRegistry) {}
 
   async metadata(pin: SkillPin): Promise<SkillMetadata> {
-    return structuredClone(this.registry.rootFor(pin).record.metadata);
+    return structuredClone((await this.registry.rootFor(pin)).record.metadata);
   }
 
   async instructions(pin: SkillPin): Promise<string> {
@@ -398,7 +488,7 @@ export class FileSystemSkillLoader implements SkillLoader {
   }
 
   private async verified(pin: SkillPin) {
-    const resolved = this.registry.rootFor(pin);
+    const resolved = await this.registry.rootFor(pin);
     const { digest } = await digestSkillDirectory(resolved.root);
     if (digest !== pin.digest)
       throw new AgentropyError(

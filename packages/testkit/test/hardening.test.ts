@@ -20,6 +20,11 @@ import {
 } from '../../runtime/src/index.js';
 import { code, sqliteTempStore } from '../../runtime/test/harness.js';
 import { FakeAudit, FakeClock, FakePolicy } from '../src/index.js';
+import {
+  DefaultToolExecutor,
+  InMemoryToolRegistry,
+  ToolProviderRegistry,
+} from '../../runtime/src/index.js';
 import * as api from '@opentelemetry/api';
 import {
   BasicTracerProvider,
@@ -481,5 +486,137 @@ describe('payload size limits (FEAT-040.2)', () => {
       'failed',
       'SchemaViolation',
     ]);
+  });
+});
+
+describe('tool lifecycle status lives in the store (FEAT-074)', () => {
+  const alice: TrustedPrincipal = {
+    id: 'alice',
+    type: 'user',
+    tenantId: 't-1',
+  };
+  const tool = {
+    id: 'bank.transfer',
+    version: '1.0.0',
+    description: 'transfer',
+    inputSchema: true as const,
+    effect: 'external' as const,
+    idempotency: 'at-least-once' as const,
+    permission: 'tool:bank.transfer:call',
+  };
+  const bindings = [
+    {
+      bindingId: 'direct',
+      toolId: tool.id,
+      toolVersion: tool.version,
+      providerId: 'direct',
+      providerVersion: '1.0.0',
+      config: { function: 'transfer' },
+      default: true,
+    },
+  ];
+  const ref = { id: tool.id, version: tool.version };
+
+  /** One process: its own registry and executor over the shared store. */
+  function process_(store: ReturnType<typeof sqliteTempStore>, trusted = true) {
+    const pdp = new FakePolicy();
+    const audit = new FakeAudit();
+    const security = { pdp, audit, now: () => '2026-11-14T00:00:00.000Z' };
+    const registry = new InMemoryToolRegistry(security, () => trusted, {
+      store,
+    });
+    const providers = new ToolProviderRegistry();
+    const executor = new DefaultToolExecutor({
+      ...security,
+      registry,
+      providers,
+    });
+    const register = () =>
+      registry.register(
+        tool,
+        bindings,
+        { publisher: 'acme', source: 'test' },
+        alice,
+      );
+    const call = async () => {
+      const rec = registry.get(ref)!;
+      return code(
+        executor.invoke(
+          {
+            toolId: tool.id,
+            toolVersion: tool.version,
+            bindingId: 'direct',
+            providerId: 'direct',
+            providerVersion: '1.0.0',
+            digest: rec.provenance.digest,
+          },
+          {},
+          {} as never,
+        ),
+      );
+    };
+    return { registry, register, call };
+  }
+
+  it('FEAT-074: a tool revoked through one app is refused by a second app on the same store, also after both restart', async () => {
+    const store = sqliteTempStore();
+    const a = process_(store);
+    const b = process_(store);
+    await a.register();
+    await a.registry.activate(ref, alice);
+    // The second process starts later and finds the tool as the first left it.
+    expect((await b.register()).status).toBe('active');
+    await a.registry.revoke(ref, alice);
+    // Its own record is stale, but the status it acts on comes from the store.
+    expect(await b.call()).toBe('PermissionDenied');
+    expect((await b.registry.refreshed(ref))?.status).toBe('revoked');
+    expect(await b.registry.discover({}, alice)).toEqual([]);
+
+    // Both restart: a bootstrap registers and activates again, and gets nowhere.
+    const a2 = process_(store);
+    const b2 = process_(store);
+    expect((await a2.register()).status).toBe('revoked');
+    expect(await code(a2.registry.activate(ref, alice))).toBe('InvalidState');
+    expect(await code(b2.registry.activate(ref, alice))).toBe('NotFound');
+    expect(await a2.call()).toBe('PermissionDenied');
+    expect((await b2.register()).status).toBe('revoked');
+    expect(await b2.call()).toBe('PermissionDenied');
+  });
+
+  it('FEAT-074: a suspension reaches another worker and survives a restart; resuming is explicit', async () => {
+    const store = sqliteTempStore();
+    const a = process_(store);
+    const b = process_(store);
+    await a.register();
+    await a.registry.activate(ref, alice);
+    await b.register();
+    await a.registry.suspend(ref, alice);
+    expect(await b.call()).toBe('PermissionDenied');
+    const restarted = process_(store);
+    expect((await restarted.register()).status).toBe('suspended');
+    await restarted.registry.activate(ref, alice); // an operator resumes it
+    const other = process_(store);
+    expect((await other.register()).status).toBe('active');
+  });
+
+  it('FEAT-074: an unverified tool still cannot be activated, whatever the store says', async () => {
+    const store = sqliteTempStore();
+    const untrusted = process_(store, false);
+    await untrusted.register();
+    expect(await code(untrusted.registry.activate(ref, alice))).toBe(
+      'PermissionDenied',
+    );
+    // A row written for it by someone with store access does not make it usable.
+    await store.transaction((tx) =>
+      tx.insert('lifecycle', `tool:${ref.id}@${ref.version}`, {
+        kind: 'tool',
+        id: ref.id,
+        version: ref.version,
+        status: 'active',
+      }),
+    );
+    const again = process_(store, false);
+    expect((await again.register()).status).toBe('registered');
+    expect(await again.call()).toBe('PermissionDenied');
   });
 });
