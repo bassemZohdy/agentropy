@@ -31,6 +31,7 @@
 - [ ] **TASK-069** · P2 · mid · MemoryStore rolls a failed transaction back with an undo log instead of cloning the whole store before every transaction
   - Done when: the Store conformance suite passes and a transaction on a large store copies only the documents it touches; `pnpm exec vitest run packages/store-sqlite/test/memory-store.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
+  - State: branch todo/TASK-069-memorystore-rolls-failed-transaction from main; next: start TASK-069
 - [ ] **FEAT-070** · P2 · high · Cancel or terminal failure of a parent propagates to its open child tasks, local and remote, as specified in a revision of Agent v1
   - Done when: cancelling a waiting parent cancels its running child and fences the child's late result; a task of another parent is untouched; `pnpm exec vitest run packages/testkit/test/cancel-propagation.test.ts`
   - Links: Ref: docs/contracts/agent-v1.md
