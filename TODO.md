@@ -27,6 +27,7 @@
 - [ ] **FIX-055** · P1 · low · Host PostgreSQL pool listens for pool error events (a dropped idle connection must not end the process) and sets connection, statement and lock timeouts
   - Done when: an error event from the pool is logged as one JSON line and the next transaction succeeds; `pnpm exec vitest run packages/testkit/test/host-postgres.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
+  - State: branch todo/FIX-055-host-postgresql-pool-listens from main; next: start FIX-055
 - [ ] **FIX-056** · P1 · low · A completed disposition whose output cannot be serialized fails the task once with SchemaViolation instead of re-running the handler until attempts are spent
   - Done when: a handler returning a BigInt output runs once and the task is failed SchemaViolation with no execution left running; `pnpm exec vitest run packages/runtime/test/runtime.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
