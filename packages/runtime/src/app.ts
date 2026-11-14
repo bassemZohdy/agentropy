@@ -468,6 +468,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
         ...(o.communication.timeoutMs !== undefined
           ? { timeoutMs: o.communication.timeoutMs }
           : {}),
+        maxOutputBytes: limits.maxOutputBytes,
       })
     : undefined;
   // Remote projections refresh before wake-ups are evaluated, so a parent waiting on a remote child wakes promptly.

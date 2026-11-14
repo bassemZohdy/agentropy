@@ -22,6 +22,7 @@ import {
   type ReasoningResult,
   type ReasoningToolSpec,
 } from '@agentropy/core';
+import { ReplyTooLarge, readBoundedJson } from './bounded-body.js';
 import type { TaskRecord, TaskService } from './task-service.js';
 import type { InMemoryToolRegistry } from './tools.js';
 
@@ -255,6 +256,8 @@ type FetchLike = (
 ) => Promise<{
   status: number;
   json(): Promise<unknown>;
+  text?(): Promise<string>;
+  headers?: { get(name: string): string | null };
   body?: { cancel(): Promise<unknown> } | null;
 }>;
 
@@ -266,7 +269,10 @@ export function openAICompatibleReasoning(o: {
   credentialRef?: string;
   credentials?: CredentialProvider;
   fetch?: FetchLike;
+  /** One deadline for the call, headers and body (default 60 s). */
   timeoutMs?: number;
+  /** Largest reply body read (default 4 MiB); a larger one is `ProviderUnavailable`. */
+  maxResponseBytes?: number;
 }): ReasoningProvider {
   const doFetch: FetchLike = o.fetch ?? ((url, init) => fetch(url, init));
   const url = `${o.baseUrl.replace(/\/+$/, '')}/chat/completions`;
@@ -334,6 +340,8 @@ export function openAICompatibleReasoning(o: {
           signal: controller.signal,
         });
       } catch (err) {
+        clearTimeout(timer);
+        ctx.signal.removeEventListener('abort', onAbort);
         if (isAgentropyError(err)) throw err;
         throw controller.signal.aborted && !ctx.signal.aborted
           ? new AgentropyError('Timeout', 'Model call timed out', {
@@ -346,83 +354,112 @@ export function openAICompatibleReasoning(o: {
                 details: { kind: 'reasoning' },
               },
             );
+      }
+      // The deadline and the caller's abort stay in force until the body has been read: a stalled body is a timeout.
+      try {
+        // Provider error bodies are not passed through (they can echo prompts or keys) and not read: release them.
+        if (res.status >= 400) void res.body?.cancel().catch(() => undefined);
+        if (res.status === 401 || res.status === 403)
+          throw new AgentropyError(
+            'AuthorityExpired',
+            'Model provider rejected the credential',
+            {
+              details: { kind: 'credential', status: 'expired' },
+            },
+          );
+        if (res.status === 429)
+          throw new AgentropyError(
+            'QuotaExceeded',
+            'Model provider rate limit',
+            {
+              details: { kind: 'reasoning' },
+            },
+          );
+        if (res.status >= 500)
+          throw new AgentropyError(
+            'ProviderUnavailable',
+            'Model provider error',
+            {
+              details: { kind: 'reasoning', status: res.status },
+            },
+          );
+        if (res.status >= 400)
+          throw new AgentropyError(
+            'SchemaViolation',
+            'Model provider refused the request',
+            {
+              details: { kind: 'reasoning', status: res.status },
+            },
+          );
+        let parsed: unknown;
+        try {
+          parsed = await readBoundedJson(
+            res,
+            o.maxResponseBytes ?? 4 * 1024 * 1024,
+            controller.signal,
+          );
+        } catch (err) {
+          if (controller.signal.aborted && !ctx.signal.aborted)
+            throw new AgentropyError('Timeout', 'Model call timed out', {
+              details: { kind: 'reasoning' },
+            });
+          throw new AgentropyError(
+            'ProviderUnavailable',
+            err instanceof ReplyTooLarge
+              ? 'Model response too large'
+              : 'Malformed model response',
+            { details: { kind: 'reasoning' } },
+          );
+        }
+        const json = (parsed ?? {}) as {
+          model?: string;
+          choices?: {
+            message?: {
+              content?: string | null;
+              tool_calls?: {
+                function?: { name?: string; arguments?: string };
+              }[];
+            };
+          }[];
+          usage?: { prompt_tokens?: number; completion_tokens?: number };
+        };
+        const msg = json.choices?.[0]?.message;
+        if (!msg)
+          throw new AgentropyError(
+            'ProviderUnavailable',
+            'Malformed model response',
+            {
+              details: { kind: 'reasoning' },
+            },
+          );
+        const toolCalls = (msg.tool_calls ?? []).map((c) => {
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(c.function?.arguments ?? '{}');
+          } catch {
+            throw new AgentropyError(
+              'SchemaViolation',
+              'Model returned invalid tool arguments',
+              {
+                details: { reason: 'toolArguments' },
+              },
+            );
+          }
+          return { name: c.function?.name ?? '', input: parsed };
+        });
+        return {
+          text: msg.content ?? '',
+          ...(toolCalls.length ? { toolCalls } : {}),
+          usage: {
+            inputTokens: json.usage?.prompt_tokens ?? 0,
+            outputTokens: json.usage?.completion_tokens ?? 0,
+          },
+          model: json.model ?? o.model,
+        };
       } finally {
         clearTimeout(timer);
         ctx.signal.removeEventListener('abort', onAbort);
       }
-      // Provider error bodies are not passed through (they can echo prompts or keys) and not read: release them.
-      if (res.status >= 400) void res.body?.cancel().catch(() => undefined);
-      if (res.status === 401 || res.status === 403)
-        throw new AgentropyError(
-          'AuthorityExpired',
-          'Model provider rejected the credential',
-          {
-            details: { kind: 'credential', status: 'expired' },
-          },
-        );
-      if (res.status === 429)
-        throw new AgentropyError('QuotaExceeded', 'Model provider rate limit', {
-          details: { kind: 'reasoning' },
-        });
-      if (res.status >= 500)
-        throw new AgentropyError(
-          'ProviderUnavailable',
-          'Model provider error',
-          {
-            details: { kind: 'reasoning', status: res.status },
-          },
-        );
-      if (res.status >= 400)
-        throw new AgentropyError(
-          'SchemaViolation',
-          'Model provider refused the request',
-          {
-            details: { kind: 'reasoning', status: res.status },
-          },
-        );
-      const json = (await res.json()) as {
-        model?: string;
-        choices?: {
-          message?: {
-            content?: string | null;
-            tool_calls?: { function?: { name?: string; arguments?: string } }[];
-          };
-        }[];
-        usage?: { prompt_tokens?: number; completion_tokens?: number };
-      };
-      const msg = json.choices?.[0]?.message;
-      if (!msg)
-        throw new AgentropyError(
-          'ProviderUnavailable',
-          'Malformed model response',
-          {
-            details: { kind: 'reasoning' },
-          },
-        );
-      const toolCalls = (msg.tool_calls ?? []).map((c) => {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(c.function?.arguments ?? '{}');
-        } catch {
-          throw new AgentropyError(
-            'SchemaViolation',
-            'Model returned invalid tool arguments',
-            {
-              details: { reason: 'toolArguments' },
-            },
-          );
-        }
-        return { name: c.function?.name ?? '', input: parsed };
-      });
-      return {
-        text: msg.content ?? '',
-        ...(toolCalls.length ? { toolCalls } : {}),
-        usage: {
-          inputTokens: json.usage?.prompt_tokens ?? 0,
-          outputTokens: json.usage?.completion_tokens ?? 0,
-        },
-        model: json.model ?? o.model,
-      };
     },
   };
 }

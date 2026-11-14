@@ -23,6 +23,7 @@ import {
   type TrustedPrincipal,
 } from '@agentropy/core';
 import { A2A_PROTOCOL_VERSION, a2aAgentCard } from './a2a.js';
+import { ReplyTooLarge, readBoundedText } from './bounded-body.js';
 import type { DiscoveryQuery } from './registry.js';
 
 /** A2A AgentCard for one local definition served at `url` (the A2A JSON-RPC endpoint). */
@@ -89,8 +90,18 @@ export interface RemoteAgentEntry {
 export interface FederationFetch {
   (
     url: string,
-    init: { method: 'GET'; headers: Record<string, string> },
-  ): Promise<{ status: number; text(): Promise<string> }>;
+    init: {
+      method: 'GET';
+      headers: Record<string, string>;
+      /** Fires at `timeoutMs`: the deadline covers the body as well as the headers. */
+      signal?: AbortSignal;
+    },
+  ): Promise<{
+    status: number;
+    text(): Promise<string>;
+    headers?: { get(name: string): string | null };
+    body?: unknown;
+  }>;
 }
 
 export interface FederationOptions {
@@ -104,6 +115,8 @@ export interface FederationOptions {
   maxStaleMs?: number;
   /** Largest card accepted (default 64 KiB). */
   maxCardBytes?: number;
+  /** Deadline for fetching one card, headers and body (default 10 s). */
+  timeoutMs?: number;
 }
 
 const MAX_TEXT = 1_000;
@@ -178,22 +191,43 @@ export class AgentDirectoryFederation {
     peer: FederationPeer,
     now: number,
   ): Promise<Omit<RemoteAgentEntry, 'stale'>> {
-    let res: { status: number; text(): Promise<string> };
+    // One deadline for the whole card, headers and body: a peer that stalls cannot hold the refresh.
+    const signal = AbortSignal.timeout(this.o.timeoutMs ?? 10_000);
+    let res: Awaited<ReturnType<FederationFetch>>;
     try {
       res = await this.o.fetch(peer.cardUrl, {
         method: 'GET',
         headers: { accept: 'application/json' },
+        signal,
       });
     } catch {
       throw new AgentropyError('RemoteUnavailable', 'Peer unreachable');
     }
-    if (res.status !== 200)
+    if (res.status !== 200) {
+      void Promise.resolve(
+        (
+          res.body as { cancel?: () => Promise<unknown> } | undefined
+        )?.cancel?.(),
+      ).catch(() => undefined);
       throw new AgentropyError('RemoteUnavailable', 'Peer card unavailable', {
         details: { status: res.status },
       });
-    const text = await res.text();
-    if (Buffer.byteLength(text) > (this.o.maxCardBytes ?? 64 * 1024))
-      throw new AgentropyError('SchemaViolation', 'Agent card too large');
+    }
+    let text: string;
+    try {
+      text = await readBoundedText(
+        res,
+        this.o.maxCardBytes ?? 64 * 1024,
+        signal,
+      );
+    } catch (err) {
+      throw err instanceof ReplyTooLarge
+        ? new AgentropyError('SchemaViolation', 'Agent card too large')
+        : new AgentropyError(
+            'RemoteUnavailable',
+            'Peer card could not be read',
+          );
+    }
     let card: unknown;
     try {
       card = JSON.parse(text);

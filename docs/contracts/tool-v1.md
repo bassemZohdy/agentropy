@@ -1,4 +1,4 @@
-# Agentropy Tool Contract v1 — revision 4
+# Agentropy Tool Contract v1 — revision 5
 
 **Status:** Accepted for M1 implementation (2026-11-05) of the protocol-neutral core and a direct adapter. MCP, UTCP and REST/OpenAPI adapters are later work; no adapter is claimed beyond the executable tests in `packages/*/test`.
 **Decision:** [ADR-0026](../adr/0026-protocol-agnostic-tool-integration.md). **Security:** [Security v1](security-v1.md), [ADR-0021](../adr/0021-delegated-authorization.md). **Errors:** [Errors v1](errors-v1.md).
@@ -11,6 +11,7 @@
 | 2 | 2026-11-05 | Invocation step 8 enforced (FEAT-022.3, AC-07): an `external` tool that is not declared `at-least-once` fails `InvalidConfiguration` before audit or dispatch when its provider lacks `idempotencyKeys` |
 | 3 | 2026-11-05 | D-04 (TASK-026.5): a binding may list `config.fallbackBindings`; only a `read` tool fails over to them, in order, after `ProviderUnavailable` or `Timeout`. Tools with effects never fail over (their failed outcome stays `UnknownAcceptance`) |
 | 4 | 2026-11-14 | FIX-059 (review N-11): the MCP HTTP transport recovers from a lost session: a 404 for a request that carried `Mcp-Session-Id` means the server dropped the session, so the client forgets it, initializes a new session and repeats the request once (a second loss is `ProviderUnavailable`); the `initialize` request sends the runtime package version as `clientInfo.version` |
+| 5 | 2026-11-14 | TASK-068 (review N-20): the MCP HTTP transport enforces `maxResponseBytes` (default 1 MiB) while it reads the reply, so an endless reply is cut off and its connection released instead of being buffered whole; the caller's abort signal covers the body |
 
 ## Concepts
 
@@ -156,5 +157,5 @@ Discovery-only tool cannot be invoked; unverified tool cannot be activated; unau
 - **Effects and idempotency.** A tool annotated `readOnlyHint` is `read`/`idempotent`; every other tool is `external` and `at-least-once` (MCP carries no idempotency key, so the provider declares `idempotencyKeys: false` and the executor refuses to bind it to a tool that claims `keyed` or `idempotent` effects unless the server's own `idempotentHint` says so). Cancellation is the abort signal passed to the transport.
 - **Schema pinning.** The binding's `config.schemaDigest` is the digest of the tool's input and output schemas at registration. Before a call the provider compares it with the server's current `tools/list` (cached for `schemaTtlMs`, default 5 minutes, and re-read once before refusing); a changed or missing tool fails `IncompatibleVersion` and is not called.
 - **Results are data.** A reply's `structuredContent` is the output; otherwise the text content is returned as `{ text }`. A tool-reported error (`isError`) or a JSON-RPC error is `ProviderUnavailable` carrying only the numeric code, never the server's text.
-- **Transport.** `mcpHttpTransport({ url, fetch })` is the Streamable HTTP transport: one POST endpoint, JSON or SSE replies, the `Mcp-Session-Id` issued at `initialize` sent afterwards (a 404 for it starts a new session once, revision 4), a resolved credential `{ token }` as a Bearer header (`binding.credentialRef` as for any tool), redirects never followed, replies capped at 1 MiB; 401/403 is `AuthorityExpired`. stdio servers are not supported (a process supervisor is a deployment concern); implement `McpTransport` for them.
+- **Transport.** `mcpHttpTransport({ url, fetch })` is the Streamable HTTP transport: one POST endpoint, JSON or SSE replies, the `Mcp-Session-Id` issued at `initialize` sent afterwards (a 404 for it starts a new session once, revision 4), a resolved credential `{ token }` as a Bearer header (`binding.credentialRef` as for any tool), redirects never followed, replies capped at 1 MiB while they are read; 401/403 is `AuthorityExpired`. stdio servers are not supported (a process supervisor is a deployment concern); implement `McpTransport` for them.
 

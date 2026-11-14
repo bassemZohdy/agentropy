@@ -55,7 +55,11 @@ const def = (
 });
 
 /** Runtime B: bob's summarizer, exposed over A2A. */
-async function runtimeB() {
+async function runtimeB(
+  outputOf: (doc: string) => unknown = (doc) => ({
+    summary: `summary of ${doc}`,
+  }),
+) {
   const b = createLocalApp({
     store: sqliteTempStore(),
     pdp: new FakePolicy(),
@@ -65,7 +69,7 @@ async function runtimeB() {
   b.define(def('summarizer'), {
     handle: async (inv) => ({
       kind: 'completed',
-      output: { summary: `summary of ${(inv.input as { doc: string }).doc}` },
+      output: outputOf((inv.input as { doc: string }).doc),
     }),
   });
   const bob: TrustedPrincipal = { id: 'bob', type: 'user', tenantId: 't-1' };
@@ -97,6 +101,8 @@ function runtimeA(
     /** Which endpoints the A2A provider may call (FIX-054); default: exactly the peer's origin. */
     allowEndpoint?: (url: URL) => boolean;
     allowHttp?: boolean;
+    /** Largest output a task may report, local or remote (TASK-068). */
+    maxOutputBytes?: number;
     /** Answers instead of the peer, to see what the provider does with it. */
     reply?: () => { status: number } | undefined;
   } = {},
@@ -150,6 +156,9 @@ function runtimeA(
     audit,
     now: (opts.clock ?? new FakeClock('2026-11-06T00:00:00.000Z')).iso,
     profiles: BUILTIN_PROFILES,
+    ...(opts.maxOutputBytes
+      ? { limits: { maxOutputBytes: opts.maxOutputBytes } }
+      : {}),
     // The clock stands still in most tests, so they poll on every pass; the backoff test sets its own.
     communication: {
       router,
@@ -261,6 +270,24 @@ describe('remote delegation through the router (FEAT-027.9)', () => {
       remoteState: 'TASK_STATE_COMPLETED',
     });
     expect(audit.events.map((e) => e.type)).toContain('task.delegate.remote');
+  });
+
+  it('TASK-068: a remote output over maxOutputBytes fails the projection with SchemaViolation and is not stored', async () => {
+    const { b, server } = await runtimeB((doc) => ({
+      summary: 'x'.repeat(5_000) + doc,
+    }));
+    const { a } = runtimeA(server, { maxOutputBytes: 2_048 });
+    const parent = await startCoordinator(a);
+    await a.runUntilIdle();
+    await b.runUntilIdle();
+    await a.runUntilIdle();
+    const [proj] = await projections(a);
+    expect(proj).toMatchObject({
+      status: 'failed',
+      outcome: { code: 'SchemaViolation' },
+    });
+    expect(proj!.output).toBeUndefined();
+    expect(await code(a.getResult(parent.taskId, alice))).toBe('TaskFailed');
   });
 
   it('the application can delegate remotely too; the projection is visible only to its delegator', async () => {
