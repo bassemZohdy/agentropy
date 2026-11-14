@@ -212,12 +212,16 @@ export class MemoryStore implements Store {
     return this.mutex.run(async () => {
       if (this.closed)
         throw new AgentropyError('ProviderUnavailable', 'Store is closed');
-      const snapshot = { data: structuredClone(this.data), seq: this.seq };
+      // Rolling back replays an undo log of what this transaction changed, newest first, instead of copying the
+      // whole store before every transaction: the cost follows the documents touched. Stored documents are never
+      // modified in place (a write replaces the object), so keeping the previous object is enough.
+      const undo: (() => void)[] = [];
+      const seq = this.seq;
       try {
-        return await fn(this.tx());
+        return await fn(this.tx(undo));
       } catch (err) {
-        this.data = snapshot.data;
-        this.seq = snapshot.seq;
+        for (let i = undo.length - 1; i >= 0; i--) undo[i]!();
+        this.seq = seq;
         throw err;
       }
     });
@@ -233,7 +237,7 @@ export class MemoryStore implements Store {
     return m;
   }
 
-  private tx(): StoreTx {
+  private tx(undo: (() => void)[]): StoreTx {
     return {
       get: async <T>(c: CollectionName, id: string) =>
         structuredClone(this.col(c).get(id)) as StoredDocument<T> | undefined,
@@ -247,6 +251,7 @@ export class MemoryStore implements Store {
           value: structuredClone(value),
         };
         this.col(c).set(id, doc);
+        undo.push(() => void this.col(c).delete(id));
         return structuredClone(doc);
       },
       update: async <T>(
@@ -267,6 +272,7 @@ export class MemoryStore implements Store {
           value: structuredClone(value),
         };
         this.col(c).set(id, doc);
+        undo.push(() => void this.col(c).set(id, cur));
         return structuredClone(doc);
       },
       remove: async (c: CollectionName, id: string, expected: number) => {
@@ -275,6 +281,7 @@ export class MemoryStore implements Store {
         if (cur.revision !== expected)
           throw staleRevision(c, id, 'revision', expected, cur.revision);
         this.col(c).delete(id);
+        undo.push(() => void this.col(c).set(id, cur));
       },
       find: async <T, C extends CollectionName>(
         c: C,
