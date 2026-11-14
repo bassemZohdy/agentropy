@@ -62,9 +62,10 @@ wait_ready() {
   if [ "${variant}" = "postgres" ]; then
     kctl rollout status deployment/agentropy --timeout=180s
     # Only pods that are not terminating: after a restart an old pod is still draining and will never be Ready again.
-    kctl get pods -l app.kubernetes.io/name=agentropy --no-headers \
-      -o custom-columns=NAME:.metadata.name,DELETED:.metadata.deletionTimestamp | awk '$2 == "<none>" { print "pod/" $1 }' \
-      | xargs kctl wait --for=condition=Ready --timeout=120s
+    local names
+    names=$(kctl get pods -l app.kubernetes.io/name=agentropy --no-headers \
+      -o custom-columns=NAME:.metadata.name,DELETED:.metadata.deletionTimestamp | awk '$2 == "<none>" { print "pod/" $1 }')
+    for n in ${names}; do kctl wait --for=condition=Ready "${n}" --timeout=120s; done
     return
   fi
   kctl rollout status statefulset/agentropy --timeout=180s
