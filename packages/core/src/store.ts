@@ -18,6 +18,8 @@ export const STORE_COLLECTIONS = {
     'callerId',
     'ownerId',
     'createdAt',
+    /** Null until compaction has removed the standing state of an ended task (TASK-066). */
+    'compactedAt',
   ],
   /** `runAt` and `tenantId` let a worker read what is due, and a tenant's running count, without scanning (FEAT-039.3). */
   executions: ['taskId', 'state', 'runAt', 'tenantId'],
@@ -25,7 +27,8 @@ export const STORE_COLLECTIONS = {
   wakeups: ['taskId', 'status', 'dueAt', 'checkAt'],
   subscriptions: ['taskId', 'source', 'status'],
   mailbox: ['taskId', 'subscriptionId', 'consumed'],
-  inboundEvents: ['source'],
+  /** `at` lets compaction read only the dedupe records that fell out of the window (TASK-066). */
+  inboundEvents: ['source', 'at'],
   effects: ['taskId'],
   outbox: ['published', 'aggregateId'],
   /** `pending` (1 while an entry is unacknowledged and unpresented at its revision) lets the briefing read only those (FEAT-039.3). */
@@ -42,7 +45,14 @@ export const STORE_COLLECTIONS = {
   leases: ['kind'],
   usage: ['taskId'],
   /** `taskId` finds one projection without scanning them all (FEAT-039.2). */
-  remoteTasks: ['tenantId', 'status', 'parentTaskId', 'taskId'],
+  remoteTasks: [
+    'tenantId',
+    'status',
+    'parentTaskId',
+    'taskId',
+    /** Lets compaction read only the terminal projections that fell out of the window (TASK-066). */
+    'observedAt',
+  ],
   auditPolicies: ['tenantId'],
   auditHolds: ['tenantId', 'status'],
   auditReceipts: ['tenantId'],
@@ -55,7 +65,7 @@ export const STORE_COLLECTIONS = {
   /** A2A message history (FEAT-044.2): user messages kept per sending principal when the endpoint enables it. */
   a2aHistory: ['tenantId', 'taskId'],
   /** Agent memory (FEAT-045): entries per tenant and acting principal (`ownerId`), with an optional expiry. */
-  memories: ['tenantId', 'ownerId'],
+  memories: ['tenantId', 'ownerId', 'expiresAt'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type CollectionName = keyof typeof STORE_COLLECTIONS;
