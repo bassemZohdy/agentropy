@@ -13,6 +13,7 @@
  *
  * Results are data: error text from the server is never copied into errors, only its numeric code.
  */
+import { createRequire } from 'node:module';
 import {
   AgentropyError,
   digestOf,
@@ -69,9 +70,43 @@ const unavailable = (what: string, details: Record<string, unknown> = {}) =>
     details: { kind: 'tool', protocol: 'mcp', ...details },
   });
 
+/** Version sent as `clientInfo.version`: the runtime package's, read once (`0.0.0` where package.json is not shipped). */
+const CLIENT_VERSION = (() => {
+  try {
+    const pkg = createRequire(import.meta.url)('../package.json') as {
+      version?: unknown;
+    };
+    return typeof pkg.version === 'string' ? pkg.version : '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+})();
+
+/** The server no longer knows our session (HTTP 404 for a request that carried its ID): start a new one. */
+const sessionLost = (err: unknown): boolean =>
+  err instanceof AgentropyError &&
+  (err.details as { sessionLost?: unknown } | undefined)?.sessionLost === true;
+
 export class McpClient {
   private ready?: Promise<void>;
   constructor(private readonly transport: McpTransport) {}
+
+  /**
+   * Runs `fn` on an initialized session. A server that forgot the session (a restart, a session timeout) answers
+   * 404; the client then initializes a new session and repeats the request once, as the MCP specification says. A
+   * 404 means the request was not processed, so repeating it cannot run a tool twice. A second loss is an error.
+   */
+  private async inSession<T>(o: McpCallOptions, fn: () => Promise<T>) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await this.init(o);
+        return await fn();
+      } catch (err) {
+        if (attempt > 0 || !sessionLost(err)) throw err;
+        this.ready = undefined;
+      }
+    }
+  }
 
   private init(o: McpCallOptions): Promise<void> {
     this.ready ??= (async () => {
@@ -80,7 +115,7 @@ export class McpClient {
         {
           protocolVersion: MCP_PROTOCOL_VERSION,
           capabilities: {},
-          clientInfo: { name: 'agentropy', version: '0.0.0' },
+          clientInfo: { name: 'agentropy', version: CLIENT_VERSION },
         },
         o,
       );
@@ -92,8 +127,11 @@ export class McpClient {
     return this.ready;
   }
 
-  async listTools(o: McpCallOptions = {}): Promise<McpTool[]> {
-    await this.init(o);
+  listTools(o: McpCallOptions = {}): Promise<McpTool[]> {
+    return this.inSession(o, () => this.listAll(o));
+  }
+
+  private async listAll(o: McpCallOptions): Promise<McpTool[]> {
     const tools: McpTool[] = [];
     let cursor: string | undefined;
     for (let page = 0; page < 20; page++) {
@@ -111,19 +149,20 @@ export class McpClient {
     return tools;
   }
 
-  async callTool(
+  callTool(
     name: string,
     args: unknown,
     o: McpCallOptions = {},
   ): Promise<McpCallResult> {
-    await this.init(o);
-    const r = (await this.transport.request(
-      'tools/call',
-      { name, arguments: args },
-      o,
-    )) as McpCallResult | undefined;
-    if (!r || typeof r !== 'object') throw unavailable('Malformed MCP reply');
-    return r;
+    return this.inSession(o, async () => {
+      const r = (await this.transport.request(
+        'tools/call',
+        { name, arguments: args },
+        o,
+      )) as McpCallResult | undefined;
+      if (!r || typeof r !== 'object') throw unavailable('Malformed MCP reply');
+      return r;
+    });
   }
 }
 
@@ -294,7 +333,8 @@ export function mcpHttpTransport(o: {
       'mcp-protocol-version': MCP_PROTOCOL_VERSION,
       ...o.headers,
     };
-    if (session) headers['mcp-session-id'] = session;
+    const sent = session;
+    if (sent) headers['mcp-session-id'] = sent;
     const token = (opts.credential as { token?: unknown } | undefined)?.token;
     if (typeof token === 'string') headers['authorization'] = `Bearer ${token}`;
     let res: McpHttpResponse;
@@ -316,6 +356,15 @@ export function mcpHttpTransport(o: {
         'The MCP server rejected our credential',
         { details: { kind: 'credential', status: 'expired' } },
       );
+    // The server does not know this session (it restarted or dropped it): forget it, so the client can start a new
+    // one (MCP 2025-06-18, session management).
+    if (res.status === 404 && sent) {
+      if (session === sent) session = undefined;
+      throw unavailable('The MCP session ended', {
+        status: 404,
+        sessionLost: true,
+      });
+    }
     if (res.status >= 300)
       throw unavailable('The MCP server refused the request', {
         status: res.status,
