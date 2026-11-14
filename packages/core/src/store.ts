@@ -66,6 +66,8 @@ export const STORE_COLLECTIONS = {
   a2aHistory: ['tenantId', 'taskId'],
   /** Agent memory (FEAT-045): entries per tenant and acting principal (`ownerId`), with an optional expiry. */
   memories: ['tenantId', 'ownerId', 'expiresAt'],
+  /** Status an operator set on a tool or skill version (FEAT-074), so it survives a restart and reaches every worker. */
+  lifecycle: ['kind'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type CollectionName = keyof typeof STORE_COLLECTIONS;

@@ -12,6 +12,7 @@ import {
   type AuditIntentWriter,
   type CredentialProvider,
   type PolicyDecisionPoint,
+  type Store,
   type ToolBinding,
   type ToolDescriptor,
   type ToolExecutor,
@@ -24,6 +25,15 @@ import {
   type TrustedPrincipal,
   type VersionedRef,
 } from '@agentropy/core';
+import {
+  conflicts,
+  effectiveStatus,
+  lifecycleKey,
+  moveLifecycle,
+  readLifecycle,
+  readLifecycles,
+  type LifecycleRow,
+} from './lifecycle.js';
 
 export interface SecurityServices {
   pdp: PolicyDecisionPoint;
@@ -59,6 +69,12 @@ export class InMemoryToolRegistry implements ToolRegistry {
       descriptor: ToolDescriptor,
       provenance: Omit<ToolProvenance, 'digest' | 'verified'>,
     ) => boolean,
+    /**
+     * With a `store`, the status an operator sets (activate, suspend, revoke) is kept there (FEAT-074): another worker
+     * on the store refuses a revoked tool at once, and a restart does not bring it back, because `register` adopts the
+     * stored status and `revoked` is final.
+     */
+    private readonly options: { store?: Store } = {},
   ) {}
 
   private async guard(
@@ -110,13 +126,22 @@ export class InMemoryToolRegistry implements ToolRegistry {
     const existing = this.records.get(refKey(d.id, d.version));
     if (existing) {
       if (existing.provenance.digest === digest)
-        return structuredClone(existing);
+        return (await this.refreshed(d)) ?? structuredClone(existing);
       throw new AgentropyError(
         'InvalidConfiguration',
         `${d.id}@${d.version} is already registered with different content`,
         { details: { reason: 'immutable', id: d.id } },
       );
     }
+    const row = this.options.store
+      ? (await readLifecycle(this.options.store, 'tool', d))?.value
+      : undefined;
+    if (conflicts(row, digest))
+      throw new AgentropyError(
+        'InvalidConfiguration',
+        `${d.id}@${d.version} is already registered with different content`,
+        { details: { reason: 'immutable', id: d.id } },
+      );
     await this.guard(admin, 'register', d.id);
     const record: ToolRecord = {
       descriptor: d,
@@ -130,8 +155,35 @@ export class InMemoryToolRegistry implements ToolRegistry {
       status: 'registered',
       revision: 1,
     };
+    // A restart finds the tool as an operator left it: suspended and revoked stay so.
+    record.status = effectiveStatus(
+      'registered',
+      row,
+      digest,
+      record.provenance.verified,
+    );
     this.records.set(refKey(d.id, d.version), record);
     return structuredClone(record);
+  }
+
+  /** The record with the status the store has (this process's own when it has no store). */
+  async refreshed(ref: VersionedRef): Promise<ToolRecord | undefined> {
+    const r = this.records.get(refKey(ref.id, ref.version));
+    if (!r) return undefined;
+    if (this.options.store) {
+      const row = (await readLifecycle(this.options.store, 'tool', ref))?.value;
+      const status = effectiveStatus(
+        r.status,
+        row,
+        r.provenance.digest,
+        r.provenance.verified,
+      );
+      if (status !== r.status) {
+        r.status = status;
+        r.revision += 1;
+      }
+    }
+    return structuredClone(r);
   }
 
   async activate(
@@ -198,8 +250,19 @@ export class InMemoryToolRegistry implements ToolRegistry {
   ): Promise<ToolDescriptor[]> {
     void caller;
     const text = query.text?.toLowerCase();
+    const rows = this.options.store
+      ? await readLifecycles(this.options.store, 'tool')
+      : new Map<string, LifecycleRow>();
     return [...this.records.values()]
-      .filter((r) => r.status !== 'revoked')
+      .filter(
+        (r) =>
+          effectiveStatus(
+            r.status,
+            rows.get(lifecycleKey('tool', r.descriptor)),
+            r.provenance.digest,
+            r.provenance.verified,
+          ) !== 'revoked',
+      )
       .filter((r) =>
         text
           ? `${r.descriptor.id} ${r.descriptor.description}`
@@ -233,13 +296,24 @@ export class InMemoryToolRegistry implements ToolRegistry {
     from: ToolRecord['status'][],
     to: ToolRecord['status'],
   ): Promise<ToolRecord> {
-    if (!from.includes(r.status))
+    // What other workers did counts: a tool revoked elsewhere cannot be activated here.
+    const known = (await this.refreshed(r.descriptor))!.status;
+    if (!from.includes(known))
       throw new AgentropyError(
         'InvalidState',
-        `Cannot ${operation} a ${r.status} tool`,
-        { details: { status: r.status } },
+        `Cannot ${operation} a ${known} tool`,
+        { details: { status: known } },
       );
     await this.guard(admin, operation, r.descriptor.id);
+    if (this.options.store)
+      await moveLifecycle(this.options.store, 'tool', r.descriptor, {
+        from,
+        to,
+        local: r.status,
+        digest: r.provenance.digest,
+        by: admin.id,
+        at: this.security.now(),
+      });
     r.status = to;
     r.revision += 1;
     return structuredClone(r);
@@ -309,7 +383,8 @@ export class DefaultToolExecutor implements ToolExecutor {
     ctx: ToolInvocationContext & { stepKey?: string },
   ): Promise<unknown> {
     // 1. The pinned record must still exist unchanged.
-    const record = this.o.registry.get({
+    // The status comes from the store, not from this process's memory: a revoke can have come from another worker.
+    const record = await this.o.registry.refreshed({
       id: pin.toolId,
       version: pin.toolVersion,
     });

@@ -98,6 +98,11 @@ export interface ToolRegistry {
   suspend(ref: VersionedRef, admin: TrustedPrincipal): Promise<ToolRecord>;
   revoke(ref: VersionedRef, admin: TrustedPrincipal): Promise<ToolRecord>;
   get(ref: VersionedRef): ToolRecord | undefined;
+  /**
+   * The record with the status as the shared store has it (FEAT-074): what an invocation must act on, since a revoke or
+   * a suspend can come from another worker. A registry without a store answers as `get` does.
+   */
+  refreshed?(ref: VersionedRef): Promise<ToolRecord | undefined>;
   discover(
     query: { text?: string },
     caller: TrustedPrincipal,
