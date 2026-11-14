@@ -27,6 +27,7 @@
 - [ ] **FIX-057** · P1 · mid · Instance directory: only a trusted service creates an instance for another owner, and create, suspend, resume, retire, drain and share pass a policy check and write an audit intent
   - Done when: a user creating an instance with another ownerId is PermissionDenied, a denied lifecycle call changes nothing, each allowed one is in the audit log; `pnpm exec vitest run packages/testkit/test/governance.test.ts`
   - Links: Ref: docs/contracts/agent-v1.md
+  - State: branch todo/FIX-057-instance-directory-trusted-service from main; next: start FIX-057
 - [ ] **FIX-058** · P1 · low · Human-action sweep reads only pending and claimed requests through the status index, not every past-due request ever resolved
   - Done when: a sweep over one open and many resolved past-due requests reads one row and still expires it; `pnpm exec vitest run packages/runtime/test/hot-paths.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
