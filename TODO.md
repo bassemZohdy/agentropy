@@ -31,7 +31,7 @@
 - [ ] **FEAT-074** · P2 · high · Tool and skill lifecycle status (active, suspended, revoked) is kept in the store, so a revocation survives a restart and reaches every worker
   - Done when: a tool revoked through one app is refused by a second app on the same store, also after both restart; an unverified tool still cannot be activated; `pnpm exec vitest run packages/testkit/test/hardening.test.ts`
   - Links: Ref: docs/contracts/tool-v1.md
-  - State: next: decompose
+  - State: branch todo/FEAT-074-tool-and-skill-lifecycle-status from main; next: start FEAT-074
 - [ ] **FEAT-075** · P2 · mid · Audit forwarding is observable: a failure metric in Observability v1 and an auditStuck count on /readyz
   - Done when: a refusing sink is counted per attempt and /readyz reports auditStuck while it lasts; `pnpm exec vitest run packages/runtime/test/audit-forwarder.test.ts packages/examples/test/host.test.ts`
   - Links: Ref: docs/contracts/observability-v1.md
