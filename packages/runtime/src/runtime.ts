@@ -172,6 +172,8 @@ const addMs = (iso: string, ms: number) =>
   new Date(Date.parse(iso) + ms).toISOString();
 
 export class AgentRuntime {
+  /** Executions handed over by `handOver`, whose late disposition is dropped. */
+  private readonly abandoned = new Set<string>();
   private readonly running = new Map<
     string,
     {
@@ -388,6 +390,43 @@ export class AgentRuntime {
   async idle(): Promise<void> {
     while (this.running.size)
       await Promise.all([...this.running.values()].map((r) => r.done));
+  }
+
+  /**
+   * Hands this worker's running executions over (FEAT-072): signal every handler to stop, expire the leases now so any
+   * other worker recovers them at its next tick (E8, then the task's retry policy) instead of after `leaseMs`, and
+   * drop them from the pool. What a handler returns after this is discarded. For a worker that is about to exit, once
+   * its heartbeat has stopped; returns how many executions were handed over.
+   */
+  async handOver(): Promise<number> {
+    const ids = [...this.running.keys()];
+    if (!ids.length) return 0;
+    for (const id of ids) {
+      this.abandoned.add(id);
+      this.running
+        .get(id)
+        ?.controller.abort(
+          new AgentropyError(
+            'ProviderUnavailable',
+            'The worker is shutting down',
+          ),
+        );
+    }
+    await this.store.transaction(async (tx) => {
+      for (const id of ids) {
+        const e = await tx.get<StoredExecution>('executions', id);
+        if (
+          e?.value.state === 'running' &&
+          e.value.workerId === this.o.workerId
+        )
+          await tx.update<StoredExecution>('executions', e.id, e.revision, {
+            ...e.value,
+            leaseExpiresAt: this.now(),
+          });
+      }
+    });
+    for (const id of ids) this.forget(id);
+    return ids.length;
   }
 
   /** Drop an execution from the pool (settled, or fenced after a cancel grace period). */
@@ -795,6 +834,8 @@ export class AgentRuntime {
     d: AgentDisposition<unknown> | { kind: 'threw'; error: AgentropyError },
     codecVersion: number,
   ): Promise<void> {
+    // Handed over at shutdown: the execution now belongs to whichever worker recovers its lease.
+    if (this.abandoned.delete(exec.id)) return;
     const attempts = 3;
     for (let attempt = 1; ; attempt++) {
       try {
