@@ -31,6 +31,7 @@
 - [ ] **FEAT-075** · P2 · mid · Audit forwarding is observable: a failure metric in Observability v1 and an auditStuck count on /readyz
   - Done when: a refusing sink is counted per attempt and /readyz reports auditStuck while it lasts; `pnpm exec vitest run packages/runtime/test/audit-forwarder.test.ts packages/examples/test/host.test.ts`
   - Links: Ref: docs/contracts/observability-v1.md
+  - State: branch todo/FEAT-075-audit-forwarding-observable from main; next: start FEAT-075
 - [ ] **TASK-076** · P2 · mid · Kubernetes manifests get a startup probe and a PodDisruptionBudget for the PostgreSQL variant, and the kind smoke script can apply that variant
   - Done when: check-deploy fails without the probe or the budget and passes with them; `node scripts/check-deploy.mjs`
   - Links: Ref: docs/deployment.md
