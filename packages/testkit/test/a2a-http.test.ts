@@ -15,7 +15,7 @@ import {
   type AgentDefinition,
   type TrustedPrincipal,
 } from '@agentropy/core';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   A2ACommunicationProvider,
   A2A_PROTOCOL_VERSION,
@@ -27,6 +27,7 @@ import {
   createLocalApp,
   localAppTarget,
   type A2AHttpHandler,
+  type A2AServer,
 } from '../../runtime/src/index.js';
 import { sqliteTempStore } from '../../runtime/test/harness.js';
 import { FakeClock, FakePolicy, allowNetwork } from '../src/index.js';
@@ -249,6 +250,118 @@ describe('A2A HTTP binding (FEAT-034.1)', () => {
     // The task was accepted for the principal the token maps to, not for anything in the body.
     const task = await h.app.getTask(result.task.id, caller);
     expect(task.status).toBe('completed');
+  });
+
+  it('TASK-078: concurrent streaming requests beyond maxStreams get 503, whatever order they arrive in', async () => {
+    const h = await host({ maxStreams: 2 });
+    const aborts = Array.from({ length: 8 }, () => new AbortController());
+    const responses = await Promise.all(
+      aborts.map((abort, i) =>
+        fetch(`${h.base}/a2a`, {
+          method: 'POST',
+          signal: abort.signal,
+          headers: {
+            'content-type': 'application/json',
+            authorization: 'Bearer tok-a',
+            accept: 'text/event-stream',
+          },
+          body: rpc('SendStreamingMessage', message(`m-${i}`, 'a')),
+        }),
+      ),
+    );
+    const statuses = responses.map((r) => r.status);
+    expect(statuses.filter((s) => s === 200)).toHaveLength(2);
+    expect(statuses.filter((s) => s === 503)).toHaveLength(6);
+    expect(h.http.openStreams()).toBe(2);
+    for (const abort of aborts) abort.abort();
+    await vi.waitFor(() => expect(h.http.openStreams()).toBe(0));
+    // A stream that failed before it opened (a refused request) holds no slot either.
+    const bad = await post(
+      h.base,
+      rpc('SendStreamingMessage', { message: {} }),
+    );
+    expect(bad.status).toBe(200);
+    expect(h.http.openStreams()).toBe(0);
+  });
+
+  it('TASK-078: a stream is counted before it is awaited: requests that arrive together cannot pass maxStreams', async () => {
+    let openGate!: () => void;
+    const gate = new Promise<void>((r) => (openGate = r));
+    let finish!: () => void;
+    const ended = new Promise<void>((r) => (finish = r));
+    // A server whose stream takes a while to open, so every request reaches the limit check while others are opening.
+    const stub = {
+      handle: async () => ({ status: 200, body: {} }),
+      stream: async () => {
+        await gate;
+        return {
+          kind: 'stream',
+          status: 200,
+          // No frames: the stream stays open until `ended`, then ends.
+          frames: {
+            [Symbol.asyncIterator]: () => ({
+              next: async () => {
+                await ended;
+                return { done: true as const, value: undefined };
+              },
+            }),
+          },
+        };
+      },
+    } as unknown as A2AServer;
+    const http = createA2AHttpHandler(stub, {
+      authenticate: async () => caller,
+      maxStreams: 2,
+    });
+    const body = rpc('SendStreamingMessage', message('m', 'a'));
+    const call = () => {
+      const req = Object.assign(Readable.from([Buffer.from(body)]), {
+        method: 'POST',
+        url: '/a2a',
+        headers: { 'content-type': 'application/json' },
+      });
+      const res = {
+        status: 0,
+        headersSent: false,
+        writeHead(status: number) {
+          res.status = status;
+          res.headersSent = true;
+          return res;
+        },
+        write: () => true,
+        end: () => res,
+        on: () => res,
+        once: () => res,
+        off: () => res,
+      };
+      return { res, served: http.handle(req as never, res as never) };
+    };
+    const calls = Array.from({ length: 8 }, call);
+    // Six are refused while no stream has opened yet; with the count taken only after the open, all eight got through.
+    await vi.waitFor(() =>
+      expect(calls.filter((c) => c.res.status === 503)).toHaveLength(6),
+    );
+    expect(http.openStreams()).toBe(2);
+    openGate();
+    await vi.waitFor(() =>
+      expect(calls.filter((c) => c.res.status === 200)).toHaveLength(2),
+    );
+    finish();
+    await Promise.all(calls.map((c) => c.served));
+    expect(http.openStreams()).toBe(0);
+  });
+
+  it('TASK-078: a 401 says how to authenticate', async () => {
+    const h = await host();
+    const anon = await post(h.base, rpc('GetTask', { id: 'x' }), {
+      authorization: '',
+    });
+    expect(anon.status).toBe(401);
+    expect(anon.headers.get('www-authenticate')).toMatch(/^Bearer\b/);
+    const wrong = await post(h.base, rpc('GetTask', { id: 'x' }), {
+      authorization: 'Bearer nope',
+    });
+    expect(wrong.headers.get('www-authenticate')).toMatch(/^Bearer\b/);
   });
 
   it('rejects requests it cannot serve: no credentials, wrong method, content type, size, malformed JSON', async () => {
