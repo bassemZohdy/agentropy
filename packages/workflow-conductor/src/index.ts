@@ -52,7 +52,27 @@ export interface ConductorEngineOptions {
   /** Workflow version per name; latest when absent. */
   versions?: Record<string, number>;
   idempotency?: 'server' | 'lookup';
+  /**
+   * Finished runs remembered so that a repeated status event or poll does not report one twice (default 10000, the
+   * oldest forgotten first). A repeated event for a run older than that is reported again.
+   */
+  maxReported?: number;
 }
+
+/**
+ * The tenant half of a correlation ID is percent-encoded, so the first `:` always ends it: tenant IDs may contain
+ * `:`, and `a:b` must not be taken for tenant `a`. IDs of tenants without special characters are unchanged.
+ */
+const tenantPrefix = (tenantId: string) => encodeURIComponent(tenantId);
+const tenantOfCorrelation = (correlationId: string | undefined) => {
+  const prefix = correlationId?.split(':', 1)[0];
+  if (!prefix || prefix === correlationId) return undefined;
+  try {
+    return decodeURIComponent(prefix);
+  } catch {
+    return undefined;
+  }
+};
 
 type ConductorStatus =
   'RUNNING' | 'PAUSED' | 'COMPLETED' | 'FAILED' | 'TIMED_OUT' | 'TERMINATED';
@@ -79,8 +99,10 @@ export class ConductorWorkflowEngine implements WorkflowEngine {
   /** Runs started by this instance that have not finished yet: runId → tenant. */
   private readonly open = new Map<string, string>();
   private readonly reported = new Set<string>();
+  private readonly maxReported: number;
 
   constructor(private readonly o: ConductorEngineOptions) {
+    this.maxReported = Math.max(1, Math.floor(o.maxReported ?? 10_000));
     if (!/^https?:\/\//.test(o.baseUrl))
       throw new AgentropyError(
         'InvalidConfiguration',
@@ -136,7 +158,7 @@ export class ConductorWorkflowEngine implements WorkflowEngine {
     input: unknown,
     ctx: { tenantId: string; taskId: string; idempotencyKey: string },
   ): Promise<WorkflowRun> {
-    const correlationId = `${ctx.tenantId}:${ctx.idempotencyKey}`;
+    const correlationId = `${tenantPrefix(ctx.tenantId)}:${ctx.idempotencyKey}`;
     const name = encodeURIComponent(workflow);
     if (this.o.idempotency === 'lookup') {
       const found = await this.call<ConductorWorkflow[]>(
@@ -174,24 +196,28 @@ export class ConductorWorkflowEngine implements WorkflowEngine {
     return { runId, state: 'running' };
   }
 
+  /** The run, `'gone'` when Conductor says it does not exist (deleted or archived), or undefined when unknown. */
   private async fetchRun(
     runId: string,
-  ): Promise<ConductorWorkflow | undefined> {
+  ): Promise<ConductorWorkflow | 'gone' | undefined> {
     const res = await this.call<ConductorWorkflow>(
       'GET',
       `/api/workflow/${encodeURIComponent(runId)}?includeTasks=false`,
     );
-    if (res.status === 404 || typeof res.body !== 'object') return undefined;
+    if (res.status === 404) return 'gone';
+    if (typeof res.body !== 'object' || res.body === null) return undefined;
     return res.body;
   }
 
-  private owned(w: ConductorWorkflow | undefined, tenantId: string) {
-    return w?.correlationId?.startsWith(`${tenantId}:`) === true;
+  private owned(w: ConductorWorkflow | 'gone' | undefined, tenantId: string) {
+    return (
+      typeof w === 'object' && tenantOfCorrelation(w.correlationId) === tenantId
+    );
   }
 
   async status(runId: string, ctx: { tenantId: string }): Promise<WorkflowRun> {
     const w = await this.fetchRun(runId);
-    if (!w || !this.owned(w, ctx.tenantId))
+    if (typeof w !== 'object' || !this.owned(w, ctx.tenantId))
       return { runId, state: 'failed', code: 'NotFound' };
     return toRun(w);
   }
@@ -235,12 +261,28 @@ export class ConductorWorkflowEngine implements WorkflowEngine {
   private async check(runId: string): Promise<boolean> {
     const w = await this.fetchRun(runId);
     if (!w) return false;
-    const tenantId = w.correlationId?.split(':')[0];
+    if (w === 'gone') {
+      // A run this instance started that Conductor no longer has can never finish: report it, once, as failed. A
+      // status event or a reconcile list names runs of unknown tenants and is never trusted to say so.
+      const tenantId = this.open.get(runId);
+      if (tenantId === undefined) return false;
+      return this.report(
+        { runId, state: 'failed', code: 'NotFound' },
+        tenantId,
+      );
+    }
+    const tenantId = tenantOfCorrelation(w.correlationId);
     const run = toRun(w);
     if (run.state === 'running' || !tenantId) return false;
-    this.open.delete(runId);
-    if (this.reported.has(runId)) return false;
-    this.reported.add(runId);
+    return this.report(run, tenantId);
+  }
+
+  private report(run: WorkflowRun, tenantId: string): boolean {
+    this.open.delete(run.runId);
+    if (this.reported.has(run.runId)) return false;
+    this.reported.add(run.runId);
+    if (this.reported.size > this.maxReported)
+      this.reported.delete(this.reported.values().next().value!);
     for (const l of this.listeners) l({ ...run, tenantId });
     return true;
   }

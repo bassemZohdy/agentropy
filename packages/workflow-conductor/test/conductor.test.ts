@@ -354,3 +354,101 @@ describe('Conductor adapter specifics', () => {
     });
   });
 });
+
+describe('FIX-060: runs are bound to their tenant unambiguously', () => {
+  const ctx = (tenantId: string, key = 'k') => ({
+    tenantId,
+    taskId: 't',
+    idempotencyKey: key,
+  });
+  const listen = (engine: ConductorWorkflowEngine) => {
+    const reports: { runId: string; tenantId: string; code?: string }[] = [];
+    engine.onFinished((r) => reports.push(r));
+    return reports;
+  };
+
+  it('FIX-060: tenant a cannot read a run of tenant a:b, and its completion is published to a:b', async () => {
+    const server = new FakeConductor();
+    const engine = engineFor(server);
+    const reports = listen(engine);
+    const run = await engine.start('invoice', { x: 1 }, ctx('a:b'));
+    expect(await engine.status(run.runId, { tenantId: 'a' })).toMatchObject({
+      state: 'failed',
+      code: 'NotFound',
+    });
+    expect((await engine.status(run.runId, { tenantId: 'a:b' })).state).toBe(
+      'running',
+    );
+    server.set(run.runId, 'COMPLETED', { ok: true });
+    expect(await engine.poll()).toBe(1);
+    expect(reports).toEqual([
+      expect.objectContaining({ runId: run.runId, tenantId: 'a:b' }),
+    ]);
+    // The same tenant IDs cannot collide the other way round either.
+    const other = await engine.start('invoice', {}, ctx('a', 'b:k'));
+    expect(await engine.status(other.runId, { tenantId: 'a:b' })).toMatchObject(
+      { code: 'NotFound' },
+    );
+  });
+
+  it('FIX-060: a run that no longer exists is reported once as failed NotFound', async () => {
+    const server = new FakeConductor();
+    const engine = engineFor(server);
+    const reports = listen(engine);
+    const run = await engine.start('invoice', {}, ctx('t-1'));
+    server.runs.delete(run.runId);
+    expect(await engine.poll()).toBe(1);
+    expect(await engine.poll()).toBe(0);
+    expect(reports).toEqual([
+      expect.objectContaining({
+        runId: run.runId,
+        tenantId: 't-1',
+        state: 'failed',
+        code: 'NotFound',
+      }),
+    ]);
+  });
+
+  it('FIX-060: a status event for a run nobody started stays unreported, and an unreachable server is not a deleted run', async () => {
+    const server = new FakeConductor();
+    const engine = engineFor(server);
+    const reports = listen(engine);
+    expect(await engine.handleStatusEvent({ workflowId: 'wf-unknown' })).toBe(
+      false,
+    );
+    const run = await engine.start('invoice', {}, ctx('t-1'));
+    server.down = true;
+    await expect(engine.poll()).rejects.toMatchObject({
+      code: 'ProviderUnavailable',
+    });
+    server.down = false;
+    expect(reports).toEqual([]);
+    expect((await engine.status(run.runId, { tenantId: 't-1' })).state).toBe(
+      'running',
+    );
+  });
+
+  it('FIX-060: the set of reported runs is bounded; the newest runs stay deduplicated', async () => {
+    const server = new FakeConductor();
+    const engine = new ConductorWorkflowEngine({
+      baseUrl: 'https://conductor.example',
+      fetch: server.fetch,
+      headers: () => ({ 'x-authorization': server.token }),
+      maxReported: 2,
+    });
+    const reports = listen(engine);
+    const runs = [];
+    for (const key of ['k1', 'k2', 'k3'])
+      runs.push(await engine.start('invoice', {}, ctx('t-1', key)));
+    for (const r of runs) server.set(r.runId, 'COMPLETED', 1);
+    expect(await engine.poll()).toBe(3);
+    expect(reports).toHaveLength(3);
+    expect(await engine.handleStatusEvent({ workflowId: runs[2]!.runId })).toBe(
+      false,
+    );
+    // The oldest entry was evicted: only a repeated webhook for such an old run is delivered again.
+    expect(await engine.handleStatusEvent({ workflowId: runs[0]!.runId })).toBe(
+      true,
+    );
+  });
+});
