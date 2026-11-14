@@ -28,9 +28,6 @@
   - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
   - Links: Ref: docs/skills.md
   - Blocked: a public listing needs the owner's submission and a second harness needs to be run by hand → n/a (manual) → owner submits the plugin, runs the five skills in another harness and records it under "Tested in" in docs/skills.md
-- [/] **FIX-063** · P2 · low · TaskService guards: fan-out counted inside the accepting transaction, Unauthenticated from getTaskByIdempotencyKey without a principal, no auto-created instance left by a refused delegation
-  - Done when: concurrent delegations cannot exceed maxFanOut, a missing principal is Unauthenticated, a denied delegation by definition leaves no instance; `pnpm exec vitest run packages/runtime/test/task-service.test.ts`
-  - State: attempts 0/3; baseline 667 passing; branch todo/FIX-063-taskservice-guards-fan-out-counted from main; next: read docs
 - [ ] **FIX-064** · P2 · mid · Outbox relay and audit forwarder work within a time budget per drain call, and the relay renews its leader lease while it drains
   - Done when: a backlog larger than the budget is spread over several drain calls in order, and a drain longer than leaseMs keeps the lease; `pnpm exec vitest run packages/runtime/test/outbox-inbox.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
