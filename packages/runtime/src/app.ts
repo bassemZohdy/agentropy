@@ -75,7 +75,11 @@ import {
   bridgeWorkflowCompletions,
   workflowOperationHandlers,
 } from './workflow.js';
-import { DefinitionRegistry, InstanceDirectory } from './registry.js';
+import {
+  DefinitionRegistry,
+  InstanceDirectory,
+  type InstanceAudit,
+} from './registry.js';
 import { AgentRuntime, type RuntimeOptions } from './runtime.js';
 import {
   TaskService,
@@ -536,6 +540,45 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
       );
     return remote;
   }
+  /**
+   * An instance lifecycle call (Security v1 revision 9): the caller's grant and a policy decision come first, so a
+   * denied call changes nothing; the change then commits together with its audit intent (`instance.<verb>`).
+   */
+  async function governInstance<T>(
+    caller: TrustedPrincipal,
+    verb: 'create' | 'suspend' | 'resume' | 'retire' | 'drain' | 'share',
+    resourceId: string | undefined,
+    run: (audit: InstanceAudit) => Promise<T>,
+    resourceType: 'agent-instance' | 'agent-definition' = 'agent-instance',
+  ): Promise<T> {
+    const action = `agent:${verb}`;
+    await tasks.checkGrant(caller);
+    await enforcePolicy(o.pdp, {
+      principal: caller,
+      action,
+      resource: {
+        type: resourceType,
+        id: String(resourceId),
+        tenantId: caller?.tenantId,
+      },
+    });
+    return run((tx, change) =>
+      tasks.audit(tx, caller, {
+        type: `instance.${verb}`,
+        action,
+        resource: { type: 'agent-instance', id: change.instanceId },
+        decision: 'allow',
+        details: {
+          ...(change.from ? { from: change.from } : {}),
+          ...(change.to ? { to: change.to } : {}),
+          ...(change.ownerId ? { ownerId: change.ownerId } : {}),
+          ...(change.sharedWith !== undefined
+            ? { sharedWith: change.sharedWith }
+            : {}),
+        },
+      }),
+    );
+  }
   async function hasActiveTasks(instanceId: string): Promise<boolean> {
     return (
       await store.transaction((tx) =>
@@ -662,7 +705,8 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
         : tasks.getTask(id, c),
     listTasks: (q, c) => tasks.listTasks(q, c),
     listInstances: (c, ownerId) => instances.list(c, ownerId),
-    drainInstance: (id, c) => instances.drain(id, c),
+    drainInstance: (id, c) =>
+      governInstance(c, 'drain', id, (audit) => instances.drain(id, c, audit)),
     async upgradeInstance(id, change, c) {
       await tasks.checkGrant(c);
       await enforcePolicy(o.pdp, {
@@ -717,7 +761,10 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
         .map(([version, u]) => ({ version, ...u }))
         .sort((a, b) => a.version.localeCompare(b.version));
     },
-    shareInstance: (id, ids, c) => instances.share(id, ids, c),
+    shareInstance: (id, ids, c) =>
+      governInstance(c, 'share', id, (audit) =>
+        instances.share(id, ids, c, audit),
+      ),
     getTaskByIdempotencyKey: (k, c) => tasks.getTaskByIdempotencyKey(k, c),
     getResult: async <O>(id: string, c: TrustedPrincipal): Promise<O> => {
       if (!isRemote(id)) return tasks.getResult<O>(id, c);
@@ -737,14 +784,30 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     subscribe: (id, c, from, options) =>
       stream.subscribe(id, c, from, options?.signal),
     submitTurn: (t, c) => tasks.submitTurn(t, c),
-    createInstance: (req, c) => instances.create(req, c),
-    suspendInstance: (id, c) => instances.suspend(id, c),
-    resumeInstance: (id, c) => instances.resume(id, c),
+    createInstance: (req, c) =>
+      governInstance(
+        c,
+        'create',
+        req?.definition?.id,
+        (audit) => instances.create(req, c, audit),
+        'agent-definition',
+      ),
+    suspendInstance: (id, c) =>
+      governInstance(c, 'suspend', id, (audit) =>
+        instances.suspend(id, c, audit),
+      ),
+    resumeInstance: (id, c) =>
+      governInstance(c, 'resume', id, (audit) =>
+        instances.resume(id, c, audit),
+      ),
     retireInstance: (id, c, opts = {}) =>
-      instances.retire(id, c, {
-        ...opts,
-        hasActiveTasks: () => hasActiveTasks(id),
-      }),
+      governInstance(c, 'retire', id, (audit) =>
+        instances.retire(id, c, {
+          ...opts,
+          audit,
+          hasActiveTasks: () => hasActiveTasks(id),
+        }),
+      ),
     claimHumanAction: (id, c) => human.claim(id, c),
     releaseHumanAction: (id, c) => human.release(id, c),
     getHumanAction: (id, c) => human.get(id, c),

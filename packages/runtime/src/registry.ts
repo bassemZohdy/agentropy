@@ -150,6 +150,21 @@ export class DefinitionRegistry {
   }
 }
 
+/**
+ * Written in the transaction of a lifecycle change (Security v1 revision 9): the facade turns it into the audit
+ * intent, so the change and its audit record commit together or not at all.
+ */
+export type InstanceAudit = (
+  tx: StoreTx,
+  change: {
+    instanceId: string;
+    from?: AgentInstance['state'];
+    to?: AgentInstance['state'];
+    ownerId?: string;
+    sharedWith?: number;
+  },
+) => Promise<void>;
+
 export interface CreateInstanceRequest {
   definition: VersionedRef;
   ownerId: string;
@@ -180,7 +195,14 @@ export class InstanceDirectory {
   async create(
     req: CreateInstanceRequest,
     caller: TrustedPrincipal,
+    audit?: InstanceAudit,
   ): Promise<AgentInstance> {
+    // The owner is who the instance appears for in lists and the inbox: only a trusted service names another one.
+    if (req.ownerId !== caller.id && caller.type !== 'service')
+      throw new AgentropyError(
+        'PermissionDenied',
+        'Only a trusted service can create an instance for another owner',
+      );
     const key = `instance:${caller.tenantId}|${caller.id}|${req.idempotencyKey}`;
     const fingerprint = digestOf({
       definition: req.definition,
@@ -219,6 +241,11 @@ export class InstanceDirectory {
         tenantId: caller.tenantId,
         instanceId: instance.id,
         fingerprint,
+      });
+      await audit?.(tx, {
+        instanceId: instance.id,
+        to: 'available',
+        ownerId: instance.ownerId,
       });
       return instance;
     });
@@ -276,12 +303,17 @@ export class InstanceDirectory {
   suspend(
     instanceId: string,
     caller: TrustedPrincipal,
+    audit?: InstanceAudit,
   ): Promise<AgentInstance> {
-    return this.move(instanceId, caller, 'suspended');
+    return this.move(instanceId, caller, 'suspended', audit);
   }
 
-  resume(instanceId: string, caller: TrustedPrincipal): Promise<AgentInstance> {
-    return this.move(instanceId, caller, 'available');
+  resume(
+    instanceId: string,
+    caller: TrustedPrincipal,
+    audit?: InstanceAudit,
+  ): Promise<AgentInstance> {
+    return this.move(instanceId, caller, 'available', audit);
   }
 
   /** Without force, retiring fails InvalidState while non-terminal tasks exist (checked by the caller-supplied guard). */
@@ -291,6 +323,7 @@ export class InstanceDirectory {
     opts: {
       force?: boolean;
       hasActiveTasks?: () => boolean | Promise<boolean>;
+      audit?: InstanceAudit;
     } = {},
   ): Promise<AgentInstance> {
     if (!opts.force && (await opts.hasActiveTasks?.()))
@@ -299,7 +332,7 @@ export class InstanceDirectory {
         'Instance has non-terminal tasks',
         { details: { kind: 'instance' } },
       );
-    return this.move(instanceId, caller, 'retired');
+    return this.move(instanceId, caller, 'retired', opts.audit);
   }
 
   /**
@@ -309,6 +342,7 @@ export class InstanceDirectory {
   async drain(
     instanceId: string,
     caller: TrustedPrincipal,
+    audit?: InstanceAudit,
   ): Promise<AgentInstance> {
     return this.store.transaction(async (tx) => {
       const doc = await this.owned(tx, instanceId, caller);
@@ -330,7 +364,7 @@ export class InstanceDirectory {
         ...(active ? {} : { state: 'retired' as const }),
         revision: inst.revision + 1,
       };
-      return (
+      const updated = (
         await tx.update<AgentInstance>(
           'instances',
           instanceId,
@@ -338,6 +372,12 @@ export class InstanceDirectory {
           next,
         )
       ).value;
+      await audit?.(tx, {
+        instanceId,
+        from: inst.state,
+        to: updated.state,
+      });
+      return updated;
     });
   }
 
@@ -346,6 +386,7 @@ export class InstanceDirectory {
     instanceId: string,
     principalIds: string[],
     caller: TrustedPrincipal,
+    audit?: InstanceAudit,
   ): Promise<AgentInstance> {
     if (
       !Array.isArray(principalIds) ||
@@ -369,7 +410,7 @@ export class InstanceDirectory {
         ),
         revision: doc.value.revision + 1,
       };
-      return (
+      const updated = (
         await tx.update<AgentInstance>(
           'instances',
           instanceId,
@@ -377,6 +418,11 @@ export class InstanceDirectory {
           next,
         )
       ).value;
+      await audit?.(tx, {
+        instanceId,
+        sharedWith: updated.sharedWith?.length ?? 0,
+      });
+      return updated;
     });
   }
 
@@ -455,6 +501,7 @@ export class InstanceDirectory {
     instanceId: string,
     caller: TrustedPrincipal,
     to: AgentInstance['state'],
+    audit?: InstanceAudit,
   ): Promise<AgentInstance> {
     return this.store.transaction(async (tx) => {
       const doc = await tx.get<AgentInstance>('instances', instanceId);
@@ -471,13 +518,15 @@ export class InstanceDirectory {
         });
       }
       assertTransition(INSTANCE_MACHINE, inst.state, to);
-      return (
+      const updated = (
         await tx.update<AgentInstance>('instances', instanceId, doc.revision, {
           ...inst,
           state: to,
           revision: inst.revision + 1,
         })
       ).value;
+      await audit?.(tx, { instanceId, from: inst.state, to });
+      return updated;
     });
   }
 }

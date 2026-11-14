@@ -77,7 +77,7 @@ describe('container host (M3-08)', () => {
   it('A2A endpoint: off without tokens; bearer tokens map to principals of one tenant; the card names the endpoint', async () => {
     const app = createLocalApp({
       store: new SqliteStore({ path: ':memory:' }),
-      pdp: new AllowListPolicy(''),
+      pdp: new AllowListPolicy('agent:create,agent:share'),
       profiles: BUILTIN_PROFILES,
     });
     defineAgents(app);
@@ -141,7 +141,7 @@ describe('container host (M3-08)', () => {
     const alice: TrustedPrincipal = { id: 'a', type: 'user', tenantId: 't' };
     const closed = createLocalApp({
       store: new SqliteStore({ path: ':memory:' }),
-      pdp: new AllowListPolicy(''),
+      pdp: new AllowListPolicy('agent:create'),
       profiles: BUILTIN_PROFILES,
     });
     defineAgents(closed);
@@ -278,7 +278,7 @@ describe('container host (M3-08)', () => {
         path: join(mkdtempSync(join(tmpdir(), 'agentropy-host-')), 'host.db'),
       }),
       pdp: new AllowListPolicy(
-        'delegation:delegate,delegation:cancel,task:dispatch,capability:notification:use',
+        'agent:create,agent:share,delegation:delegate,delegation:cancel,task:dispatch,capability:notification:use',
       ),
       profiles: BUILTIN_PROFILES,
     });
@@ -381,7 +381,7 @@ describe('container host (M3-08)', () => {
         path: join(mkdtempSync(join(tmpdir(), 'agentropy-host-')), 'host.db'),
       }),
       pdp: new AllowListPolicy(
-        'delegation:delegate,task:dispatch,capability:notification:use',
+        'agent:create,agent:share,delegation:delegate,task:dispatch,capability:notification:use',
       ),
       profiles: BUILTIN_PROFILES,
     });

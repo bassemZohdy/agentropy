@@ -1,4 +1,4 @@
-# Agentropy Agent Contract v1.0 — revision 11
+# Agentropy Agent Contract v1.0 — revision 12
 
 **Status:** Accepted for M1 implementation (2026-11-05); not API-stable. Implemented types live in `packages/core`; behavior is claimed only where an executable test exists.
 **Scope:** Core logical Agent, AgentDefinition, AgentInstance, DelegatedTask and Execution. Transport/runtime are independent.
@@ -18,6 +18,7 @@
 | 9 | 2026-11-05 | Governance (TASK-026.2, D-03/D-08): an instance accepts delegations only from its owner, principals in `AgentInstance.sharedWith`, agents whose own instance has the same (or a shared) owner, and trusted services — anyone else in the tenant gets `NotFound`; owner-only `shareInstance`; delegators see their own tasks, owners every task on their instance |
 | 10 | 2026-11-06 | FEAT-027.9: `DelegationRequest.target.remote = { endpoint, definitionId, version? }` routes through the CommunicationRouter; the caller gets a handle to a local projection (`authority: 'remote'`, durability `none`) refreshed from the authoritative remote task, visible like a local child; `child-tasks` wake-ups include remote children; grants never cross the boundary |
 | 11 | 2026-11-06 | FEAT-028.3 ([ADR-0029](../adr/0029-upgrades-and-version-migration.md)): `AgentService.upgradeInstance` (audited, future tasks only, rollback = upgrade to an earlier version) and `versionsInUse`; `AgentInstance.previousDefinition`; `Agent.checkpointCodec` with `IncompatibleVersion` on unreadable checkpoints |
+| 12 | 2026-11-14 | FIX-057 (review N-09): `createInstance` refuses an `ownerId` other than the caller's unless the caller is a trusted service (`PermissionDenied`), so a user cannot make an instance appear in another user's list and inbox; `createInstance`, `suspendInstance`, `resumeInstance`, `retireInstance`, `drainInstance` and `shareInstance` are policy checked (`agent:create`, `agent:suspend`, `agent:resume`, `agent:retire`, `agent:drain`, `agent:share`, as `agent:upgrade` already is) and write an audit intent in the transaction of the change ([Security v1](security-v1.md) revision 9) |
 
 ## Decisions
 
@@ -198,11 +199,11 @@ export interface AgentService {
   // Conversation (see "Conversation turn model")
   submitTurn(turn: ConversationTurn, caller: TrustedPrincipal): Promise<TaskHandle>;
   // Instances
-  createInstance(req: { definition: VersionedRef; ownerId: string; idempotencyKey: string }, caller: TrustedPrincipal): Promise<AgentInstance>;
+  createInstance(req: { definition: VersionedRef; ownerId: string; idempotencyKey: string }, caller: TrustedPrincipal): Promise<AgentInstance>; // rev 12: ownerId must be the caller unless the caller is a trusted service; policy `agent:create`, audited
   suspendInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal): Promise<AgentInstance>;
   resumeInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal): Promise<AgentInstance>;
   retireInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal, opts?: { force?: boolean }): Promise<AgentInstance>;
-  drainInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal): Promise<AgentInstance>; // no new tasks; retires when the last task ends
+  drainInstance(instanceId: AgentInstanceId, caller: TrustedPrincipal): Promise<AgentInstance>; // no new tasks; retires when the last task ends; rev 12: policy `agent:drain`, audited (suspend, resume, retire and share likewise)
   upgradeInstance(instanceId: AgentInstanceId, change: { version: string; expectedRevision: number }, caller: TrustedPrincipal): Promise<AgentInstance>; // rev 11; future tasks only; audited
   versionsInUse(definitionId: string, caller: TrustedPrincipal): Promise<{ version: string; instances: number; activeTasks: number }[]>; // rev 11; trusted services
   shareInstance(instanceId: AgentInstanceId, principalIds: string[], caller: TrustedPrincipal): Promise<AgentInstance>; // owner only; replaces the share list

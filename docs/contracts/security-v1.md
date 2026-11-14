@@ -1,4 +1,4 @@
-# Agentropy Security Contract v1 — revision 8 (PEP/PDP, audit, credentials)
+# Agentropy Security Contract v1 — revision 9 (PEP/PDP, audit, credentials)
 
 **Status:** Accepted for M1 implementation (2026-11-05). Implements the M1 subset of [ADR-0021](../adr/0021-delegated-authorization.md), [ADR-0024](../adr/0024-pre-dispatch-authorization-gate.md) and [ADR-0025](../adr/0025-security-infrastructure-errors.md). Policy engines, identity providers, credential backends and audit storage remain deferred (D-17…D-22). **Errors:** [Errors v1](errors-v1.md).
 
@@ -14,6 +14,7 @@
 | 6 | 2026-11-06 | FEAT-028.2: `maxConcurrentExecutions` tenant quota, enforced across every worker sharing the store |
 | 7 | 2026-11-06 | FEAT-028.4 (D-21, D-22): audit lifecycle — retention with a deployment floor, legal holds, prefix disposal with receipts, external anchors, export, audit of audit access |
 | 8 | 2026-11-06 | FEAT-033.1 (R-05): a shared decision cache applies invalidations recorded in the store by any worker within `syncMs`; `revokeAuthority` records one with its audit event |
+| 9 | 2026-11-14 | FIX-057 (review N-09): instance lifecycle is governed like `agent:upgrade`: `AgentService.createInstance`, `suspendInstance`, `resumeInstance`, `retireInstance`, `drainInstance` and `shareInstance` run the grant check and a policy decision (`agent:create`, `agent:suspend`, `agent:resume`, `agent:retire`, `agent:drain`, `agent:share`) before anything changes, and commit an audit intent (`instance.create`, `instance.suspend`, `instance.resume`, `instance.retire`, `instance.drain`, `instance.share`; decision `allow`) in the same transaction, so a denied call changes nothing and an allowed one is never unaudited. Creating an instance for another owner is for trusted services only |
 
 ## TypeScript contract (normative)
 
