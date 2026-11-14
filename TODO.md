@@ -2,13 +2,6 @@
 
 ## 🌳 Task Tree
 
-- [!] **TASK-040** · P0 · low · Restore GitHub Actions billing; verify `main` CI (setup-node 7.1.0 bump never ran)
-  - Done when: `gh run list --branch main --workflow ci.yml --limit 1 --json conclusion --jq '.[0].conclusion' | grep -qx success`
-  - Links: Ref: .github/workflows/ci.yml
-  - Blocked: jobs never start ("recent account payments have failed or your spending limit needs to be increased") → run 42526351089 failed with 0 steps on all 6 jobs → owner fixes Billing & plans in GitHub, then re-runs CI on main
-- [!] **TASK-044** · P1 · low · Enable GitHub private vulnerability reporting (SECURITY.md names it as the channel)
-  - Done when: `gh api repos/bassemZohdy/agentropy/private-vulnerability-reporting --jq .enabled | grep -qx true`
-  - Blocked: reporting channel is off or not visible → the settings API answers HTTP 404 → owner enables it under Settings > Code security
 - [ ] **TASK-043** · P1 · high · First release 0.1.0 (owner defaults accepted 2026-11-08)
   - Done when: `npm view @agentropy/core@0.1.0 version`
   - Links: Ref: docs/release.md
