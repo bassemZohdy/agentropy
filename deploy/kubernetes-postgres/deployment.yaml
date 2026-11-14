@@ -76,6 +76,14 @@ spec:
             limits:
               cpu: "1"
               memory: 512Mi
+          # A start that migrates the schema or opens a large store may take a while: the liveness probe only starts once
+          # this one has passed (up to 30 x 5 s = 150 s), so a slow start is not a failing one.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 5
+            failureThreshold: 30
           livenessProbe:
             httpGet:
               path: /healthz

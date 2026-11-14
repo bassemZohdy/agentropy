@@ -1,0 +1,13 @@
+# A node drain evicts at most one replica at a time and never the last one (TASK-076): the Deployment has several
+# replicas, so a voluntary disruption must leave one serving. Raise minAvailable with the replica count.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agentropy
+  labels:
+    app.kubernetes.io/name: agentropy
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: agentropy

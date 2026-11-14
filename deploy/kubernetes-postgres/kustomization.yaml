@@ -6,6 +6,7 @@ kind: Kustomization
 resources:
   - ../kubernetes
   - deployment.yaml
+  - poddisruptionbudget.yaml
 patches:
   - patch: |-
       $patch: delete

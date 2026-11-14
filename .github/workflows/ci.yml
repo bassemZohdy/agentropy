@@ -245,8 +245,16 @@ jobs:
   cluster:
     # FEAT-036: apply the Kubernetes manifests to a kind cluster, wait for readiness, run the A2A smoke test through
     # the Service, roll the StatefulSet, delete the pod without grace and check the accepted task survives on the volume.
+    # The PostgreSQL variant (TASK-076) runs against a throwaway PostgreSQL in the cluster.
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [sqlite, postgres]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Live-cluster deployment test
+      - name: Live-cluster deployment test (${{ matrix.variant }})
         run: bash deploy/kind-smoke.sh
+        env:
+          VARIANT: ${{ matrix.variant }}
+          CLUSTER: agentropy-smoke-${{ matrix.variant }}

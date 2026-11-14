@@ -4,6 +4,8 @@
 # accepted before the disruption is still completed on the persistent volume afterwards.
 #
 #   bash deploy/kind-smoke.sh            # creates (and afterwards deletes) the cluster agentropy-smoke
+#   VARIANT=postgres bash deploy/kind-smoke.sh   # the PostgreSQL variant (TASK-076): a throwaway PostgreSQL in the
+#                                        # cluster, two replicas, rolling restart and pod loss with the work in the database
 #   KEEP=1 bash deploy/kind-smoke.sh     # keeps the cluster for inspection
 #   KIND_IMAGE=kindest/node:v1.36.1      # node image (default: kind's own default)
 #
@@ -12,6 +14,7 @@
 set -euo pipefail
 
 cluster="${CLUSTER:-agentropy-smoke}"
+variant="${VARIANT:-sqlite}"
 image="agentropy-host:kind"
 token="kind-token"
 principal="kind-peer"
@@ -56,8 +59,57 @@ rpc() {
 }
 
 wait_ready() {
+  if [ "${variant}" = "postgres" ]; then
+    kctl rollout status deployment/agentropy --timeout=180s
+    kctl wait --for=condition=Ready pod -l app.kubernetes.io/name=agentropy --timeout=120s
+    return
+  fi
   kctl rollout status statefulset/agentropy --timeout=180s
   kctl wait --for=condition=Ready pod/agentropy-0 --timeout=120s
+}
+
+# The names of the host's pods, sorted (one pod with SQLite, the replicas with PostgreSQL).
+pods() { kctl get pods -l app.kubernetes.io/name=agentropy -o jsonpath='{range .items[*]}{.metadata.uid}{"\n"}{end}' | sort; }
+
+# A throwaway PostgreSQL for the variant, and the egress the default-deny NetworkPolicy has to be given to reach it.
+postgres() {
+  kctl apply -f - <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: postgres }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          env: [{ name: POSTGRES_PASSWORD, value: smoke }]
+          ports: [{ containerPort: 5432 }]
+          readinessProbe: { exec: { command: ["pg_isready", "-U", "postgres"] }, periodSeconds: 2 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: postgres }
+spec:
+  selector: { app: postgres }
+  ports: [{ port: 5432 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: agentropy-to-postgres }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: agentropy } }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ podSelector: { matchLabels: { app: postgres } } }]
+      ports: [{ port: 5432 }]
+EOF
+  kctl rollout status deployment/postgres --timeout=180s
+  kctl create secret generic agentropy-pg --from-literal="url=postgres://postgres:smoke@postgres:5432/postgres" \
+    --dry-run=client -o yaml | kctl apply -f -
 }
 
 step "cluster ${cluster}"
@@ -72,7 +124,10 @@ kind load docker-image "${image}" --name "${cluster}"
 step "apply manifests"
 kctl create secret generic agentropy-a2a --from-literal="tokens=${token}=${principal}" \
   --dry-run=client -o yaml | kctl apply -f -
-kubectl kustomize "${root}/deploy/kubernetes" \
+if [ "${variant}" = "postgres" ]; then postgres; fi
+manifests="${root}/deploy/kubernetes"
+if [ "${variant}" = "postgres" ]; then manifests="${root}/deploy/kubernetes-postgres"; fi
+kubectl kustomize "${manifests}" \
   | sed "s#registry.example.com/agentropy/agentropy-host:0.0.0#${image}#" \
   | kctl apply -f -
 wait_ready
@@ -91,21 +146,23 @@ test -n "${task}"
 get='{"jsonrpc":"2.0","id":9,"method":"GetTask","params":{"id":"'"${task}"'"}}'
 
 step "rolling restart"
-uid_before=$(kctl get pod agentropy-0 -o jsonpath='{.metadata.uid}')
-kctl rollout restart statefulset/agentropy
+uid_before=$(pods)
+if [ "${variant}" = "postgres" ]; then kctl rollout restart deployment/agentropy; else kctl rollout restart statefulset/agentropy; fi
 sleep 3
 wait_ready
-test "$(kctl get pod agentropy-0 -o jsonpath='{.metadata.uid}')" != "${uid_before}"
+# No pod of the old set is left.
+test -z "$(comm -12 <(echo "${uid_before}") <(pods))" || { echo "an old pod survived the rollout" >&2; exit 1; }
 forward
 grep -q TASK_STATE_COMPLETED <<<"$(rpc "${get}")" || { echo "task ${task} lost across the rollout" >&2; exit 1; }
 echo "task ${task} survived the rollout"
 
 step "pod loss"
-uid_before=$(kctl get pod agentropy-0 -o jsonpath='{.metadata.uid}')
-kctl delete pod agentropy-0 --grace-period=0 --force --wait=false
+victim=$(kctl get pods -l app.kubernetes.io/name=agentropy -o jsonpath='{.items[0].metadata.name}')
+uid_before=$(kctl get pod "${victim}" -o jsonpath='{.metadata.uid}')
+kctl delete pod "${victim}" --grace-period=0 --force --wait=false
 for _ in $(seq 1 60); do
-  uid=$(kctl get pod agentropy-0 -o jsonpath='{.metadata.uid}' 2>/dev/null || true)
-  if [ -n "${uid}" ] && [ "${uid}" != "${uid_before}" ]; then break; fi
+  # StatefulSet: the same name with a new UID; Deployment: the old UID is gone and the replacement is listed.
+  if ! pods | grep -qx "${uid_before}"; then break; fi
   sleep 1
 done
 wait_ready
