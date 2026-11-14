@@ -1329,6 +1329,13 @@ export class AgentRuntime {
             },
             signal,
           );
+          // The operation's declared input, before the provider sees it (FEAT-071): a malformed input fails the call
+          // with a SchemaViolation, which is not retried.
+          validateAgainst(
+            op.inputSchema,
+            input,
+            `${capabilityId}.${operation} input`,
+          );
           const provider = this.o.capabilityProviders.get(binding.providerId);
           if (!provider)
             throw new AgentropyError(
