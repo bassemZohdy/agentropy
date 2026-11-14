@@ -30,5 +30,6 @@
   - Blocked: a public listing needs the owner's submission and a second harness needs to be run by hand → n/a (manual) → owner submits the plugin, runs the five skills in another harness and records it under "Tested in" in docs/skills.md
 - [ ] **TASK-077** · P2 · low · CI cancels superseded runs per ref, gives every job a timeout and runs the offline suite on Node 26 (the image's runtime)
   - Done when: check-deploy fails for a workflow job without timeout-minutes, without the concurrency group or without the Node 26 job; `node scripts/check-deploy.mjs`
+  - State: branch todo/TASK-077-ci-cancels-superseded-runs-per from main; next: start TASK-077
 - [ ] **TASK-078** · P2 · low · A2A HTTP binding counts a stream before awaiting it (maxStreams cannot be passed by concurrent requests) and sends WWW-Authenticate on 401
   - Done when: concurrent streaming requests beyond maxStreams get 503 and a 401 carries the header; `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts`
