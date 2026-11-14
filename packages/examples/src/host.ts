@@ -22,7 +22,8 @@
  * - AGENTROPY_TICK_MS     scheduler interval (default 250)
  * - AGENTROPY_OUTBOX_POISON_AFTER  give up on an outbox row after this many failed deliveries (default: never, which keeps
  *                         event order but lets one failing consumer hold back every later row; /readyz reports
- *                         `outboxStuck` while rows are held back)
+ *                         `outboxStuck` while rows are held back; /readyz reports `auditStuck` while the audit sink
+ *                         refuses rows)
  * - AGENTROPY_OTLP_ENDPOINT  base URL of an OTLP/HTTP collector (e.g. http://collector:4318): traces and metrics are
  *                         exported to `<base>/v1/traces` and `<base>/v1/metrics` (the OpenTelemetry packages are optional
  *                         dependencies loaded only then); AGENTROPY_SERVICE_NAME names the service (default agentropy-host)
@@ -142,9 +143,14 @@ export function healthHandler(
         return send(503, { status: 'scheduler-stalled' });
       // Rows a failing consumer holds back are a detail, not a reason to leave the service: the pod still serves.
       const stuck = await app.relay.stuck(5).catch(() => []);
+      // The same for audit rows a sink keeps refusing (FEAT-075): the pod serves, the audit trail is behind.
+      const auditStuck = app.auditForwarder
+        ? await app.auditForwarder.stuck(5).catch(() => [])
+        : [];
       return send(200, {
         status: 'ready',
         ...(stuck.length ? { outboxStuck: stuck.length } : {}),
+        ...(auditStuck.length ? { auditStuck: auditStuck.length } : {}),
       });
     }
     return send(404, { error: 'not found' });

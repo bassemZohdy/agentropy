@@ -67,6 +67,8 @@ export const METRICS = {
   outboxFailures: 'agentropy.outbox.failures',
   /** Outbox rows given up on after `poisonAfter` failed deliveries (FEAT-039.4). */
   outboxPoisoned: 'agentropy.outbox.poisoned',
+  /** Audit rows the sink refused: counted per attempt; the row is retried and blocks later rows (FEAT-075). */
+  auditForwardFailures: 'agentropy.audit.forward_failures',
 } as const;
 
 /** Span names (D-13). */

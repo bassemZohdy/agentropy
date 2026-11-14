@@ -96,3 +96,50 @@ describe('audit forwarding budget (FIX-064)', () => {
     expect(await forwarder.drain()).toBe(0);
   });
 });
+
+describe('audit forwarding is observable (FEAT-075)', () => {
+  it('FEAT-075: a refusing sink is counted per attempt and reported by stuck(), and the count stops when it recovers', async () => {
+    const h = harness();
+    h.define('d', completes());
+    const inst = await h.instance('d');
+    for (let i = 0; i < 3; i++) await h.delegate(inst.id, {}, `k${i}`);
+    const counted: { name: string; attributes?: Record<string, unknown> }[] =
+      [];
+    let refusing = true;
+    const forwarder = new AuditForwarder({
+      store: h.store,
+      telemetry: {
+        startSpan: () => ({
+          traceparent: undefined,
+          setAttributes() {},
+          fail() {},
+          end() {},
+        }),
+        count: (name, _n, attributes) =>
+          void counted.push({ name, attributes }),
+        record() {},
+      },
+      sink: {
+        record: async () => {
+          if (refusing) throw new Error('sink down');
+        },
+      },
+    });
+    expect(await forwarder.stuck(1)).toEqual([]);
+    for (let i = 0; i < 3; i++) expect(await forwarder.drain()).toBe(0);
+    expect(counted.map((c) => c.name)).toEqual(
+      Array(3).fill('agentropy.audit.forward_failures'),
+    );
+    expect(counted[0]!.attributes).toMatchObject({
+      'agentropy.audit.type': expect.any(String),
+    });
+    const [stuck, ...more] = await forwarder.stuck(3);
+    expect(more).toEqual([]); // forwarding halts at the first refused row
+    expect(stuck).toMatchObject({ attempts: 3, type: expect.any(String) });
+    expect(await forwarder.stuck(4)).toEqual([]);
+    refusing = false;
+    expect(await forwarder.drain()).toBeGreaterThan(0);
+    expect(await forwarder.stuck(1)).toEqual([]);
+    expect(counted).toHaveLength(3);
+  });
+});
