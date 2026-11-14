@@ -31,6 +31,7 @@
 - [ ] **TASK-066** · P2 · mid · Compaction reads only what is due through indexes and in batches, validates retainMs, and reports counts that survive a transaction re-run
   - Done when: a run over already compacted tasks reads none of them, a negative or non-numeric retainMs is SchemaViolation; `pnpm exec vitest run packages/testkit/test/operations.test.ts`
   - Links: Ref: docs/operations.md
+  - State: branch todo/TASK-066-compaction-reads-only-what-due from main; next: start TASK-066
 - [ ] **TASK-067** · P2 · high · Audit verify, export, anchor and dispose work in pages with the chain position kept in the head row, not a tenant's whole log in one transaction
   - Done when: anchor reads a bounded number of rows, dispose removes a long prefix in bounded transactions and verify still passes; a rewritten row is still reported; `pnpm exec vitest run packages/testkit/test/audit-retention.test.ts`
   - Links: Ref: docs/contracts/security-v1.md
