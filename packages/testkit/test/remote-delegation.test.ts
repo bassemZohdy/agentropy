@@ -290,6 +290,25 @@ describe('remote delegation through the router (FEAT-027.9)', () => {
     expect(await code(a.getResult(parent.taskId, alice))).toBe('TaskFailed');
   });
 
+  it('FEAT-070: cancelling the parent cancels its open remote child at the peer on the next sync', async () => {
+    const { b, server } = await runtimeB();
+    const { a, wire } = runtimeA(server);
+    const parent = await startCoordinator(a);
+    await a.runUntilIdle();
+    expect((await projections(a))[0]).toMatchObject({ status: 'created' });
+    await a.cancel(parent.taskId, alice);
+    expect((await a.getTask(parent.taskId, alice)).status).toBe('cancelled');
+    expect((await projections(a))[0]!.cancelRequestedAt).toBeDefined();
+    await a.runUntilIdle(); // the sync asks the peer to cancel instead of for the task's state
+    expect((await projections(a))[0]).toMatchObject({ status: 'cancelled' });
+    expect(wire.some((w) => w.includes('"CancelTask"'))).toBe(true);
+    await b.runUntilIdle();
+    const remote = await b.store.transaction((tx) =>
+      tx.find<{ status: string }>('tasks', {}),
+    );
+    expect(remote.map((r) => r.value.status)).toEqual(['cancelled']);
+  });
+
   it('the application can delegate remotely too; the projection is visible only to its delegator', async () => {
     const { b, server } = await runtimeB();
     const { a } = runtimeA(server);
