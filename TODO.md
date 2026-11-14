@@ -24,10 +24,10 @@
   - [ ] **TASK-043.4** · mid · Cut v0.1.0 (tag, workflow publishes packages and image), verify provenance and signature
     - Done when: `gh release view v0.1.0`
     - Links: Depends: TASK-043.1, TASK-043.2, TASK-043.3, TASK-040, TASK-044
-- [ ] **FIX-060** · P1 · mid · Conductor adapter binds a run to its tenant unambiguously, reports a run that no longer exists as failed NotFound, and bounds its reported set
+- [/] **FIX-060** · P1 · mid · Conductor adapter binds a run to its tenant unambiguously, reports a run that no longer exists as failed NotFound, and bounds its reported set
   - Done when: tenant a cannot read a run of tenant a:b and that run's completion is published to a:b; a deleted run is reported once; `pnpm exec vitest run packages/workflow-conductor/test/conductor.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
-  - State: branch todo/FIX-060-conductor-adapter-binds-run from main; next: start FIX-060
+  - State: attempts 0/3; baseline 662 passing; branch todo/FIX-060-conductor-adapter-binds-run from main; next: read docs
 - [ ] **TASK-061** · P1 · low · Each publishable package gets a README and npm metadata (keywords, homepage, bugs), required by check-pack, before the first publish
   - Done when: check-pack fails for a package without README.md or the metadata and every tarball contains its README; `node scripts/check-pack.mjs --no-install`
   - Links: Ref: docs/release.md
