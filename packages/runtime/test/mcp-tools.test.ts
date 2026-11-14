@@ -6,6 +6,7 @@ import {
   type TrustedPrincipal,
 } from '@agentropy/core';
 import { FakeAudit, FakePolicy } from '@agentropy/testkit';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createLocalApp } from '../src/app.js';
 import {
@@ -402,5 +403,101 @@ describe('Streamable HTTP transport', () => {
     expect(await code(fresh.listTools({ credential: { token: 'bad' } }))).toBe(
       'AuthorityExpired',
     );
+  });
+});
+
+describe('FIX-059: the HTTP transport survives a server that forgot its session', () => {
+  /** A Streamable HTTP server that keeps sessions in memory: `restart()` forgets them, as a restart does. */
+  function server(opts: { alwaysForget?: boolean } = {}) {
+    const sessions = new Set<string>();
+    let next = 0;
+    const log: { method: string; session?: string; clientInfo?: unknown }[] =
+      [];
+    const reply = (status: number, body?: unknown, sid?: string) => ({
+      status,
+      headers: {
+        get: (n: string) =>
+          n.toLowerCase() === 'mcp-session-id'
+            ? (sid ?? null)
+            : n.toLowerCase() === 'content-type'
+              ? 'application/json'
+              : null,
+      },
+      text: async () => (body === undefined ? '' : JSON.stringify(body)),
+    });
+    const fetch: McpFetch = async (_url, init) => {
+      const body = JSON.parse(init.body) as {
+        id?: number;
+        method: string;
+        params?: { clientInfo?: unknown };
+      };
+      const session = init.headers['mcp-session-id'];
+      log.push({
+        method: body.method,
+        ...(session ? { session } : {}),
+        ...(body.params?.clientInfo
+          ? { clientInfo: body.params.clientInfo }
+          : {}),
+      });
+      if (body.method === 'initialize') {
+        const sid = `sess-${++next}`;
+        sessions.add(sid);
+        return reply(200, { jsonrpc: '2.0', id: body.id, result: {} }, sid);
+      }
+      if (opts.alwaysForget || !session || !sessions.has(session))
+        return reply(404);
+      if (body.method === 'notifications/initialized') return reply(202);
+      return reply(200, {
+        jsonrpc: '2.0',
+        id: body.id,
+        result: { content: [{ type: 'text', text: 'ok' }] },
+      });
+    };
+    return { fetch, log, restart: () => sessions.clear() };
+  }
+  const run = (log: { method: string }[], method: string) =>
+    log.filter((e) => e.method === method).length;
+
+  it('FIX-059: after a 404 for the session the same call re-initializes once and succeeds', async () => {
+    const s = server();
+    const client = new McpClient(
+      mcpHttpTransport({ url: 'https://mcp.example/mcp', fetch: s.fetch }),
+    );
+    expect((await client.callTool('x', {})).content?.[0]?.text).toBe('ok');
+    s.restart();
+    expect((await client.callTool('x', {})).content?.[0]?.text).toBe('ok');
+    expect(run(s.log, 'initialize')).toBe(2);
+    expect(run(s.log, 'tools/call')).toBe(3); // the answered 404 was the one that reached a server that forgot us
+    const inits = s.log.filter((e) => e.method === 'initialize');
+    expect(inits.every((e) => e.session === undefined)).toBe(true);
+    // Later calls use the new session.
+    const last = s.log.at(-1)!;
+    expect(last).toMatchObject({ method: 'tools/call', session: 'sess-2' });
+  });
+
+  it('FIX-059: a second 404 fails ProviderUnavailable and does not loop', async () => {
+    const s = server({ alwaysForget: true });
+    const client = new McpClient(
+      mcpHttpTransport({ url: 'https://mcp.example/mcp', fetch: s.fetch }),
+    );
+    expect(await code(client.callTool('x', {}))).toBe('ProviderUnavailable');
+    expect(run(s.log, 'initialize')).toBeLessThanOrEqual(2);
+    expect(run(s.log, 'tools/call')).toBeLessThanOrEqual(2);
+  });
+
+  it('FIX-059: clientInfo carries the package version', async () => {
+    const s = server();
+    const client = new McpClient(
+      mcpHttpTransport({ url: 'https://mcp.example/mcp', fetch: s.fetch }),
+    );
+    await client.callTool('x', {});
+    const pkg = JSON.parse(
+      readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+    ) as { version: string };
+    expect(pkg.version).not.toBe('0.0.0');
+    expect(s.log.find((e) => e.method === 'initialize')?.clientInfo).toEqual({
+      name: 'agentropy',
+      version: pkg.version,
+    });
   });
 });
