@@ -256,3 +256,97 @@ describe('scheduling timestamps (FEAT-038.3)', () => {
       ).toBe('SchemaViolation');
   });
 });
+
+describe('FIX-063: guards in the accepting transaction', () => {
+  it('FIX-063: concurrent delegations cannot exceed maxFanOut', async () => {
+    const h = harness({ limits: { maxFanOut: 2 } });
+    h.define('echo', completes());
+    const inst = await h.instance('echo');
+    const root = await h.delegate(inst.id, {}, 'root');
+    const results = await Promise.allSettled(
+      [1, 2, 3, 4, 5].map((n) =>
+        h.delegate(inst.id, {}, `c${n}`, alice, {
+          parentTaskId: root.taskId,
+        }),
+      ),
+    );
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
+    const refused = results.filter(
+      (r): r is PromiseRejectedResult => r.status === 'rejected',
+    );
+    expect(refused.map((r) => (r.reason as { code: string }).code)).toEqual([
+      'FanOutExceeded',
+      'FanOutExceeded',
+      'FanOutExceeded',
+    ]);
+  });
+
+  it('FIX-063: a missing principal is Unauthenticated from getTaskByIdempotencyKey', async () => {
+    const h = harness();
+    h.define('echo', completes());
+    const inst = await h.instance('echo');
+    const handle = await h.delegate(inst.id, {}, 'k');
+    for (const nobody of [
+      undefined,
+      null,
+      { id: '', type: 'user', tenantId: '' },
+    ])
+      expect(
+        await code(h.tasks.getTaskByIdempotencyKey('k', nobody as never)),
+      ).toBe('Unauthenticated');
+    expect((await h.tasks.getTaskByIdempotencyKey('k', alice)).taskId).toBe(
+      handle.taskId,
+    );
+  });
+
+  it('FIX-063: a refused delegation by definition leaves no instance behind, and an accepted one still creates it once', async () => {
+    const h = harness();
+    h.define('echo', completes(), { inputSchema: { type: 'object' } });
+    const byDefinition = (key: string, input: unknown) =>
+      h.tasks.delegate(
+        {
+          target: { definition: { id: 'echo', version: '1.0.0' } },
+          input,
+          idempotencyKey: key,
+          correlationId: key,
+        },
+        alice,
+      );
+    h.pdp.denied.add('delegation:delegate');
+    expect(await code(byDefinition('denied', {}))).toBe('PermissionDenied');
+    h.pdp.denied.clear();
+    expect(await code(byDefinition('bad-input', 'not an object'))).toBe(
+      'SchemaViolation',
+    );
+    expect(
+      await code(
+        h.tasks.delegate(
+          {
+            target: { definition: { id: 'ghost', version: '1.0.0' } },
+            input: {},
+            idempotencyKey: 'ghost',
+            correlationId: 'ghost',
+          },
+          alice,
+        ),
+      ),
+    ).toBe('NotFound');
+    expect(await h.instances.list(alice)).toEqual([]);
+
+    const first = await byDefinition('ok', { a: 1 });
+    expect(await h.instances.list(alice)).toHaveLength(1);
+    // A retry gets the original task and no second instance.
+    expect((await byDefinition('ok', { a: 1 })).taskId).toBe(first.taskId);
+    expect(await h.instances.list(alice)).toHaveLength(1);
+    expect(await code(byDefinition('ok', { a: 2 }))).toBe(
+      'IdempotencyConflict',
+    );
+    // Concurrent duplicates agree on one task and one instance.
+    const [x, y] = await Promise.all([
+      byDefinition('dup', {}),
+      byDefinition('dup', {}),
+    ]);
+    expect(x.taskId).toBe(y.taskId);
+    expect(await h.instances.list(alice)).toHaveLength(2);
+  });
+});

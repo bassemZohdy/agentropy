@@ -52,7 +52,11 @@ import { DEFAULT_LIMITS, assertMaxBytes } from './limits.js';
 import { checkTaskQuota, type QuotaResolver } from './quotas.js';
 import { pokeWakeups } from './wake-index.js';
 import type { FaultHook } from './outbox.js';
-import type { DefinitionRegistry, InstanceDirectory } from './registry.js';
+import type {
+  CreateInstanceRequest,
+  DefinitionRegistry,
+  InstanceDirectory,
+} from './registry.js';
 
 export interface TaskRecord {
   taskId: string;
@@ -301,11 +305,11 @@ export class TaskService {
     await this.checkGrant(caller);
     const idemId = hashKey(caller.tenantId, caller.id, request.idempotencyKey);
     // FEAT-032.2: the target and the idempotency record come from one read; the record is acted on only below.
-    const { instance, replay: early } = await this.resolveTarget(
-      request,
-      caller,
-      idemId,
-    );
+    const {
+      instance,
+      replay: early,
+      planned,
+    } = await this.resolveTarget(request, caller, idemId);
     await enforcePolicy(this.o.pdp, {
       principal: caller,
       action: 'delegation:delegate',
@@ -391,17 +395,6 @@ export class TaskService {
         'Delegation depth exceeded',
         { details: { depth } },
       );
-    if (parent) {
-      const children = await this.o.store.transaction((tx) =>
-        tx.find('tasks', { where: { parentTaskId: parent.id } }),
-      );
-      if (children.length >= (this.o.limits?.maxFanOut ?? 20))
-        throw new AgentropyError(
-          'FanOutExceeded',
-          'Delegation fan-out exceeded',
-          { details: { children: children.length } },
-        );
-    }
 
     const now = this.o.now();
     const taskId = this.newId('task');
@@ -458,6 +451,29 @@ export class TaskService {
           this.o.quotas?.(caller.tenantId),
           now,
         );
+        // The fan-out is counted here, where the child is inserted: counted before the transaction, concurrent
+        // delegations would all see room (FIX-063). Reading one row past the limit is enough to know it is full.
+        if (parent) {
+          const maxFanOut = this.o.limits?.maxFanOut ?? 20;
+          const children = await tx.find('tasks', {
+            where: { parentTaskId: parent.id },
+            limit: maxFanOut,
+          });
+          if (children.length >= maxFanOut)
+            throw new AgentropyError(
+              'FanOutExceeded',
+              'Delegation fan-out exceeded',
+              { details: { children: children.length } },
+            );
+        }
+        // An instance made for this delegation (a definition target) is stored with the task, or not at all.
+        if (planned && !planned.stored)
+          await this.o.instances.insertPlanned(
+            tx,
+            planned.request,
+            caller,
+            instance,
+          );
         // Fence against a concurrent suspend, drain or retire between the checks above and this commit.
         const live = await tx.get<AgentInstance>('instances', instance.id);
         if (!live || live.value.state !== 'available' || live.value.draining)
@@ -515,7 +531,20 @@ export class TaskService {
       const winner = await this.o.store.transaction((tx) =>
         tx.get<IdempotencyRecord>('idempotency', idemId),
       );
-      if (winner && winner.value.fingerprint === fingerprint)
+      let same = fingerprint;
+      if (winner && planned && !planned.stored) {
+        // The winner stored its own planned instance for this key: ours is not the one the request was made with.
+        const { instance: actual } = await this.o.instances.plan(
+          planned.request,
+          caller,
+        );
+        same = digestOf({
+          target: { instanceId: actual.id },
+          input: request.input,
+          parentTaskId: request.parentTaskId ?? null,
+        });
+      }
+      if (winner && winner.value.fingerprint === same)
         return this.handleFor(winner.value.taskId);
       throw err;
     }
@@ -658,6 +687,8 @@ export class TaskService {
     key: string,
     caller: TrustedPrincipal,
   ): Promise<TaskSnapshot> {
+    if (!caller?.id || !caller.tenantId)
+      throw new AgentropyError('Unauthenticated', 'No trusted principal');
     const rec = await this.o.store.transaction((tx) =>
       tx.get<IdempotencyRecord>(
         'idempotency',
@@ -812,6 +843,8 @@ export class TaskService {
   ): Promise<{
     instance: AgentInstance;
     replay: StoredDocument<IdempotencyRecord> | undefined | null;
+    /** A target made from a definition: the instance is planned here and stored with the task (FIX-063). */
+    planned?: { request: CreateInstanceRequest; stored: boolean };
   }> {
     const instanceId = request.target.instanceId;
     if (instanceId) {
@@ -836,15 +869,17 @@ export class TaskService {
       return { instance: doc.value, replay };
     }
     if (request.target.definition) {
-      const instance = await this.o.instances.create(
-        {
-          definition: request.target.definition,
-          ownerId: caller.id,
-          idempotencyKey: `auto:${request.idempotencyKey}`,
-        },
-        caller,
-      );
-      return { instance, replay: null };
+      const create: CreateInstanceRequest = {
+        definition: request.target.definition,
+        ownerId: caller.id,
+        idempotencyKey: `auto:${request.idempotencyKey}`,
+      };
+      const { instance, stored } = await this.o.instances.plan(create, caller);
+      return {
+        instance,
+        replay: null,
+        planned: { request: create, stored },
+      };
     }
     throw new AgentropyError(
       'SchemaViolation',

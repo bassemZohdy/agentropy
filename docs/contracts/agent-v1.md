@@ -1,4 +1,4 @@
-# Agentropy Agent Contract v1.0 — revision 13
+# Agentropy Agent Contract v1.0 — revision 14
 
 **Status:** Accepted for M1 implementation (2026-11-05); not API-stable. Implemented types live in `packages/core`; behavior is claimed only where an executable test exists.
 **Scope:** Core logical Agent, AgentDefinition, AgentInstance, DelegatedTask and Execution. Transport/runtime are independent.
@@ -20,6 +20,7 @@
 | 11 | 2026-11-06 | FEAT-028.3 ([ADR-0029](../adr/0029-upgrades-and-version-migration.md)): `AgentService.upgradeInstance` (audited, future tasks only, rollback = upgrade to an earlier version) and `versionsInUse`; `AgentInstance.previousDefinition`; `Agent.checkpointCodec` with `IncompatibleVersion` on unreadable checkpoints |
 | 12 | 2026-11-14 | FIX-057 (review N-09): `createInstance` refuses an `ownerId` other than the caller's unless the caller is a trusted service (`PermissionDenied`), so a user cannot make an instance appear in another user's list and inbox; `createInstance`, `suspendInstance`, `resumeInstance`, `retireInstance`, `drainInstance` and `shareInstance` are policy checked (`agent:create`, `agent:suspend`, `agent:resume`, `agent:retire`, `agent:drain`, `agent:share`, as `agent:upgrade` already is) and write an audit intent in the transaction of the change ([Security v1](security-v1.md) revision 9) |
 | 13 | 2026-11-14 | FIX-062 (review N-14): `AgentService.listTasks` takes `newestFirst` (default oldest first; the cursor then continues towards older tasks) and returns `cursors`, one per task, each resuming right after that task, so a caller that stops inside a page can continue from the item it stopped at; the `Store` port gains `FindOptions.beforeSeq` for the page after a descending page |
+| 14 | 2026-11-14 | FIX-063 (review N-15): acceptance guards that were checked before the accepting transaction are checked in it: the fan-out of a parent is counted where the child is inserted, so concurrent delegations cannot exceed `maxFanOut`; a delegation by `target.definition` stores the instance it creates in the transaction that accepts the task, after policy, schema, capability and limit checks, so a refused delegation leaves no instance behind (a retry still gets the same instance and task); `getTaskByIdempotencyKey` without a trusted principal is `Unauthenticated` |
 
 ## Decisions
 
