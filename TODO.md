@@ -27,6 +27,7 @@
 - [ ] **TASK-061** · P1 · low · Each publishable package gets a README and npm metadata (keywords, homepage, bugs), required by check-pack, before the first publish
   - Done when: check-pack fails for a package without README.md or the metadata and every tarball contains its README; `node scripts/check-pack.mjs --no-install`
   - Links: Ref: docs/release.md
+  - State: branch todo/TASK-061-publishable-package-gets-readme from main; next: start TASK-061
 - [!] **TASK-045** · P2 · low · Skills: list the plugin in a public marketplace; run the five skills in a second harness (TASK-039 leftover)
   - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
   - Links: Ref: docs/skills.md
