@@ -31,6 +31,7 @@
 - [ ] **FEAT-073** · P2 · mid · Host validates its numeric environment settings at start, detects the main module by path, and can run compaction on a schedule
   - Done when: a non-numeric AGENTROPY_TICK_MS stops the start with InvalidConfiguration and a configured schedule calls compact; `pnpm exec vitest run packages/examples/test/host.test.ts`
   - Links: Ref: docs/deployment.md
+  - State: branch todo/FEAT-073-host-validates-numeric-environment-settings from main; next: start FEAT-073
 - [ ] **FEAT-074** · P2 · high · Tool and skill lifecycle status (active, suspended, revoked) is kept in the store, so a revocation survives a restart and reaches every worker
   - Done when: a tool revoked through one app is refused by a second app on the same store, also after both restart; an unverified tool still cannot be activated; `pnpm exec vitest run packages/testkit/test/hardening.test.ts`
   - Links: Ref: docs/contracts/tool-v1.md
