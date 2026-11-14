@@ -24,10 +24,10 @@
   - [ ] **TASK-043.4** · mid · Cut v0.1.0 (tag, workflow publishes packages and image), verify provenance and signature
     - Done when: `gh release view v0.1.0`
     - Links: Depends: TASK-043.1, TASK-043.2, TASK-043.3, TASK-040, TASK-044
-- [ ] **FIX-058** · P1 · low · Human-action sweep reads only pending and claimed requests through the status index, not every past-due request ever resolved
+- [/] **FIX-058** · P1 · low · Human-action sweep reads only pending and claimed requests through the status index, not every past-due request ever resolved
   - Done when: a sweep over one open and many resolved past-due requests reads one row and still expires it; `pnpm exec vitest run packages/runtime/test/hot-paths.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
-  - State: branch todo/FIX-058-human-action-sweep-reads-only from main; next: start FIX-058
+  - State: attempts 0/3; baseline 658 passing; branch todo/FIX-058-human-action-sweep-reads-only from main; next: read docs
 - [ ] **FIX-059** · P1 · mid · MCP HTTP transport starts a new session when the server answers 404 for its session ID, and sends the package version in clientInfo
   - Done when: after a 404 for the session the same call re-initializes once and succeeds, and a second 404 fails ProviderUnavailable; `pnpm exec vitest run packages/runtime/test/mcp-tools.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
