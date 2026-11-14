@@ -558,8 +558,10 @@ export class TaskService {
   }
 
   /**
-   * Owner visibility (R-13, M2-05): tasks the caller delegated or owns (a trusted service sees its tenant),
-   * newest last, with an opaque cursor. Other users' and tenants' tasks are never listed.
+   * Owner visibility (R-13, M2-05): tasks the caller delegated or owns (a trusted service sees its tenant), oldest
+   * first, or newest first with `newestFirst` (FIX-062), with an opaque cursor. `cursors[i]` resumes right after
+   * `tasks[i]`, so a caller that stops inside the page can continue from the item it stopped at. Other users' and
+   * tenants' tasks are never listed.
    */
   async listTasks(
     query: {
@@ -567,13 +569,19 @@ export class TaskService {
       status?: TaskStatus[];
       cursor?: string;
       limit?: number;
+      newestFirst?: boolean;
     },
     caller: TrustedPrincipal,
-  ): Promise<{ tasks: TaskSnapshot[]; cursor: string }> {
+  ): Promise<{ tasks: TaskSnapshot[]; cursor: string; cursors: string[] }> {
     if (!caller?.id || !caller.tenantId)
       throw new AgentropyError('Unauthenticated', 'No trusted principal');
-    const start = query.cursor ? Number(query.cursor) : 0;
-    if (!Number.isSafeInteger(start) || start < 0)
+    const newest = query.newestFirst === true;
+    // Oldest first, the cursor is the last `seq` read (0 at the start); newest first, the `seq` to read before.
+    const start = query.cursor ? Number(query.cursor) : newest ? undefined : 0;
+    if (
+      start !== undefined &&
+      (!Number.isSafeInteger(start) || start < (newest ? 1 : 0))
+    )
       throw new AgentropyError('SchemaViolation', 'Invalid task cursor');
     const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
     // Read through the indexes: a trusted service sees the tenant; anyone else the tasks they delegated (callerId)
@@ -590,6 +598,7 @@ export class TaskService {
             { ...base, ownerId: caller.id },
           ];
     const page: StoredDocument<TaskRecord>[] = [];
+    const cursors: string[] = [];
     let after = start;
     while (page.length < limit) {
       const { rows, exhausted } = await this.o.store.transaction(async (tx) => {
@@ -599,13 +608,20 @@ export class TaskService {
           const r = await tx.find<TaskRecord>('tasks', {
             where,
             orderBy: 'seq',
-            afterSeq: after,
+            ...(newest
+              ? {
+                  descending: true,
+                  ...(after !== undefined ? { beforeSeq: after } : {}),
+                }
+              : { afterSeq: after ?? 0 }),
             limit,
           });
           if (r.length === limit) full = true;
           for (const d of r) merged.set(d.id, d);
         }
-        const sorted = [...merged.values()].sort((a, b) => a.seq - b.seq);
+        const sorted = [...merged.values()].sort((a, b) =>
+          newest ? b.seq - a.seq : a.seq - b.seq,
+        );
         // When a source filled its page, only the first `limit` rows of the union are known to be complete.
         return {
           rows: full ? sorted.slice(0, limit) : sorted,
@@ -614,15 +630,19 @@ export class TaskService {
       });
       for (const d of rows) {
         after = d.seq;
-        if (!query.status?.length || query.status.includes(d.value.status))
+        if (!query.status?.length || query.status.includes(d.value.status)) {
           page.push(d);
+          cursors.push(String(d.seq));
+        }
         if (page.length === limit) break;
       }
       if (exhausted) break;
     }
     return {
       tasks: page.map((d) => toSnapshot(d.value, d.revision)),
-      cursor: String(after),
+      // Newest first with nothing read, the cursor stays where it was (or empty: the start).
+      cursor: after === undefined ? '' : String(after),
+      cursors,
     };
   }
 

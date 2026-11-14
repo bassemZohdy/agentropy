@@ -224,9 +224,11 @@ export interface LocalApp {
       status?: TaskSnapshot['status'][];
       cursor?: string;
       limit?: number;
+      /** Newest task first (default oldest first); the cursor then continues towards older tasks (revision 13). */
+      newestFirst?: boolean;
     },
     caller: TrustedPrincipal,
-  ): Promise<{ tasks: TaskSnapshot[]; cursor: string }>;
+  ): Promise<{ tasks: TaskSnapshot[]; cursor: string; cursors: string[] }>;
   listInstances(
     caller: TrustedPrincipal,
     ownerId?: string,

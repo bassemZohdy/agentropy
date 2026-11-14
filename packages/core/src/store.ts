@@ -83,6 +83,8 @@ export interface FindOptions<C extends CollectionName> {
   /** Reverse the order (newest first for `seq`; nulls last for a field): with `limit`, the last N without reading all. */
   descending?: boolean;
   afterSeq?: number;
+  /** Only rows committed before this one (`seq < beforeSeq`): the page after a `descending` page by `seq`. */
+  beforeSeq?: number;
   limit?: number;
 }
 
@@ -285,6 +287,8 @@ export class MemoryStore implements Store {
         }
         if (o.afterSeq !== undefined)
           docs = docs.filter((x) => x.d.seq > o.afterSeq!);
+        if (o.beforeSeq !== undefined)
+          docs = docs.filter((x) => x.d.seq < o.beforeSeq!);
         const by = o.orderBy ?? 'seq';
         docs.sort((a, b) =>
           by === 'seq'

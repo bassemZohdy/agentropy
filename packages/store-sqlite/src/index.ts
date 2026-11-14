@@ -306,6 +306,10 @@ export class SqliteStore implements Store {
           clauses.push('seq > ?');
           params.push(o.afterSeq);
         }
+        if (o.beforeSeq !== undefined) {
+          clauses.push('seq < ?');
+          params.push(o.beforeSeq);
+        }
         const by = o.orderBy ?? 'seq';
         if (by !== 'seq' && !allowed.has(String(by)))
           throw new AgentropyError(

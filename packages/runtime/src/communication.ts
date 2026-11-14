@@ -165,11 +165,19 @@ export interface DirectTarget {
     message: AgentMessage,
     caller: TrustedPrincipal,
   ): Promise<{ accepted: boolean }>;
-  /** Tasks the caller may see, oldest first with an opaque cursor (A2A `ListTasks`, FEAT-034.4). */
+  /**
+   * Tasks the caller may see with an opaque cursor, oldest first or, with `newestFirst`, newest first (A2A
+   * `ListTasks`, FEAT-034.4, FIX-062). `cursors[i]` resumes right after `tasks[i]`.
+   */
   listTasks?(
-    query: { instanceId?: string; cursor?: string; limit?: number },
+    query: {
+      instanceId?: string;
+      cursor?: string;
+      limit?: number;
+      newestFirst?: boolean;
+    },
     caller: TrustedPrincipal,
-  ): Promise<{ tasks: TaskSnapshot[]; cursor: string }>;
+  ): Promise<{ tasks: TaskSnapshot[]; cursor: string; cursors: string[] }>;
   /** Hands a follow-up message to a task waiting for input (A2A `message.taskId`, FEAT-034.4). */
   continueTask?(
     taskId: string,

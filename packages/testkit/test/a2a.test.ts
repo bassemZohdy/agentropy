@@ -383,7 +383,7 @@ describe('A2A end to end between two Agentropy runtimes', () => {
 });
 
 describe('A2A 1.0: ListTasks, task continuation and file parts (FEAT-034.4)', () => {
-  async function endpoint() {
+  async function endpoint(serverOptions: { listScanLimit?: number } = {}) {
     const b = createLocalApp({
       store: sqliteTempStore(),
       pdp: new FakePolicy(),
@@ -436,7 +436,10 @@ describe('A2A 1.0: ListTasks, task continuation and file parts (FEAT-034.4)', ()
         },
         bob,
       );
-      return createA2AServer(localAppTarget(b), { instanceId: inst.id });
+      return createA2AServer(localAppTarget(b), {
+        instanceId: inst.id,
+        ...serverOptions,
+      });
     };
     return { b, asker: await server('asker'), echo: await server('echo') };
   }
@@ -536,6 +539,57 @@ describe('A2A 1.0: ListTasks, task continuation and file parts (FEAT-034.4)', ()
     ).toBe(-32004);
   });
 
+  it('FIX-062: ListTasks starts at the newest task and paging reaches the oldest, however low the scan bound', async () => {
+    const e = await endpoint({ listScanLimit: 5 });
+    const created: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const sent = (
+        await rpc(
+          e.echo,
+          'SendMessage',
+          message(`m-${i}`, [{ text: `t${i}` }], { contextId: 'c' }),
+        )
+      ).result as { task: { id: string } };
+      created.push(sent.task.id);
+    }
+    type Page = { tasks: Task[]; nextPageToken: string; totalSize: number };
+    const seen: string[] = [];
+    let token = '';
+    let first: Page | undefined;
+    for (let calls = 0; calls < 30; calls++) {
+      const page = (
+        await rpc(e.echo, 'ListTasks', {
+          pageSize: 2,
+          ...(token ? { pageToken: token } : {}),
+        })
+      ).result as Page;
+      first ??= page;
+      seen.push(...page.tasks.map((t) => t.id));
+      token = page.nextPageToken;
+      if (!token) break;
+    }
+    expect(seen).toEqual([...created].reverse());
+    expect(first!.tasks[0]!.id).toBe(created.at(-1));
+    // The count is exact up to the scan bound and a lower bound beyond it.
+    expect(first!.totalSize).toBe(5);
+    // A filter that matches nothing in the window still ends: the walk goes on from where it stopped.
+    let calls = 0;
+    token = '';
+    const found: string[] = [];
+    do {
+      const page = (
+        await rpc(e.echo, 'ListTasks', {
+          contextId: 'c',
+          pageSize: 100,
+          ...(token ? { pageToken: token } : {}),
+        })
+      ).result as Page;
+      found.push(...page.tasks.map((t) => t.id));
+      token = page.nextPageToken;
+    } while (token && ++calls < 10);
+    expect(found).toEqual([...created].reverse());
+  });
+
   it('ListTasks pages the caller’s tasks newest first, filters by context and state, and hides others’ tasks', async () => {
     const e = await endpoint();
     for (const [i, ctx] of ['a', 'b', 'a'].entries())
@@ -564,7 +618,6 @@ describe('A2A 1.0: ListTasks, task continuation and file parts (FEAT-034.4)', ()
     expect(second.nextPageToken).toBe('');
     const ids = [...first.tasks, ...second.tasks].map((t) => t.id);
     expect(new Set(ids).size).toBe(3);
-    expect(ids).toEqual([...ids].sort().reverse()); // equal timestamps: task ID breaks the tie
     const inA = (await rpc(e.echo, 'ListTasks', { contextId: 'a' })).result as {
       tasks: Task[];
     };
