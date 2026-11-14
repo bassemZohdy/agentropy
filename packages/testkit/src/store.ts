@@ -212,6 +212,23 @@ export function defineStoreConformance(
             ),
           ),
         ).toEqual(['w-null', 'w-fired']);
+        // `beforeSeq` continues a descending page: the rows committed before the last one seen (FIX-062).
+        const newest = (
+          await s.transaction((tx) =>
+            tx.find('wakeups', { descending: true, limit: 2 }),
+          )
+        ).at(-1)!;
+        t.expect(
+          await ids(
+            s.transaction((tx) =>
+              tx.find('wakeups', {
+                descending: true,
+                beforeSeq: newest.seq,
+                limit: 2,
+              }),
+            ),
+          ),
+        ).toEqual(['w-b', 'w-a']);
         t.expect(
           await ids(
             s.transaction((tx) =>

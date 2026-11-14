@@ -39,6 +39,12 @@ export interface A2AServerOptions {
    * Without it nothing is kept and `historyLength` is accepted but returns no history.
    */
   history?: A2AHistoryOptions;
+  /**
+   * Most tasks one `ListTasks` call looks at (default 10000). The newest are read first, so the first page is always
+   * the latest tasks, and `totalSize` is exact up to this bound and a lower bound beyond it; a page token carries on
+   * from where the call stopped, so paging still reaches the oldest task.
+   */
+  listScanLimit?: number;
 }
 
 export interface A2AHttpResponse {
@@ -106,7 +112,7 @@ export function a2aState(s: TaskSnapshot): A2ATaskState {
 /** `ListTasks` page size: default and maximum (A2A 1.0 section 3.1.4). */
 const LIST_DEFAULT = 50;
 const LIST_MAX = 100;
-/** Visible tasks scanned for one `ListTasks` call. */
+/** Visible tasks scanned for one `ListTasks` call (`listScanLimit`). */
 const LIST_SCAN = 10_000;
 
 const A2A_STATES = new Set<string>([
@@ -368,7 +374,7 @@ export function createA2AServer(
   }
   /**
    * A2A `ListTasks` over the tasks the caller may see on this endpoint: filtered by `contextId`, `status` and
-   * `statusTimestampAfter`, newest status first, with a cursor (status timestamp and task ID of the last task).
+   * `statusTimestampAfter`, newest task first, with a cursor into the store (FIX-062).
    * `historyLength` applies when the endpoint keeps history (`history` option); artifacts only with `includeArtifacts`.
    */
   const listTasks = async (
@@ -405,50 +411,73 @@ export function createA2AServer(
       afterRaw === undefined ? undefined : Date.parse(String(afterRaw));
     if (after !== undefined && Number.isNaN(after))
       throw bad('statusTimestampAfter');
-    let from: [string, string] | undefined;
+    // The token is the store position to continue from and, after the first page, the count of matching tasks.
+    let cursor: string | undefined;
+    let known: number | undefined;
     if (p['pageToken'] !== undefined && p['pageToken'] !== '') {
       try {
-        from = JSON.parse(
+        const tok = JSON.parse(
           Buffer.from(String(p['pageToken']), 'base64url').toString('utf8'),
-        ) as [string, string];
-        if (!Array.isArray(from) || from.some((x) => typeof x !== 'string'))
+        ) as { c?: unknown; n?: unknown };
+        if (typeof tok.c !== 'string' || !tok.c) throw new Error();
+        if (typeof tok.n !== 'number' || !Number.isSafeInteger(tok.n))
           throw new Error();
+        cursor = tok.c;
+        known = tok.n;
       } catch {
         throw bad('pageToken');
       }
     }
     const hl = historyLength(p['historyLength']);
-    const visible: TaskSnapshot[] = [];
-    let cursor: string | undefined;
-    while (visible.length < LIST_SCAN) {
+    const scanLimit = Math.max(1, Math.floor(o.listScanLimit ?? LIST_SCAN));
+    const at = (t: TaskSnapshot) => t.updatedAt ?? '';
+    // Newest task first (creation order, the order the store can page without reading the history). The first page
+    // reads on to count what matches; later pages stop as soon as one more than a page is known.
+    const matches: { task: TaskSnapshot; next: string }[] = [];
+    let total = known ?? 0;
+    let scanned = 0;
+    let resume = cursor;
+    let exhausted = false;
+    scan: while (scanned < scanLimit) {
+      const asked = Math.min(200, scanLimit - scanned);
       const r = await target.listTasks(
         {
           ...(o.instanceId ? { instanceId: o.instanceId } : {}),
-          ...(cursor ? { cursor } : {}),
-          limit: 200,
+          ...(resume ? { cursor: resume } : {}),
+          newestFirst: true,
+          limit: asked,
         },
         caller,
       );
-      visible.push(...r.tasks);
-      if (r.tasks.length < 200) break;
-      cursor = r.cursor;
-    }
-    const at = (t: TaskSnapshot) => t.updatedAt ?? '';
-    // Newest status first; ties by task ID, descending, so the cursor is a total order.
-    const newer = (a: [string, string], b: [string, string]) =>
-      a[0] !== b[0] ? a[0] > b[0] : a[1] > b[1];
-    const matching = visible
-      .filter(
-        (t) =>
+      for (const [i, t] of r.tasks.entries()) {
+        scanned++;
+        if (
           (contextId === undefined || t.correlationId === contextId) &&
           (status === undefined || a2aState(t) === status) &&
-          (after === undefined || Date.parse(at(t)) >= after),
-      )
-      .sort((a, b) => (newer([at(a), a.taskId], [at(b), b.taskId]) ? -1 : 1));
-    const rest = from
-      ? matching.filter((t) => newer(from!, [at(t), t.taskId]))
-      : matching;
-    const page = rest.slice(0, size as number);
+          (after === undefined || Date.parse(at(t)) >= after)
+        ) {
+          if (known === undefined) total++;
+          if (matches.length <= (size as number))
+            matches.push({ task: t, next: r.cursors[i] });
+          // A later page is full once one more match is known: continue after its last task, not after this batch.
+          if (known !== undefined && matches.length > (size as number))
+            break scan;
+        }
+      }
+      resume = r.cursor || undefined;
+      if (r.tasks.length < asked) {
+        exhausted = true;
+        break;
+      }
+    }
+    const page = matches.slice(0, size as number).map((m) => m.task);
+    const more = matches.length > (size as number);
+    // After a full page: right after its last task. Otherwise, if the scan stopped at its bound, where it stopped.
+    const nextCursor: string | undefined = more
+      ? matches[(size as number) - 1]!.next
+      : exhausted
+        ? undefined
+        : resume;
     const tasks = await Promise.all(
       page.map(async (t) => {
         let out: Omit<A2ATask, 'artifacts'> & Pick<A2ATask, 'artifacts'>;
@@ -464,17 +493,15 @@ export function createA2AServer(
         return h.length ? { ...out, history: h } : out;
       }),
     );
-    const last = page.at(-1);
     return {
       tasks,
-      nextPageToken:
-        last && rest.length > page.length
-          ? Buffer.from(JSON.stringify([at(last), last.taskId])).toString(
-              'base64url',
-            )
-          : '',
+      nextPageToken: nextCursor
+        ? Buffer.from(JSON.stringify({ c: nextCursor, n: total })).toString(
+            'base64url',
+          )
+        : '',
       pageSize: size,
-      totalSize: matching.length,
+      totalSize: total,
     };
   };
   const notifications = createPushNotifications(target, o.push, follow);

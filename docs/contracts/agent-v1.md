@@ -1,4 +1,4 @@
-# Agentropy Agent Contract v1.0 — revision 12
+# Agentropy Agent Contract v1.0 — revision 13
 
 **Status:** Accepted for M1 implementation (2026-11-05); not API-stable. Implemented types live in `packages/core`; behavior is claimed only where an executable test exists.
 **Scope:** Core logical Agent, AgentDefinition, AgentInstance, DelegatedTask and Execution. Transport/runtime are independent.
@@ -19,6 +19,7 @@
 | 10 | 2026-11-06 | FEAT-027.9: `DelegationRequest.target.remote = { endpoint, definitionId, version? }` routes through the CommunicationRouter; the caller gets a handle to a local projection (`authority: 'remote'`, durability `none`) refreshed from the authoritative remote task, visible like a local child; `child-tasks` wake-ups include remote children; grants never cross the boundary |
 | 11 | 2026-11-06 | FEAT-028.3 ([ADR-0029](../adr/0029-upgrades-and-version-migration.md)): `AgentService.upgradeInstance` (audited, future tasks only, rollback = upgrade to an earlier version) and `versionsInUse`; `AgentInstance.previousDefinition`; `Agent.checkpointCodec` with `IncompatibleVersion` on unreadable checkpoints |
 | 12 | 2026-11-14 | FIX-057 (review N-09): `createInstance` refuses an `ownerId` other than the caller's unless the caller is a trusted service (`PermissionDenied`), so a user cannot make an instance appear in another user's list and inbox; `createInstance`, `suspendInstance`, `resumeInstance`, `retireInstance`, `drainInstance` and `shareInstance` are policy checked (`agent:create`, `agent:suspend`, `agent:resume`, `agent:retire`, `agent:drain`, `agent:share`, as `agent:upgrade` already is) and write an audit intent in the transaction of the change ([Security v1](security-v1.md) revision 9) |
+| 13 | 2026-11-14 | FIX-062 (review N-14): `AgentService.listTasks` takes `newestFirst` (default oldest first; the cursor then continues towards older tasks) and returns `cursors`, one per task, each resuming right after that task, so a caller that stops inside a page can continue from the item it stopped at; the `Store` port gains `FindOptions.beforeSeq` for the page after a descending page |
 
 ## Decisions
 
@@ -192,7 +193,7 @@ export interface AgentService {
   getTask(taskId: TaskId, caller: TrustedPrincipal): Promise<TaskSnapshot>;
   getTaskByIdempotencyKey(key: string, caller: TrustedPrincipal): Promise<TaskSnapshot>;
   getResult<O>(taskId: TaskId, caller: TrustedPrincipal): Promise<O>;   // NotReady / TaskFailed / TaskCancelled
-  listTasks(query: { instanceId?: AgentInstanceId; status?: TaskSnapshot["status"][]; cursor?: string; limit?: number }, caller: TrustedPrincipal): Promise<{ tasks: TaskSnapshot[]; cursor: string }>; // own tasks only; a trusted service sees its tenant
+  listTasks(query: { instanceId?: AgentInstanceId; status?: TaskSnapshot["status"][]; cursor?: string; limit?: number; newestFirst?: boolean }, caller: TrustedPrincipal): Promise<{ tasks: TaskSnapshot[]; cursor: string; cursors: string[] }>; // rev 13: newestFirst; cursors[i] resumes after tasks[i]; // own tasks only; a trusted service sees its tenant
   reauthorize(taskId: TaskId, caller: TrustedPrincipal): Promise<void>; // ADR-0024: re-establish authority for a gated task; never dispatches by itself
   cancel(taskId: TaskId, caller: TrustedPrincipal, reason?: string): Promise<TaskSnapshot>;
   subscribe(taskId: TaskId, caller: TrustedPrincipal, from?: { revision: number; sequence: number }): AsyncIterable<TaskEvent>;

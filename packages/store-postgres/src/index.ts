@@ -797,6 +797,7 @@ export class PostgresStore implements Store {
           }
         }
         if (o.afterSeq !== undefined) clauses.push(`seq > ${p(o.afterSeq)}`);
+        if (o.beforeSeq !== undefined) clauses.push(`seq < ${p(o.beforeSeq)}`);
         // Read your own writes: buffered writes to this collection are sent first.
         if ([...st.pending.values()].some((w) => w.c === c))
           await this.flush(db, st, false);
