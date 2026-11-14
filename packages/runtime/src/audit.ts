@@ -107,6 +107,13 @@ export class AuditForwarder {
       store: Store;
       sink: AuditIntentWriter;
       faults?: FaultHook;
+      /** Clock for the drain budget (default: the system clock). */
+      now?: () => string;
+      /**
+       * Longest a drain call keeps forwarding (default 5000 ms): a backlog after an outage is forwarded over several
+       * calls, in order. At least one row is forwarded per call.
+       */
+      drainBudgetMs?: number;
     },
   ) {}
 
@@ -116,6 +123,9 @@ export class AuditForwarder {
    */
   async drain(): Promise<number> {
     const batch = 200;
+    const at = () => Date.parse(this.o.now?.() ?? new Date().toISOString());
+    const started = at();
+    const spent = () => at() - started >= (this.o.drainBudgetMs ?? 5_000);
     let n = 0;
     for (;;) {
       const rows = await this.o.store.transaction((tx) =>
@@ -125,14 +135,15 @@ export class AuditForwarder {
           limit: batch,
         }),
       );
-      const sent = await this.forward(rows);
+      const sent = await this.forward(rows, spent);
       n += sent;
-      if (sent < batch || sent < rows.length) return n;
+      if (sent < batch || sent < rows.length || spent()) return n;
     }
   }
 
   private async forward(
     rows: { id: string; revision: number; value: AuditIntentRow }[],
+    spent: () => boolean,
   ): Promise<number> {
     let n = 0;
     for (const row of rows) {
@@ -163,6 +174,7 @@ export class AuditForwarder {
           });
       });
       n++;
+      if (spent()) return n;
     }
     return n;
   }

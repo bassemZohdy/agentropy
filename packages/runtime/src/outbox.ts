@@ -58,8 +58,14 @@ export function toTaskEvent(r: OutboxRecord): PublishedEvent {
 export interface OutboxRelayOptions {
   store: Store;
   consumers?: EventConsumer[];
-  /** Rows handled per drain call (bounded work per tick). */
+  /** Rows read per batch. */
   batchSize?: number;
+  /**
+   * Longest a drain call keeps delivering (default 5000 ms, measured with `now`): a backlog after an outage is spread
+   * over several calls, in order, instead of one long tick. At least one row is delivered per call. Keep it well
+   * under `leaseMs`.
+   */
+  drainBudgetMs?: number;
   faults?: FaultHook;
   /**
    * Relay identity for the leader lease (M2-06): with several relays on one store only the lease holder
@@ -233,6 +239,23 @@ export class OutboxRelay {
 
   private async publish(): Promise<number> {
     let published = 0;
+    const at = () => Date.parse(this.o.now?.() ?? new Date().toISOString());
+    const started = at();
+    const budget = this.o.drainBudgetMs ?? 5_000;
+    const renewEvery = (this.o.leaseMs ?? 30_000) / 3;
+    let renewedAt = started;
+    // Between rows: stop when the budget is spent, and renew the leader lease while a long drain goes on (a drain
+    // that outlasts the lease would let another relay take over and deliver the same rows again). A relay that finds
+    // its lease taken stops.
+    const proceed = async (): Promise<boolean> => {
+      const now = at();
+      if (now - started >= budget) return false;
+      if (this.o.relayId && now - renewedAt >= renewEvery) {
+        if (!(await this.lead())) return false;
+        renewedAt = now;
+      }
+      return true;
+    };
     for (;;) {
       const pending = await this.o.store.transaction((tx) =>
         tx.find<OutboxRecord>('outbox', {
@@ -273,6 +296,7 @@ export class OutboxRelay {
               'agentropy.event.type': row.value.type,
             });
             published++;
+            if (!(await proceed())) return published;
             continue; // given up on: the next row is delivered
           }
           return published;
@@ -286,6 +310,7 @@ export class OutboxRelay {
             });
         });
         published++;
+        if (!(await proceed())) return published;
       }
     }
   }

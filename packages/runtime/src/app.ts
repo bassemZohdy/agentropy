@@ -494,6 +494,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     ? new AuditForwarder({
         store,
         sink: o.audit,
+        now,
         ...(o.faults ? { faults: o.faults } : {}),
       })
     : undefined;
