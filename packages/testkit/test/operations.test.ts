@@ -6,6 +6,7 @@ import {
   type ToolDescriptor,
   type TrustedPrincipal,
 } from '@agentropy/core';
+import type { Store, StoreTx } from '@agentropy/core';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_LIMITS,
@@ -470,5 +471,139 @@ describe('compaction covers every collection (FEAT-040.1)', () => {
     const second = await app.compact(1_000, ops);
     expect(second.tasks).toBe(0);
     expect(second.effects + second.executions + second.wakeups).toBe(0);
+  });
+});
+
+describe('compaction reads what is due (TASK-066)', () => {
+  const alice: TrustedPrincipal = {
+    id: 'alice',
+    type: 'user',
+    tenantId: 't-1',
+  };
+  const ops: TrustedPrincipal = { id: 'ops', type: 'service', tenantId: 't-1' };
+
+  /** Counts the documents each `find` returns per collection; `retry` runs every writing transaction twice. */
+  function wrap(retry = false) {
+    const inner = sqliteTempStore();
+    const read: Record<string, number> = {};
+    const store: Store = {
+      durability: inner.durability,
+      close: () => inner.close(),
+      transaction: async (fn) => {
+        const conflict = new Error('serialization conflict');
+        let retried = false;
+        for (;;) {
+          let wrote = false;
+          try {
+            return await inner.transaction(async (tx) => {
+              const r = await fn({
+                ...tx,
+                find: async (c, o) => {
+                  const rows = await tx.find(c, o);
+                  read[c] = (read[c] ?? 0) + rows.length;
+                  return rows;
+                },
+                get: (c, id) => tx.get(c, id),
+                insert: (c, id, v) => tx.insert(c, id, v),
+                update: (c, id, rev, v) => {
+                  wrote = true;
+                  return tx.update(c, id, rev, v);
+                },
+                remove: (c, id, rev) => {
+                  wrote = true;
+                  return tx.remove(c, id, rev);
+                },
+              } as StoreTx);
+              // A serialization conflict at commit: the callback runs again on a fresh snapshot.
+              if (retry && wrote && !retried) {
+                retried = true;
+                throw conflict;
+              }
+              return r;
+            });
+          } catch (err) {
+            if (err !== conflict) throw err;
+          }
+        }
+      },
+    };
+    return { store, read };
+  }
+
+  async function app(store: Store, tasks: number) {
+    const clock = new FakeClock('2026-11-06T00:00:00.000Z');
+    const a = createLocalApp({
+      store,
+      pdp: new FakePolicy(),
+      now: clock.iso,
+      profiles: BUILTIN_PROFILES,
+    });
+    a.define(
+      {
+        id: 'worker',
+        version: '1.0.0',
+        displayName: 'worker',
+        profile: { id: 'task', version: '1.0.0' },
+        implementation: {
+          providerId: 'native-ts',
+          providerVersion: '1.0.0',
+          artifact: { id: 'worker', version: '1.0.0' },
+        },
+        inputSchema: true,
+        runtimeRequirements: { guarantees: [] },
+        policyRef: { id: 'default', version: '1.0.0' },
+      },
+      { handle: async () => ({ kind: 'completed', output: 'done' }) },
+    );
+    const inst = await a.createInstance(
+      {
+        definition: { id: 'worker', version: '1.0.0' },
+        ownerId: alice.id,
+        idempotencyKey: 'i',
+      },
+      alice,
+    );
+    for (let i = 0; i < tasks; i++)
+      await a.delegate(
+        {
+          target: { instanceId: inst.id },
+          input: {},
+          idempotencyKey: `k${i}`,
+          correlationId: `k${i}`,
+        },
+        alice,
+      );
+    await a.runUntilIdle();
+    clock.advanceBy(60_000);
+    return { a, clock };
+  }
+
+  it('TASK-066: a run over already compacted tasks reads none of them', async () => {
+    const { store, read } = wrap();
+    const { a } = await app(store, 12);
+    const first = await a.compact(1_000, ops);
+    expect(first.tasks).toBe(12);
+    for (const k of Object.keys(read)) delete read[k];
+    const second = await a.compact(1_000, ops);
+    expect(second.tasks).toBe(0);
+    expect(read['tasks'] ?? 0).toBe(0);
+    expect(read['inboundEvents'] ?? 0).toBe(0);
+    expect(read['memories'] ?? 0).toBe(0);
+  });
+
+  it('TASK-066: retainMs must be a non-negative number', async () => {
+    const { a } = await app(sqliteTempStore(), 1);
+    for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY, '1000', null])
+      expect(await code(a.compact(bad as never, ops))).toBe('SchemaViolation');
+    expect((await a.compact(1_000, ops)).tasks).toBe(1);
+    expect((await a.compact(0, ops)).tasks).toBe(0);
+  });
+
+  it('TASK-066: counts are not doubled when a transaction runs again', async () => {
+    const { store } = wrap(true);
+    const { a } = await app(store, 3);
+    const first = await a.compact(1_000, ops);
+    expect(first.tasks).toBe(3);
+    expect(first.idempotency).toBe(3);
   });
 });

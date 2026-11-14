@@ -40,7 +40,7 @@ Trace from user request through delegation, agent instance, task, attempts, prov
 
 ## Retention and compaction
 
-`LocalApp.compact(retainMs, operator)` (a trusted service; run it on a schedule, e.g. daily) removes the standing state of work that is over, in short transactions of 100 tasks each. Nothing is pruned before `retainMs` has passed since the task ended or the record was last used.
+`LocalApp.compact(retainMs, operator)` (a trusted service; run it on a schedule, e.g. daily) removes the standing state of work that is over, in short transactions of 100 tasks each. Nothing is pruned before `retainMs` has passed since the task ended or the record was last used. `retainMs` must be a non-negative number of milliseconds (anything else is `SchemaViolation`). A run reads only what can be due, through indexes (`tasks.compactedAt`, `inboundEvents.at`, `remoteTasks.observedAt`, `memories.expiresAt`, and the status of inbox entries), a page of 100 rows per transaction: tasks that were compacted are not read again, and the counts in `CompactionResult` are added only after a transaction has committed, so a transaction that runs again after a conflict does not count twice. Tasks that ended inside the window are read again by each run until they leave it. A store created by an earlier version gets the new index columns and backfills them at start.
 
 | Collection | Kept | Removed by `compact` |
 |---|---|---|
