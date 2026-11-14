@@ -208,7 +208,7 @@ Types, schemas, errors, lifecycle tables and pure resolvers (no I/O). 197 export
 
 ## @agentropy/runtime
 
-Registries, task service, runtime, scheduler, providers and the local app facade. 187 exports.
+Registries, task service, runtime, scheduler, providers and the local app facade. 188 exports.
 
 | Export | Kind | Source | Summary |
 |---|---|---|---|
@@ -311,6 +311,7 @@ Registries, task service, runtime, scheduler, providers and the local app facade
 | `InMemoryImplementationProviderRegistry` | class | [runtime/src/implementation.ts](../packages/runtime/src/implementation.ts) |  |
 | `InMemorySkillRegistry` | class | [runtime/src/skills.ts](../packages/runtime/src/skills.ts) |  |
 | `InMemoryToolRegistry` | class | [runtime/src/tools.ts](../packages/runtime/src/tools.ts) |  |
+| `InstanceAudit` | type | [runtime/src/registry.ts](../packages/runtime/src/registry.ts) | Written in the transaction of a lifecycle change (Security v1 revision 9): the facade turns it into the audit intent, so the change and its audit record comm… |
 | `InstanceDirectory` | class | [runtime/src/registry.ts](../packages/runtime/src/registry.ts) | Logical agent identities, owner- and tenant-scoped (Agent v1; runtime contract §3). |
 | `journaled` | function | [runtime/src/inbox.ts](../packages/runtime/src/inbox.ts) | Platform-internal effect journal: runs `effect` at most once per idempotency key, in the same transaction as the journal write, and returns the original resu… |
 | `LocalApp` | interface | [runtime/src/app.ts](../packages/runtime/src/app.ts) |  |

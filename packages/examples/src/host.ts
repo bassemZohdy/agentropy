@@ -13,7 +13,8 @@
  *                         `statement_timeout` (30000) and `lock_timeout` (10000); positive integers in ms. A dropped idle
  *                         connection is logged as one JSON line (`event: pg.pool.error`), not fatal
  * - PORT                  health port (default 8080)
- * - AGENTROPY_ALLOW       comma-separated policy actions the sample policy allows; everything else is denied
+ * - AGENTROPY_ALLOW       comma-separated policy actions the sample policy allows; everything else is denied (with the
+ *                         A2A endpoint the host's own setup needs `agent:create` and `agent:share`)
  * - AGENTROPY_TICK_MS     scheduler interval (default 250)
  * - AGENTROPY_OUTBOX_POISON_AFTER  give up on an outbox row after this many failed deliveries (default: never, which keeps
  *                         event order but lets one failing consumer hold back every later row; /readyz reports

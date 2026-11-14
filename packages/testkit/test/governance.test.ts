@@ -37,9 +37,10 @@ const def = (
 });
 
 function setup() {
+  const pdp = new FakePolicy();
   const app = createLocalApp({
     store: sqliteTempStore(),
-    pdp: new FakePolicy(),
+    pdp,
     now: new FakeClock('2026-11-05T00:00:00.000Z').iso,
     profiles: BUILTIN_PROFILES,
   });
@@ -89,6 +90,7 @@ function setup() {
     );
   return {
     app,
+    pdp,
     instance,
     delegate,
     setTarget: (id: string) => (targetId = id),
@@ -198,5 +200,88 @@ describe('D-03: drain and retire policy', () => {
     expect((await app.listInstances(alice))[0]!.state).toBe('retired');
     expect(await code(delegate(s.id, alice, 't2'))).toBe('InvalidState');
     expect(await code(app.resumeInstance(s.id, alice))).toBe('InvalidState');
+  });
+});
+
+describe('FIX-057: instance lifecycle is governed and audited', () => {
+  it('a user cannot create an instance for another owner; a trusted service can', async () => {
+    const { app } = setup();
+    const create = (caller: TrustedPrincipal, ownerId: string, key: string) =>
+      app.createInstance(
+        {
+          definition: { id: 'worker', version: '1.0.0' },
+          ownerId,
+          idempotencyKey: key,
+        },
+        caller,
+      );
+    expect(await code(create(alice, 'bob', 'k1'))).toBe('PermissionDenied');
+    expect(await app.listInstances(bob)).toEqual([]);
+    expect(await app.listInstances(alice)).toEqual([]);
+    const made = await create(ops, 'bob', 'k2');
+    expect(made.ownerId).toBe('bob');
+    expect((await app.listInstances(bob)).map((i) => i.id)).toEqual([made.id]);
+    expect((await create(alice, 'alice', 'k3')).ownerId).toBe('alice');
+  });
+
+  it('a denied lifecycle call changes nothing and an allowed one is audited', async () => {
+    const { app, pdp, instance } = setup();
+    const created = await instance('worker', alice, 'k');
+    const state = async () => (await app.listInstances(alice))[0]!;
+    const calls: [string, (c: TrustedPrincipal) => Promise<unknown>][] = [
+      ['agent:suspend', (c) => app.suspendInstance(created.id, c)],
+      ['agent:resume', (c) => app.resumeInstance(created.id, c)],
+      ['agent:share', (c) => app.shareInstance(created.id, ['bob'], c)],
+      ['agent:drain', (c) => app.drainInstance(created.id, c)],
+      ['agent:retire', (c) => app.retireInstance(created.id, c)],
+    ];
+    for (const [action] of calls) pdp.denied.add(action);
+    pdp.denied.add('agent:create');
+    expect(await code(instance('worker', alice, 'k-denied'))).toBe(
+      'PermissionDenied',
+    );
+    const before = await state();
+    for (const [, run] of calls)
+      expect(await code(run(alice))).toBe('PermissionDenied');
+    expect(await state()).toEqual(before);
+    expect(await app.listInstances(alice)).toHaveLength(1);
+    pdp.denied.clear();
+
+    // Allowed, in an order the state machine accepts: suspend, resume, share, drain (retires at once: nothing active).
+    for (const [, run] of calls.slice(0, 4)) await run(alice);
+    expect((await state()).state).toBe('retired');
+    const log = await app.auditLog.query({ tenantId: 't-1' }, ops);
+    expect(
+      log.filter((e) => e.type.startsWith('instance.')).map((e) => e.type),
+    ).toEqual([
+      'instance.create',
+      'instance.suspend',
+      'instance.resume',
+      'instance.share',
+      'instance.drain',
+    ]);
+    expect(log.find((e) => e.type === 'instance.suspend')).toMatchObject({
+      action: 'agent:suspend',
+      decision: 'allow',
+      resource: { type: 'agent-instance', id: created.id },
+      principalId: 'alice',
+    });
+  });
+
+  it('a retire is policy checked and audited too', async () => {
+    const { app, pdp, instance } = setup();
+    const created = await instance('worker', alice, 'k');
+    pdp.denied.add('agent:retire');
+    expect(await code(app.retireInstance(created.id, alice))).toBe(
+      'PermissionDenied',
+    );
+    expect((await app.listInstances(alice))[0]!.state).toBe('available');
+    pdp.denied.clear();
+    await app.retireInstance(created.id, alice);
+    const log = await app.auditLog.query(
+      { tenantId: 't-1', type: 'instance.retire' },
+      ops,
+    );
+    expect(log).toHaveLength(1);
   });
 });

@@ -18,7 +18,7 @@ The sample host does this when `AGENTROPY_A2A_TOKENS` is set. Use it as the temp
 
 ```sh
 AGENTROPY_A2A_TOKENS=peer-token=ci-peer \
-AGENTROPY_ALLOW=delegation:delegate,task:dispatch,capability:notification:use \
+AGENTROPY_ALLOW=agent:create,agent:share,delegation:delegate,task:dispatch,capability:notification:use \
 AGENTROPY_PUBLIC_URL=https://agents.example.com \
 node packages/examples/dist/host.js
 bash deploy/a2a-smoke.sh localhost:8080 peer-token
@@ -36,7 +36,7 @@ Rules that matter:
 - **Map each peer to a `user` principal**, never a `service` principal. The exposed instance is shared with exactly those users, so a peer sees, lists and cancels only the tasks it created. A `service` principal is tenant-wide.
 - The handler authenticates **before** reading a body, bounds bodies and streams, sends `: ping` keep-alives (`keepAliveMs`) and honors write backpressure.
 - A failed or cancelled task carries its outcome in `status.message`.
-- Delegation also needs `capability:notification:use` in the allow list of the sample policy.
+- Delegation also needs `capability:notification:use` in the allow list of the sample policy, and the host's own setup of the echo instance needs `agent:create` and `agent:share` (instance lifecycle calls are policy checked and audited).
 
 ## Call remote agents (outbound)
 

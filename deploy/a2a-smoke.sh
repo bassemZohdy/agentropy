@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # A2A HTTP binding smoke test (FEAT-034.1) against a running host started with
-#   AGENTROPY_A2A_TOKENS=<token>=<principal>  AGENTROPY_ALLOW=delegation:delegate,task:dispatch,capability:notification:use
+#   AGENTROPY_A2A_TOKENS=<token>=<principal>  AGENTROPY_ALLOW=agent:create,agent:share,delegation:delegate,task:dispatch,capability:notification:use
 # Checks the AgentCard, that an unauthenticated call is refused, and that a task sent over JSON-RPC completes.
 #   deploy/a2a-smoke.sh <host:port> <token>
 set -euo pipefail

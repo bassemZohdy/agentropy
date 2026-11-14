@@ -192,6 +192,25 @@ describe('InstanceDirectory (R-01, R-13)', () => {
         alice,
       ),
     ).toEqual(a);
+    // Another owner under the same key is a different request; a user may not name another owner (FIX-057), so a
+    // trusted service shows the conflict.
+    const svc: TrustedPrincipal = {
+      id: 'svc',
+      type: 'service',
+      tenantId: 't-1',
+    };
+    await dir.create(
+      { definition: ref, ownerId: 'alice', idempotencyKey: 'k1' },
+      svc,
+    );
+    expect(
+      await acode(
+        dir.create(
+          { definition: ref, ownerId: 'bob', idempotencyKey: 'k1' },
+          svc,
+        ),
+      ),
+    ).toBe('IdempotencyConflict');
     expect(
       await acode(
         dir.create(
@@ -199,7 +218,7 @@ describe('InstanceDirectory (R-01, R-13)', () => {
           alice,
         ),
       ),
-    ).toBe('IdempotencyConflict');
+    ).toBe('PermissionDenied');
     expect(
       await acode(
         dir.create(

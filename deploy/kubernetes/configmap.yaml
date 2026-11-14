@@ -9,4 +9,4 @@ metadata:
 data:
   # The A2A echo agent also needs capability:notification:use. Optional keys: tenant (AGENTROPY_TENANT) and
   # publicUrl (AGENTROPY_PUBLIC_URL, the URL the AgentCard advertises).
-  allow: "delegation:delegate,task:dispatch,capability:notification:use"
+  allow: "agent:create,agent:share,delegation:delegate,task:dispatch,capability:notification:use"
