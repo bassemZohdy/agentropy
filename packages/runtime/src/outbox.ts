@@ -390,8 +390,16 @@ export class TaskEventStream implements EventConsumer {
         signal = this.signal(taskId);
       }
     } finally {
-      this.listeners.get(taskId)?.delete(signal.wake);
+      this.release(taskId, signal.wake);
     }
+  }
+
+  /** Drops one listener, and the task's entry with the last one: the map must not grow with every task ever followed. */
+  private release(taskId: string, wake: () => void): void {
+    const set = this.listeners.get(taskId);
+    if (!set) return;
+    set.delete(wake);
+    if (set.size === 0) this.listeners.delete(taskId);
   }
 
   private signal(taskId: string) {
@@ -403,6 +411,8 @@ export class TaskEventStream implements EventConsumer {
     const entry = {
       promise: promise.then(() => {
         set.delete(wake);
+        if (set.size === 0 && this.listeners.get(taskId) === set)
+          this.listeners.delete(taskId);
       }),
       wake,
     };
