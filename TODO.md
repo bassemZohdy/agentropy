@@ -31,7 +31,7 @@
 - [ ] **FEAT-070** · P2 · high · Cancel or terminal failure of a parent propagates to its open child tasks, local and remote, as specified in a revision of Agent v1
   - Done when: cancelling a waiting parent cancels its running child and fences the child's late result; a task of another parent is untouched; `pnpm exec vitest run packages/testkit/test/cancel-propagation.test.ts`
   - Links: Ref: docs/contracts/agent-v1.md
-  - State: next: decompose
+  - State: branch todo/FEAT-070-cancel-or-terminal-failure-parent from main; next: start FEAT-070
 - [ ] **FEAT-071** · P2 · mid · Built-in capability operations declare input schemas that are validated before the provider runs, so malformed handler input is a non-retryable SchemaViolation
   - Done when: delegation.getTask with a null input fails SchemaViolation after one attempt and reasoning.complete refuses a non-integer maxTokens; `pnpm exec vitest run packages/runtime/test/capability-input.test.ts`
   - Links: Ref: docs/contracts/capability-v1.md
