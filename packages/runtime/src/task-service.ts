@@ -52,6 +52,7 @@ import { DEFAULT_LIMITS, assertMaxBytes } from './limits.js';
 import { checkTaskQuota, type QuotaResolver } from './quotas.js';
 import { pokeWakeups } from './wake-index.js';
 import type { FaultHook } from './outbox.js';
+import type { RemoteTaskRecord } from './remote.js';
 import type {
   CreateInstanceRequest,
   DefinitionRegistry,
@@ -738,19 +739,7 @@ export class TaskService {
         correlationId: t.correlationId,
         taskId,
       });
-      if (t.status === 'running') {
-        if (t.cancelRequestedAt) return cur;
-        const next = {
-          ...t,
-          cancelRequestedAt: this.o.now(),
-          updatedAt: this.o.now(),
-        };
-        const doc = await tx.update('tasks', taskId, cur.revision, next);
-        await this.emit(tx, next, doc.revision, 'taskCancelRequested', {
-          reason,
-        });
-        return doc;
-      }
+      if (t.status === 'running') return this.requestCancel(tx, cur, reason);
       return this.terminate(tx, cur, 'cancelled', 'T10', {
         code: 'Cancelled',
         message: reason,
@@ -760,6 +749,63 @@ export class TaskService {
       for (const hook of this.cancelHooks) hook(taskId);
     void doc;
     return toSnapshot(result.value, result.revision);
+  }
+
+  /**
+   * The cancel request of a running task: recorded on the task and announced. The worker running it sees the request
+   * through the store (its next heartbeat or tick) and stops the handler, and a result that arrives late is fenced.
+   */
+  private async requestCancel(
+    tx: StoreTx,
+    cur: StoredDocument<TaskRecord>,
+    reason: string,
+  ): Promise<StoredDocument<TaskRecord>> {
+    if (cur.value.cancelRequestedAt) return cur;
+    const next = {
+      ...cur.value,
+      cancelRequestedAt: this.o.now(),
+      updatedAt: this.o.now(),
+    };
+    const doc = await tx.update('tasks', cur.id, cur.revision, next);
+    await this.emit(tx, next, doc.revision, 'taskCancelRequested', { reason });
+    return doc;
+  }
+
+  /**
+   * A parent that was cancelled or failed takes its open children with it (Agent v1 revision 15): a child that is not
+   * running is cancelled at once (T10, its own children follow), a running child is asked to stop (the worker acts on
+   * it at its next heartbeat), and an open remote projection is marked so the next sync cancels it at the peer. The
+   * parent's own cancel was the audited act; this is the runtime carrying it out, like a deadline.
+   */
+  private async endChildren(
+    tx: StoreTx,
+    parent: StoredDocument<TaskRecord>,
+    to: 'failed' | 'cancelled',
+  ): Promise<void> {
+    const reason = `parent task ${to}`;
+    for (const c of await tx.find<TaskRecord>('tasks', {
+      where: { parentTaskId: parent.id },
+    })) {
+      if (isTerminal(TASK_MACHINE, c.value.status)) continue;
+      if (c.value.status === 'running') await this.requestCancel(tx, c, reason);
+      else
+        await this.terminate(tx, c, 'cancelled', 'T10', {
+          code: 'Cancelled',
+          message: reason,
+        });
+    }
+    const now = this.o.now();
+    for (const r of await tx.find<RemoteTaskRecord>('remoteTasks', {
+      where: { parentTaskId: parent.id },
+    })) {
+      if (isTerminal(TASK_MACHINE, r.value.status) || r.value.cancelRequestedAt)
+        continue;
+      await tx.update<RemoteTaskRecord>('remoteTasks', r.id, r.revision, {
+        ...r.value,
+        cancelRequestedAt: now,
+        nextSyncAt: now,
+      });
+    }
   }
 
   // --- internal helpers shared with the runtime -------------------------------------------------
@@ -1121,6 +1167,8 @@ export class TaskService {
         assignees: actionUsers(a.value, doc.value),
       });
     }
+    // Last, after the parent's own wake-ups are revoked: a child that ends pokes them, and the parent must not wake.
+    if (to !== 'completed') await this.endChildren(tx, doc, to);
     return doc;
   }
 

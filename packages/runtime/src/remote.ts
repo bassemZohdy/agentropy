@@ -58,6 +58,11 @@ export interface RemoteTaskRecord {
   nextSyncAt?: string;
   /** Polls in a row that found nothing new or failed; the wait doubles with each. */
   quiet?: number;
+  /**
+   * Set when the parent task was cancelled or failed (FEAT-070): the next sync asks the peer to cancel the remote task
+   * instead of asking for its state, and keeps asking, backing off, until the peer has answered.
+   */
+  cancelRequestedAt?: string;
 }
 
 /** How often a projection is refreshed: `minMs` after a change, doubling per quiet poll up to `maxMs`. */
@@ -397,7 +402,10 @@ export class RemoteDelegationService {
           },
           correlationId: r.correlationId,
         },
-        (c) => this.o.router.provider(r.route).getTask(this.ref(r), c),
+        (c) =>
+          r.cancelRequestedAt
+            ? this.o.router.provider(r.route).cancel(this.ref(r), c)
+            : this.o.router.provider(r.route).getTask(this.ref(r), c),
       );
       const before = r.revision;
       const after = await this.apply(
