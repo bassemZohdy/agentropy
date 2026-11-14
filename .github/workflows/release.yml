@@ -22,6 +22,7 @@ concurrency:
 
 jobs:
   verify:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,6 +58,7 @@ jobs:
           path: sbom/
 
   publish:
+    timeout-minutes: 20
     needs: verify
     runs-on: ubuntu-latest
     permissions:
@@ -81,6 +83,7 @@ jobs:
         run: pnpm -r publish --provenance --tag next --access public --no-git-checks
 
   image:
+    timeout-minutes: 30
     needs: verify
     runs-on: ubuntu-latest
     permissions:
@@ -138,6 +141,7 @@ jobs:
           path: sbom/host-image.cdx.json
 
   release:
+    timeout-minutes: 15
     needs: [publish, image]
     runs-on: ubuntu-latest
     permissions:
