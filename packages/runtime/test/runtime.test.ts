@@ -178,6 +178,39 @@ describe('dispositions and retries (runtime contract T4/T6/T7/T8)', () => {
     );
   });
 
+  it('FIX-056: an output that cannot be serialized fails the task once with SchemaViolation (T8)', async () => {
+    for (const output of [
+      10n,
+      (() => {
+        const loop: Record<string, unknown> = {};
+        loop.self = loop;
+        return loop;
+      })(),
+    ]) {
+      const h = harness();
+      let runs = 0;
+      h.define('unserializable', {
+        handle: async () => {
+          runs++;
+          return { kind: 'completed', output };
+        },
+      });
+      const t = await h.delegate(
+        (await h.instance('unserializable')).id,
+        {},
+        'k',
+      );
+      await h.runtime.runUntilIdle();
+      const snap = await h.tasks.getTask(t.taskId, alice);
+      expect(snap.status).toBe('failed');
+      expect(snap.outcome?.code).toBe('SchemaViolation');
+      expect(runs).toBe(1);
+      expect((await executions(h, t.taskId)).map((e) => e[0])).toEqual([
+        'failed',
+      ]);
+    }
+  });
+
   it('waiting commits the checkpoint and wake-up registration with the transition (T4)', async () => {
     const h = harness();
     h.define('waits', {
