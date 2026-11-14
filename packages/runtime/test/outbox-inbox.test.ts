@@ -868,3 +868,60 @@ describe('FIX-064: a drain works within a time budget and keeps its lease', () =
     expect(byA).toHaveLength(1);
   });
 });
+
+describe('FIX-065: the event stream keeps no listener entry for a task nobody follows', () => {
+  const entries = (h: H) =>
+    (h.stream as unknown as { listeners: Map<string, unknown> }).listeners.size;
+
+  it('FIX-065: after many subscriptions end the stream holds no listener entries', async () => {
+    const h = harness();
+    h.define('d', completes());
+    const inst = await h.instance('d');
+    const ids: string[] = [];
+    for (let i = 0; i < 12; i++)
+      ids.push((await h.delegate(inst.id, {}, `k${i}`)).taskId);
+    await h.runtime.runUntilIdle();
+    for (const id of ids)
+      for await (const e of h.stream.subscribe(id, alice)) void e; // ends after the terminal event
+    expect(entries(h)).toBe(0);
+
+    // A subscription to a task that is still running, released by its abort signal.
+    h.define(
+      'sleeper',
+      {
+        handle: async () => ({
+          kind: 'waiting',
+          wakeup: {
+            anyOf: [{ kind: 'timer', at: '2030-01-01T00:00:00.000Z' }],
+          },
+          checkpoint: null,
+        }),
+      },
+      {},
+    );
+    const sleeping = await h.delegate(
+      (await h.instance('sleeper')).id,
+      {},
+      'sleep',
+    );
+    await h.runtime.runUntilIdle();
+    for (let i = 0; i < 5; i++) {
+      const abort = new AbortController();
+      const seen: unknown[] = [];
+      const done = (async () => {
+        for await (const e of h.stream.subscribe(
+          sleeping.taskId,
+          alice,
+          undefined,
+          abort.signal,
+        ))
+          seen.push(e);
+      })();
+      await new Promise((r) => setTimeout(r, 5)); // let it reach the wait for the next event
+      abort.abort();
+      await done;
+      expect(seen.length).toBeGreaterThan(0);
+    }
+    expect(entries(h)).toBe(0);
+  });
+});
