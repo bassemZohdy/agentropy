@@ -386,6 +386,36 @@ export class AuditService {
     return Math.max(1, Math.floor(this.o.pageSize ?? 500));
   }
 
+  /** The newest disposal receipt of a tenant: it changes when rows were removed. */
+  private lastReceipt(tenantId: string): Promise<string | undefined> {
+    return this.o.store.transaction(
+      async (tx) =>
+        (
+          await tx.find<AuditDisposalReceipt>('auditReceipts', {
+            where: { tenantId },
+            orderBy: 'seq',
+            descending: true,
+            limit: 1,
+          })
+        )[0]?.id,
+    );
+  }
+
+  /**
+   * Runs a paged read again, at most twice, when a disposal committed while it ran (FIX-079): the pages are separate
+   * transactions, so one that removes rows past the reader's cursor leaves the next page linked to a row the reader
+   * never saw, which would read as a broken chain. A disposal only ever removes the oldest rows, so a second pass is
+   * enough unless disposals keep coming.
+   */
+  private async steady<T>(tenantId: string, run: () => Promise<T>): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      const before = await this.lastReceipt(tenantId);
+      const out = await run();
+      if (attempt >= 2 || (await this.lastReceipt(tenantId)) === before)
+        return out;
+    }
+  }
+
   /**
    * The tenant's chain in pages of `pageSize` rows, each in its own transaction, so a long log is never read in one
    * transaction (under SERIALIZABLE such a read conflicts with every acceptance of the tenant). `first` runs in the
@@ -523,19 +553,24 @@ export class AuditService {
     options: { anchors?: AuditAnchor[] } = {},
   ): Promise<VerifyResult> {
     await this.authorize(caller, tenantId, 'audit:verify');
-    let checker: ChainChecker | undefined;
-    let result: VerifyResult | undefined;
-    await this.pages(
-      tenantId,
-      (tx) => this.receipts(tx, tenantId),
-      (rows, receipts) => {
-        checker ??= new ChainChecker(tenantId, receipts, options.anchors ?? []);
-        result = checker.feed(rows);
-        return result === undefined;
-      },
-    );
-    result ??= checker!.finish();
-    const done = result;
+    const done = await this.steady(tenantId, async () => {
+      let checker: ChainChecker | undefined;
+      let result: VerifyResult | undefined;
+      await this.pages(
+        tenantId,
+        (tx) => this.receipts(tx, tenantId),
+        (rows, receipts) => {
+          checker ??= new ChainChecker(
+            tenantId,
+            receipts,
+            options.anchors ?? [],
+          );
+          result = checker.feed(rows);
+          return result === undefined;
+        },
+      );
+      return result ?? checker!.finish();
+    });
     await this.o.store.transaction((tx) =>
       this.record(tx, caller, 'audit:verify', 'allow', {
         ok: done.ok,
@@ -552,22 +587,25 @@ export class AuditService {
     caller: TrustedPrincipal,
   ): Promise<AuditExport> {
     await this.authorize(caller, tenantId, 'audit:export');
-    const rows: AuditExport['rows'] = [];
-    let last: AuditDisposalReceipt | undefined;
-    await this.pages(
-      tenantId,
-      async (tx) => (await this.receipts(tx, tenantId)).at(-1),
-      (page, receipt) => {
-        last = receipt;
-        for (const r of page)
-          rows.push({
-            auditId: r.auditId,
-            event: r.event,
-            prevHash: r.prevHash,
-            hash: r.hash,
-          });
-      },
-    );
+    const { rows, last } = await this.steady(tenantId, async () => {
+      const rows: AuditExport['rows'] = [];
+      let last: AuditDisposalReceipt | undefined;
+      await this.pages(
+        tenantId,
+        async (tx) => (await this.receipts(tx, tenantId)).at(-1),
+        (page, receipt) => {
+          last = receipt;
+          for (const r of page)
+            rows.push({
+              auditId: r.auditId,
+              event: r.event,
+              prevHash: r.prevHash,
+              hash: r.hash,
+            });
+        },
+      );
+      return { rows, last };
+    });
     await this.o.store.transaction((tx) =>
       this.record(tx, caller, 'audit:export', 'allow', { rows: rows.length }),
     );
