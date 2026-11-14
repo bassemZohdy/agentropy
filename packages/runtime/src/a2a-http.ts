@@ -141,7 +141,10 @@ export function createA2AHttpHandler(
       const principal = await o.authenticate(req).catch(() => undefined);
       if (!principal) {
         req.resume();
-        rpcError(res, 401, null, -32600, 'Authentication required');
+        // RFC 9110: a 401 names the scheme the caller must use.
+        rpcError(res, 401, null, -32600, 'Authentication required', {
+          'www-authenticate': 'Bearer',
+        });
         return true;
       }
       const type = String(req.headers['content-type'] ?? '');
@@ -190,45 +193,50 @@ export function createA2AHttpHandler(
           });
           return true;
         }
-        // The client going away ends the stream and releases its task subscription.
-        const gone = new AbortController();
-        res.on('close', () => gone.abort());
-        const r = await server.stream(request, principal, headers, {
-          signal: gone.signal,
-        });
-        if (r.kind === 'error') {
-          send(res, r.response);
-          return true;
-        }
+        // The slot is taken before the stream is awaited: requests that arrive together all see the count they leave
+        // behind, so none can pass the limit while another is still opening (TASK-078). It is released on every way out.
         streams++;
-        const ping = setInterval(() => {
-          if (!gone.signal.aborted) res.write(': ping\n\n');
-        }, o.keepAliveMs ?? 15_000);
-        ping.unref();
         try {
-          res.writeHead(200, {
-            'content-type': 'text/event-stream',
-            'cache-control': 'no-store',
-            connection: 'keep-alive',
+          // The client going away ends the stream and releases its task subscription.
+          const gone = new AbortController();
+          res.on('close', () => gone.abort());
+          const r = await server.stream(request, principal, headers, {
+            signal: gone.signal,
           });
-          for await (const event of sseFrames(r.frames)) {
-            if (gone.signal.aborted) break;
-            // A slow reader is waited for (or its disconnect), not buffered without bound.
-            if (!res.write(event))
-              await new Promise<void>((resolve) => {
-                const done = () => {
-                  res.off('drain', done);
-                  res.off('close', done);
-                  resolve();
-                };
-                res.once('drain', done);
-                res.once('close', done);
-              });
+          if (r.kind === 'error') {
+            send(res, r.response);
+            return true;
+          }
+          const ping = setInterval(() => {
+            if (!gone.signal.aborted) res.write(': ping\n\n');
+          }, o.keepAliveMs ?? 15_000);
+          ping.unref();
+          try {
+            res.writeHead(200, {
+              'content-type': 'text/event-stream',
+              'cache-control': 'no-store',
+              connection: 'keep-alive',
+            });
+            for await (const event of sseFrames(r.frames)) {
+              if (gone.signal.aborted) break;
+              // A slow reader is waited for (or its disconnect), not buffered without bound.
+              if (!res.write(event))
+                await new Promise<void>((resolve) => {
+                  const done = () => {
+                    res.off('drain', done);
+                    res.off('close', done);
+                    resolve();
+                  };
+                  res.once('drain', done);
+                  res.once('close', done);
+                });
+            }
+          } finally {
+            clearInterval(ping);
+            res.end();
           }
         } finally {
-          clearInterval(ping);
           streams--;
-          res.end();
         }
         return true;
       } catch {
