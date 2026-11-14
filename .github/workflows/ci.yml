@@ -167,9 +167,10 @@ jobs:
       - name: Run as the image user (read-only root, no capabilities)
         run: |
           docker run -d --name host --read-only --tmpfs /tmp -v agentropy-data:/data \
-            -e AGENTROPY_A2A_TOKENS=ci-token=ci-peer -e AGENTROPY_ALLOW=delegation:delegate,task:dispatch,capability:notification:use \
+            -e AGENTROPY_A2A_TOKENS=ci-token=ci-peer -e AGENTROPY_ALLOW=agent:create,agent:share,delegation:delegate,task:dispatch,capability:notification:use \
             --cap-drop ALL --security-opt no-new-privileges -p 8080:8080 agentropy-host:ci
           for i in $(seq 1 30); do curl -fsS localhost:8080/readyz && break; sleep 1; done
+          docker logs host
           curl -fsS localhost:8080/readyz
           curl -fsS localhost:8080/healthz
           bash deploy/a2a-smoke.sh localhost:8080 ci-token
@@ -188,7 +189,7 @@ jobs:
       - name: Run two replicas on PostgreSQL (shared database, relay lease, A2A across them)
         run: |
           for n in 1 2; do
-            docker run -d --name host-pg-$n --network host --read-only --tmpfs /tmp               --cap-drop ALL --security-opt no-new-privileges               -e PORT=809$n -e HOSTNAME=pod-$n               -e AGENTROPY_PG_URL=postgres://postgres:ci@127.0.0.1:5432/agentropy               -e AGENTROPY_A2A_TOKENS=ci-token=ci-peer -e AGENTROPY_ALLOW=delegation:delegate,task:dispatch,capability:notification:use               agentropy-host:ci
+            docker run -d --name host-pg-$n --network host --read-only --tmpfs /tmp               --cap-drop ALL --security-opt no-new-privileges               -e PORT=809$n -e HOSTNAME=pod-$n               -e AGENTROPY_PG_URL=postgres://postgres:ci@127.0.0.1:5432/agentropy               -e AGENTROPY_A2A_TOKENS=ci-token=ci-peer -e AGENTROPY_ALLOW=agent:create,agent:share,delegation:delegate,task:dispatch,capability:notification:use               agentropy-host:ci
           done
           for p in 8091 8092; do
             for i in $(seq 1 60); do curl -fsS localhost:$p/readyz && break; sleep 1; done

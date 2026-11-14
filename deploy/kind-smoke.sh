@@ -61,7 +61,11 @@ rpc() {
 wait_ready() {
   if [ "${variant}" = "postgres" ]; then
     kctl rollout status deployment/agentropy --timeout=180s
-    kctl wait --for=condition=Ready pod -l app.kubernetes.io/name=agentropy --timeout=120s
+    # Only pods that are not terminating: after a restart an old pod is still draining and will never be Ready again.
+    local names
+    names=$(kctl get pods -l app.kubernetes.io/name=agentropy --no-headers \
+      -o custom-columns=NAME:.metadata.name,DELETED:.metadata.deletionTimestamp | awk '$2 == "<none>" { print "pod/" $1 }')
+    for n in ${names}; do kctl wait --for=condition=Ready "${n}" --timeout=120s; done
     return
   fi
   kctl rollout status statefulset/agentropy --timeout=180s
@@ -69,7 +73,11 @@ wait_ready() {
 }
 
 # The names of the host's pods, sorted (one pod with SQLite, the replicas with PostgreSQL).
-pods() { kctl get pods -l app.kubernetes.io/name=agentropy -o jsonpath='{range .items[*]}{.metadata.uid}{"\n"}{end}' | sort; }
+# A pod that is still terminating (its deletionTimestamp is set) belongs to the old set and is not counted.
+pods() {
+  kctl get pods -l app.kubernetes.io/name=agentropy --no-headers \
+    -o custom-columns=UID:.metadata.uid,DELETED:.metadata.deletionTimestamp | awk '$2 == "<none>" { print $1 }' | sort
+}
 
 # A throwaway PostgreSQL for the variant, and the egress the default-deny NetworkPolicy has to be given to reach it.
 postgres() {
