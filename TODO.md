@@ -28,6 +28,6 @@
   - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
   - Links: Ref: docs/skills.md
   - Blocked: a public listing needs the owner's submission and a second harness needs to be run by hand → n/a (manual) → owner submits the plugin, runs the five skills in another harness and records it under "Tested in" in docs/skills.md
-- [ ] **TASK-078** · P2 · low · A2A HTTP binding counts a stream before awaiting it (maxStreams cannot be passed by concurrent requests) and sends WWW-Authenticate on 401
+- [/] **TASK-078** · P2 · low · A2A HTTP binding counts a stream before awaiting it (maxStreams cannot be passed by concurrent requests) and sends WWW-Authenticate on 401
   - Done when: concurrent streaming requests beyond maxStreams get 503 and a 401 carries the header; `pnpm exec vitest run packages/testkit/test/a2a-http.test.ts`
-  - State: branch todo/TASK-078-a2a-http-binding-counts-stream from main; next: start TASK-078
+  - State: attempts 0/3; baseline 711 passing; branch todo/TASK-078-a2a-http-binding-counts-stream from main; next: read docs
