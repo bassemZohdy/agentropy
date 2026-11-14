@@ -12,7 +12,8 @@ import {
 import type { AddressInfo } from 'node:net';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { Readable } from 'node:stream';
 import { allowNetwork } from '@agentropy/testkit';
 import { describe, expect, it, vi } from 'vitest';
@@ -25,7 +26,11 @@ import {
   hostRequestListener,
   schedulerStalled,
   tokenPrincipals,
+  isMainModule,
+  main,
+  parseHostEnv,
   shutdownHost,
+  startCompaction,
   telemetryFromEnv,
 } from '../src/host.js';
 
@@ -584,5 +589,107 @@ describe('container host (M3-08)', () => {
     } finally {
       error.mockRestore();
     }
+  });
+});
+
+describe('host settings, main module and compaction schedule (FEAT-073)', () => {
+  it('FEAT-073: a non-numeric setting stops the start with InvalidConfiguration, before anything is opened', async () => {
+    for (const [name, value] of [
+      ['AGENTROPY_TICK_MS', 'abc'],
+      ['AGENTROPY_TICK_MS', '0'],
+      ['AGENTROPY_TICK_MS', '2.5'],
+      ['PORT', 'http'],
+      ['PORT', '70000'],
+      ['AGENTROPY_OUTBOX_POISON_AFTER', '-1'],
+      ['AGENTROPY_COMPACT_EVERY_MS', 'daily'],
+      ['AGENTROPY_COMPACT_RETAIN_MS', '-5'],
+      ['AGENTROPY_DRAIN_MS', 'soon'],
+    ] as const) {
+      const env = { AGENTROPY_DB: ':memory:', [name]: value };
+      expect(() => parseHostEnv(env), `${name}=${value}`).toThrow(
+        expect.objectContaining({ code: 'InvalidConfiguration' }),
+      );
+      await expect(main(env)).rejects.toMatchObject({
+        code: 'InvalidConfiguration',
+      });
+    }
+    expect(parseHostEnv({})).toMatchObject({
+      tickMs: 250,
+      port: 8080,
+      drainMs: 20_000,
+    });
+    expect(parseHostEnv({}).compaction).toBeUndefined();
+    expect(
+      parseHostEnv({
+        AGENTROPY_TICK_MS: '50',
+        PORT: '0',
+        AGENTROPY_COMPACT_EVERY_MS: '3600000',
+      }),
+    ).toMatchObject({
+      tickMs: 50,
+      port: 0,
+      compaction: { everyMs: 3_600_000, retainMs: 7 * 24 * 3_600_000 },
+    });
+  });
+
+  it('FEAT-073: a configured schedule calls compact until it is stopped, and a failing run is logged without stopping it', async () => {
+    const app = createLocalApp({
+      store: new SqliteStore({ path: ':memory:' }),
+      pdp: new AllowListPolicy(''),
+      profiles: BUILTIN_PROFILES,
+    });
+    const runs: number[] = [];
+    let fail = true;
+    const compact = vi
+      .spyOn(app, 'compact')
+      .mockImplementation(async (retainMs, caller) => {
+        runs.push(retainMs);
+        expect(caller).toMatchObject({ type: 'service' });
+        if (fail) {
+          fail = false;
+          throw new Error('store down');
+        }
+        return {} as never;
+      });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const stop = startCompaction(app, { everyMs: 5, retainMs: 1_000 }, 't');
+      await vi.waitFor(() => expect(runs.length).toBeGreaterThanOrEqual(3));
+      expect(new Set(runs)).toEqual(new Set([1_000]));
+      const line = JSON.parse(String(log.mock.calls[0]?.[0])) as Record<
+        string,
+        unknown
+      >;
+      expect(line).toMatchObject({ level: 'error', event: 'compaction' });
+      expect(JSON.stringify(line)).not.toContain('store down');
+      stop();
+      const calls = compact.mock.calls.length;
+      await new Promise((r) => setTimeout(r, 30));
+      expect(compact.mock.calls.length).toBe(calls);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('FEAT-073: the main module is found by path, not by comparing URL strings', () => {
+    const at = (...parts: string[]) => resolve(...parts);
+    const host = at('app', 'dist', 'host.js');
+    expect(isMainModule(pathToFileURL(host).href, host)).toBe(true);
+    // The same file named another way: with `..` in the path, and as node reports it.
+    expect(
+      isMainModule(
+        pathToFileURL(host).href,
+        at('app', 'dist', '..', 'dist', 'host.js'),
+      ),
+    ).toBe(true);
+    // An encoded URL against the path it stands for (a space is %20 in the URL).
+    const spaced = at('app', 'my dir', 'host.js');
+    expect(pathToFileURL(spaced).href).toContain('%20');
+    expect(isMainModule(pathToFileURL(spaced).href, spaced)).toBe(true);
+    expect(
+      isMainModule(pathToFileURL(host).href, at('app', 'dist', 'other.js')),
+    ).toBe(false);
+    expect(isMainModule(pathToFileURL(host).href, undefined)).toBe(false);
+    expect(isMainModule('not a url', host)).toBe(false);
   });
 });

@@ -12,6 +12,8 @@
  *                         how long the pool waits for a connection (default 10000), and the per-transaction
  *                         `statement_timeout` (30000) and `lock_timeout` (10000); positive integers in ms. A dropped idle
  *                         connection is logged as one JSON line (`event: pg.pool.error`), not fatal
+ * - AGENTROPY_COMPACT_EVERY_MS  run `compact` (Operations, retention and compaction) every this many ms; off when unset.
+ *                         AGENTROPY_COMPACT_RETAIN_MS is how long finished work is kept first (default 7 days)
  * - AGENTROPY_DRAIN_MS    longest SIGTERM waits for running executions (default 20000, under the manifests' 60 s grace period);
  *                         the rest are aborted and their leases expired, so another replica resumes them at once
  * - PORT                  health port (default 8080)
@@ -29,6 +31,9 @@
  * - AGENTROPY_TENANT      tenant of those principals and of the exposed instance (default `default`)
  * - AGENTROPY_PUBLIC_URL  external base URL written into the AgentCard (default http://localhost:PORT)
  *
+ * Every numeric setting is checked when the host starts: one that is not a whole number in its range (a typo such as
+ * `AGENTROPY_TICK_MS=fast`) stops the start with `InvalidConfiguration` instead of becoming a 1 ms interval.
+ *
  * Endpoints: GET /healthz (process alive), GET /readyz (store answers a transaction, the scheduler loop is not
  * stalled, not shutting down); with AGENTROPY_A2A_TOKENS also POST /a2a (A2A JSON-RPC, SSE streaming) and
  * GET /.well-known/agent-card.json. A scheduler tick that fails is logged to stderr and the loop goes on. A request
@@ -39,6 +44,8 @@
  * JSON line and ends the process with status 1.
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   createServer,
   type IncomingMessage,
@@ -401,6 +408,112 @@ function envMs(
   return ms;
 }
 
+/** A whole number in `[min, max]` from the environment, or the default; anything else is refused. */
+function envInt(
+  env: Record<string, string | undefined>,
+  name: string,
+  fallback: number,
+  min: number,
+  max = Number.MAX_SAFE_INTEGER,
+): number {
+  const raw = env[name];
+  if (raw === undefined) return fallback;
+  const n = Number(raw);
+  if (raw.trim() === '' || !Number.isSafeInteger(n) || n < min || n > max)
+    throw new AgentropyError(
+      'InvalidConfiguration',
+      `${name} must be a whole number from ${min} to ${max}`,
+    );
+  return n;
+}
+
+/** Everything the host reads from its numeric settings, checked in one place before anything is opened. */
+export interface HostSettings {
+  tickMs: number;
+  port: number;
+  drainMs: number;
+  poisonAfter?: number;
+  /** Present when `AGENTROPY_COMPACT_EVERY_MS` is set. */
+  compaction?: { everyMs: number; retainMs: number };
+}
+
+export function parseHostEnv(
+  env: Record<string, string | undefined>,
+): HostSettings {
+  const everyMs = env.AGENTROPY_COMPACT_EVERY_MS;
+  const retainMs = envInt(
+    env,
+    'AGENTROPY_COMPACT_RETAIN_MS',
+    7 * 24 * 3_600_000,
+    0,
+  );
+  return {
+    tickMs: envInt(env, 'AGENTROPY_TICK_MS', 250, 1),
+    port: envInt(env, 'PORT', 8080, 0, 65_535),
+    drainMs: envInt(env, 'AGENTROPY_DRAIN_MS', 20_000, 1),
+    ...(env.AGENTROPY_OUTBOX_POISON_AFTER
+      ? {
+          poisonAfter: envInt(env, 'AGENTROPY_OUTBOX_POISON_AFTER', 1, 1),
+        }
+      : {}),
+    ...(everyMs !== undefined
+      ? {
+          compaction: {
+            everyMs: envInt(env, 'AGENTROPY_COMPACT_EVERY_MS', 1, 1),
+            retainMs,
+          },
+        }
+      : {}),
+  };
+}
+
+/**
+ * Runs `compact` every `everyMs` as the host's own service principal until the returned function is called (the
+ * documented operator task of Operations, "Retention and compaction"). A run that fails is logged as one JSON line
+ * with the error code only, and the next one is tried at the next interval; runs never overlap.
+ */
+export function startCompaction(
+  app: LocalApp,
+  schedule: { everyMs: number; retainMs: number },
+  tenantId: string,
+): () => void {
+  const host: TrustedPrincipal = { id: 'host', type: 'service', tenantId };
+  let running = false;
+  const timer = setInterval(() => {
+    if (running) return;
+    running = true;
+    app
+      .compact(schedule.retainMs, host)
+      .catch((err: unknown) =>
+        console.error(
+          JSON.stringify({
+            level: 'error',
+            event: 'compaction',
+            code: err instanceof AgentropyError ? err.code : 'Internal',
+          }),
+        ),
+      )
+      .finally(() => {
+        running = false;
+      });
+  }, schedule.everyMs);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
+/** True when this module is the one node was started with: compared as paths, so encoded and Windows paths agree. */
+export function isMainModule(
+  moduleUrl: string,
+  argv1: string | undefined,
+): boolean {
+  if (!argv1) return false;
+  try {
+    return resolve(fileURLToPath(moduleUrl)) === resolve(argv1);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The store the environment asks for: PostgreSQL with `AGENTROPY_PG_URL` (several replicas can share it; the pod
  * name is the worker and relay ID), otherwise the SQLite file. The `pg` driver is imported only for PostgreSQL, so
@@ -457,13 +570,15 @@ export async function openStore(
 }
 
 export async function main(env = process.env): Promise<void> {
+  // Settings first: a typo stops the start before a store is opened or a port is bound.
+  const settings = parseHostEnv(env);
   const { store, workerId } = await openStore(env);
   const otel = await telemetryFromEnv(env);
   const app = createLocalApp({
     store,
     ...(otel.telemetry ? { telemetry: otel.telemetry } : {}),
-    ...(env.AGENTROPY_OUTBOX_POISON_AFTER
-      ? { outboxPoisonAfter: Number(env.AGENTROPY_OUTBOX_POISON_AFTER) }
+    ...(settings.poisonAfter !== undefined
+      ? { outboxPoisonAfter: settings.poisonAfter }
       : {}),
     pdp: new AllowListPolicy(env.AGENTROPY_ALLOW ?? ''),
     profiles: BUILTIN_PROFILES,
@@ -474,7 +589,7 @@ export async function main(env = process.env): Promise<void> {
   });
   defineAgents(app);
   const state: HostState = { shuttingDown: false };
-  const stop = app.start(Number(env.AGENTROPY_TICK_MS ?? 250), {
+  const stop = app.start(settings.tickMs, {
     // One line per failed tick, no payloads: the loop itself goes on and readiness reports a stall.
     onError: (error) =>
       console.error(
@@ -489,10 +604,25 @@ export async function main(env = process.env): Promise<void> {
   const a2a = await a2aEndpoint(app, env);
   const listener = hostRequestListener(a2a, healthHandler(app, state));
   const server = createServer((req, res) => void listener(req, res));
-  server.listen(Number(env.PORT ?? 8080));
-  const drainMs = envMs(env, 'AGENTROPY_DRAIN_MS', 20_000);
-  const shutdown = () =>
-    shutdownHost({ state, server, stop, app, drainMs, flush: otel.shutdown });
+  server.listen(settings.port);
+  const stopCompaction = settings.compaction
+    ? startCompaction(
+        app,
+        settings.compaction,
+        env.AGENTROPY_TENANT ?? 'default',
+      )
+    : undefined;
+  const shutdown = () => {
+    stopCompaction?.();
+    return shutdownHost({
+      state,
+      server,
+      stop,
+      app,
+      drainMs: settings.drainMs,
+      flush: otel.shutdown,
+    });
+  };
   process.once('SIGTERM', () => void shutdown());
   process.once('SIGINT', () => void shutdown());
   process.on('unhandledRejection', (reason) => {
@@ -507,4 +637,4 @@ export async function main(env = process.env): Promise<void> {
   });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) void main();
+if (isMainModule(import.meta.url, process.argv[1])) void main();
