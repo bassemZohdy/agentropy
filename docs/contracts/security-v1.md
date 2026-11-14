@@ -1,4 +1,4 @@
-# Agentropy Security Contract v1 — revision 10 (PEP/PDP, audit, credentials)
+# Agentropy Security Contract v1 — revision 11 (PEP/PDP, audit, credentials)
 
 **Status:** Accepted for M1 implementation (2026-11-05). Implements the M1 subset of [ADR-0021](../adr/0021-delegated-authorization.md), [ADR-0024](../adr/0024-pre-dispatch-authorization-gate.md) and [ADR-0025](../adr/0025-security-infrastructure-errors.md). Policy engines, identity providers, credential backends and audit storage remain deferred (D-17…D-22). **Errors:** [Errors v1](errors-v1.md).
 
@@ -16,6 +16,7 @@
 | 8 | 2026-11-06 | FEAT-033.1 (R-05): a shared decision cache applies invalidations recorded in the store by any worker within `syncMs`; `revokeAuthority` records one with its audit event |
 | 9 | 2026-11-14 | FIX-057 (review N-09): instance lifecycle is governed like `agent:upgrade`: `AgentService.createInstance`, `suspendInstance`, `resumeInstance`, `retireInstance`, `drainInstance` and `shareInstance` run the grant check and a policy decision (`agent:create`, `agent:suspend`, `agent:resume`, `agent:retire`, `agent:drain`, `agent:share`) before anything changes, and commit an audit intent (`instance.create`, `instance.suspend`, `instance.resume`, `instance.retire`, `instance.drain`, `instance.share`; decision `allow`) in the same transaction, so a denied call changes nothing and an allowed one is never unaudited. Creating an instance for another owner is for trusted services only |
 | 10 | 2026-11-14 | TASK-067 (review N-19): audit lifecycle work no longer loads a tenant's whole chain in one transaction: the chain head keeps the chain position (`anchor` reads the head, not the log), `verify` and `exportLog` read the chain in pages of `pageSize` rows (default 500), one transaction each, and `dispose` removes at most `maxRows` rows per call (default 1000), oldest first, with a receipt each, so a long prefix is disposed by repeating the call until it returns nothing. Verification, anchors and receipts behave as before |
+| 11 | 2026-11-14 | FIX-079: `verify` and `exportLog` read the chain in separate transactions (revision 10), so a `dispose` that commits between two pages removed rows past the reader's cursor and the next page linked to a row the reader never saw, which read as a broken chain; both now read again (at most twice) when the newest disposal receipt changed while they ran, so a disposal never makes a sound chain look tampered with |
 
 ## TypeScript contract (normative)
 

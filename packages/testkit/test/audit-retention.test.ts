@@ -453,3 +453,55 @@ describe('audit work in pages (TASK-067)', () => {
     });
   });
 });
+
+describe('a disposal during a paged read (FIX-079)', () => {
+  /** A service whose second transaction is preceded by a disposal committed through the real service. */
+  async function withDisposalAfterFirstPage() {
+    const s = await setup();
+    await s.activity(6);
+    s.clock.advanceBy(31 * DAY);
+    await s.activity(2);
+    let armed = false;
+    let transactions = 0;
+    const store: Store = {
+      durability: s.store.durability,
+      close: () => s.store.close(),
+      transaction: async (fn) => {
+        // The first page is read; then another worker disposes the expired prefix, rows past this reader's cursor too.
+        if (armed && ++transactions === 2) {
+          armed = false;
+          expect(await s.app.auditLog.dispose('t-1', auditor)).toBeDefined();
+        }
+        return s.store.transaction(fn);
+      },
+    };
+    const service = new AuditService({
+      store,
+      pdp: s.pdp,
+      now: s.clock.iso,
+      retention: { defaultDays: 30, floorDays: 7 },
+      pageSize: 5,
+    });
+    return { s, service, arm: () => (armed = true) };
+  }
+
+  it('FIX-079: verify is not fooled by a disposal that commits between two pages', async () => {
+    const { s, service, arm } = await withDisposalAfterFirstPage();
+    const before = (await s.rows()).length;
+    arm();
+    const result = await service.verify('t-1', auditor);
+    expect(result).toMatchObject({ ok: true });
+    expect((await s.rows()).length).toBeLessThan(before); // the disposal did happen
+    expect(await service.verify('t-1', auditor)).toMatchObject({ ok: true });
+  });
+
+  it('FIX-079: an export is a chain that verifies offline although a disposal committed while it was read', async () => {
+    const { service, arm } = await withDisposalAfterFirstPage();
+    arm();
+    const bundle = await service.exportLog('t-1', auditor);
+    expect(verifyAuditChain(bundle.rows, bundle.startHash)).toEqual({
+      ok: true,
+    });
+    expect(bundle.startPosition).toBeGreaterThan(1); // it starts after the receipt the disposal wrote
+  });
+});
