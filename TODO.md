@@ -31,6 +31,7 @@
 - [ ] **FIX-064** · P2 · mid · Outbox relay and audit forwarder work within a time budget per drain call, and the relay renews its leader lease while it drains
   - Done when: a backlog larger than the budget is spread over several drain calls in order, and a drain longer than leaseMs keeps the lease; `pnpm exec vitest run packages/runtime/test/outbox-inbox.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
+  - State: branch todo/FIX-064-outbox-relay-and-audit-forwarder from main; next: start FIX-064
 - [ ] **FIX-065** · P2 · low · TaskEventStream removes a task's listener entry when its last subscriber leaves
   - Done when: after many subscriptions end the stream holds no listener entries; `pnpm exec vitest run packages/runtime/test/outbox-inbox.test.ts`
 - [ ] **TASK-066** · P2 · mid · Compaction reads only what is due through indexes and in batches, validates retainMs, and reports counts that survive a transaction re-run
