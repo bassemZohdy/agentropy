@@ -884,6 +884,19 @@ export class AgentRuntime {
       }
       if (d.kind === 'completed') {
         const def = this.o.tasks.o.definitions.require(t.definition);
+        // An output JSON cannot represent (a BigInt, a cycle) is the handler's mistake like any other bad output: fail
+        // once (T8). Left to throw here, the transaction would fail on every try and the handler would run again.
+        let outputBytes: number;
+        try {
+          outputBytes = Buffer.byteLength(JSON.stringify(d.output ?? null));
+        } catch {
+          await end('failed', 'E6');
+          await this.o.tasks.terminate(tx, cur, 'failed', 'T8', {
+            code: 'SchemaViolation',
+            message: 'Output cannot be serialized as JSON',
+          });
+          return this.prune(tx, t.taskId);
+        }
         try {
           if (def.outputSchema !== undefined)
             validateAgainst(def.outputSchema, d.output, `${def.id} output`);
@@ -895,10 +908,7 @@ export class AgentRuntime {
           });
           return this.prune(tx, t.taskId);
         }
-        if (
-          Buffer.byteLength(JSON.stringify(d.output ?? null)) >
-          this.o.maxOutputBytes
-        ) {
+        if (outputBytes > this.o.maxOutputBytes) {
           await end('failed', 'E6');
           await this.o.tasks.terminate(tx, cur, 'failed', 'T8', {
             code: 'SchemaViolation',
