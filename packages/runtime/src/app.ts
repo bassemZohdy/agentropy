@@ -374,6 +374,11 @@ export interface LocalApp {
    * up by a slow store, policy point, peer or sink, and a shutdown that waits for long work, therefore cannot let
    * another worker on the store recover an execution this one is still running (FIX-051). A failed heartbeat is
    * counted and handed to `options.onError` like a failed tick.
+   *
+   * The stop function waits for running executions without bound, or, with `{ drainMs }`, for at most that long
+   * (FEAT-072): what is still running then is aborted and its lease expired, so another worker on the store resumes
+   * it at once instead of after `leaseMs`, and the stop function settles. Use it where a process is killed after a
+   * grace period (a pod's `terminationGracePeriodSeconds`).
    */
   start(
     intervalMs?: number,
@@ -381,7 +386,7 @@ export interface LocalApp {
       onError?: (error: AgentropyError) => void;
       heartbeatMs?: number;
     },
-  ): () => Promise<void>;
+  ): (options?: { drainMs?: number }) => Promise<void>;
   /** Snapshot of the loop's health: last successful tick, failures in a row, last error code. */
   schedulerStatus(): SchedulerStatus;
 }
@@ -966,12 +971,30 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
           inFlight = undefined;
         });
       }, intervalMs);
-      return async () => {
+      return async (stop: { drainMs?: number } = {}) => {
         stopped = true;
         clearInterval(timer);
         await inFlight;
         await wakeups.settle(); // background sweeps in flight (bounded by their own timeouts)
-        await runtime.idle();
+        if (stop.drainMs === undefined) await runtime.idle();
+        else {
+          // The heartbeat keeps the leases alive while the executions are given their time.
+          let bound: NodeJS.Timeout | undefined;
+          const settled = await Promise.race([
+            runtime.idle().then(() => true),
+            new Promise<boolean>((r) => {
+              bound = setTimeout(() => r(false), Math.max(0, stop.drainMs!));
+              bound.unref?.();
+            }),
+          ]);
+          clearTimeout(bound);
+          if (!settled) {
+            // No renewal may follow the expiry: stop the heartbeat first, then hand the executions over.
+            clearInterval(heartbeat);
+            await beating;
+            await runtime.handOver();
+          }
+        }
         clearInterval(heartbeat);
         await beating;
         scheduler.running = false;

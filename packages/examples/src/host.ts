@@ -12,6 +12,8 @@
  *                         how long the pool waits for a connection (default 10000), and the per-transaction
  *                         `statement_timeout` (30000) and `lock_timeout` (10000); positive integers in ms. A dropped idle
  *                         connection is logged as one JSON line (`event: pg.pool.error`), not fatal
+ * - AGENTROPY_DRAIN_MS    longest SIGTERM waits for running executions (default 20000, under the manifests' 60 s grace period);
+ *                         the rest are aborted and their leases expired, so another replica resumes them at once
  * - PORT                  health port (default 8080)
  * - AGENTROPY_ALLOW       comma-separated policy actions the sample policy allows; everything else is denied (with the
  *                         A2A endpoint the host's own setup needs `agent:create` and `agent:share`)
@@ -32,7 +34,8 @@
  * GET /.well-known/agent-card.json. A scheduler tick that fails is logged to stderr and the loop goes on. A request
  * whose handler fails is answered 500 and logged as one JSON line (`hostRequestListener`).
  * SIGTERM (see `shutdownHost`): readiness drops, the listener closes and open connections (A2A streams) are cut, the
- * scheduler stops and running executions finish, then the store closes. An unhandled rejection is logged as one
+ * scheduler stops and running executions finish (up to AGENTROPY_DRAIN_MS, then they are handed over), then the store
+ * closes. An unhandled rejection is logged as one
  * JSON line and ends the process with status 1.
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
@@ -289,8 +292,10 @@ export function defineAgents(app: LocalApp): void {
 export async function shutdownHost(h: {
   state: HostState;
   server: Server;
-  stop: () => Promise<void>;
+  stop: (options?: { drainMs?: number }) => Promise<void>;
   app: LocalApp;
+  /** Longest running executions are waited for (FEAT-072); then they are aborted and handed to another replica. */
+  drainMs?: number;
   /** Flushes telemetry after the last execution finished (spans of the final work are not lost). */
   flush?: () => Promise<void>;
 }): Promise<void> {
@@ -298,7 +303,7 @@ export async function shutdownHost(h: {
   h.state.shuttingDown = true;
   h.server.close();
   h.server.closeAllConnections();
-  await h.stop();
+  await h.stop(h.drainMs === undefined ? {} : { drainMs: h.drainMs });
   await h.flush?.().catch(() => undefined);
   await h.app.store.close();
 }
@@ -485,8 +490,9 @@ export async function main(env = process.env): Promise<void> {
   const listener = hostRequestListener(a2a, healthHandler(app, state));
   const server = createServer((req, res) => void listener(req, res));
   server.listen(Number(env.PORT ?? 8080));
+  const drainMs = envMs(env, 'AGENTROPY_DRAIN_MS', 20_000);
   const shutdown = () =>
-    shutdownHost({ state, server, stop, app, flush: otel.shutdown });
+    shutdownHost({ state, server, stop, app, drainMs, flush: otel.shutdown });
   process.once('SIGTERM', () => void shutdown());
   process.once('SIGINT', () => void shutdown());
   process.on('unhandledRejection', (reason) => {

@@ -272,6 +272,102 @@ describe('container host (M3-08)', () => {
     ]);
   });
 
+  it('FEAT-072: an execution still running at the drain bound is aborted, its lease expired, and shutdown completes', async () => {
+    const path = join(
+      mkdtempSync(join(tmpdir(), 'agentropy-drain-')),
+      'host.db',
+    );
+    const store = new SqliteStore({ path });
+    const alice: TrustedPrincipal = { id: 'a', type: 'user', tenantId: 't' };
+    const policy = () =>
+      new AllowListPolicy(
+        'agent:create,delegation:delegate,task:dispatch,capability:notification:use',
+      );
+    const definition = {
+      id: 'stuck',
+      version: '1.0.0',
+      displayName: 'stuck',
+      profile: { id: 'task', version: '1.0.0' },
+      implementation: {
+        providerId: 'native-ts',
+        providerVersion: '1.0.0',
+        artifact: { id: 'stuck', version: '1.0.0' },
+      },
+      inputSchema: true,
+      runtimeRequirements: { guarantees: [] },
+      policyRef: { id: 'default', version: '1.0.0' },
+    } as const;
+    const app = createLocalApp({
+      store,
+      pdp: policy(),
+      profiles: BUILTIN_PROFILES,
+      runtime: { workerId: 'pod-1' },
+    });
+    let aborted = false;
+    app.define(definition, {
+      // Never returns, whatever the signal says: the pod would be killed while it still runs.
+      handle: (_inv, ctx) =>
+        new Promise(() => {
+          ctx.signal.addEventListener('abort', () => (aborted = true));
+        }),
+    });
+    const inst = await app.createInstance(
+      {
+        definition: { id: 'stuck', version: '1.0.0' },
+        ownerId: 'a',
+        idempotencyKey: 'i',
+      },
+      alice,
+    );
+    const handle = await app.delegate(
+      {
+        target: { instanceId: inst.id },
+        input: {},
+        idempotencyKey: 'k',
+        correlationId: 'k',
+      },
+      alice,
+    );
+    const stop = app.start(5);
+    const running = () =>
+      store.transaction((tx) =>
+        tx.find<{ state: string; leaseExpiresAt?: string }>('executions', {
+          where: { state: 'running' },
+        }),
+      );
+    await vi.waitFor(async () => expect(await running()).toHaveLength(1));
+
+    const state = { shuttingDown: false };
+    const server = createServer();
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const began = Date.now();
+    await shutdownHost({ state, server, stop, app, drainMs: 60 });
+    expect(Date.now() - began).toBeLessThan(5_000);
+    expect(aborted).toBe(true);
+
+    // The execution is still the pool's on paper, but its lease ran out at once, so another replica takes it over.
+    const other = new SqliteStore({ path });
+    const [exec] = await other.transaction((tx) =>
+      tx.find<{ state: string; leaseExpiresAt: string }>('executions', {}),
+    );
+    expect(exec!.value.state).toBe('running');
+    expect(Date.parse(exec!.value.leaseExpiresAt)).toBeLessThanOrEqual(
+      Date.now(),
+    );
+    const replica = createLocalApp({
+      store: other,
+      pdp: policy(),
+      profiles: BUILTIN_PROFILES,
+      runtime: { workerId: 'pod-2' },
+    });
+    replica.define(definition, {
+      handle: async () => ({ kind: 'completed', output: 'resumed' }),
+    });
+    await replica.runUntilIdle();
+    expect(await replica.getResult(handle.taskId, alice)).toBe('resumed');
+    await other.close();
+  });
+
   it('A2A peers see and cancel only their own tasks; they are not tenant-wide services (TASK-035.1)', async () => {
     const app = createLocalApp({
       store: new SqliteStore({
