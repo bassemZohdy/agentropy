@@ -8,6 +8,17 @@
     "url": "git+https://github.com/bassemZohdy/agentropy.git",
     "directory": "packages/testkit"
   },
+  "homepage": "https://github.com/bassemZohdy/agentropy/tree/main/packages/testkit#readme",
+  "bugs": {
+    "url": "https://github.com/bassemZohdy/agentropy/issues"
+  },
+  "keywords": [
+    "agents",
+    "testing",
+    "fakes",
+    "conformance",
+    "agentropy"
+  ],
   "engines": {
     "node": ">=24"
   },

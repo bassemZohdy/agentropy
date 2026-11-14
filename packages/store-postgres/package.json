@@ -8,6 +8,17 @@
     "url": "git+https://github.com/bassemZohdy/agentropy.git",
     "directory": "packages/store-postgres"
   },
+  "homepage": "https://github.com/bassemZohdy/agentropy/tree/main/packages/store-postgres#readme",
+  "bugs": {
+    "url": "https://github.com/bassemZohdy/agentropy/issues"
+  },
+  "keywords": [
+    "agents",
+    "postgresql",
+    "storage",
+    "durable-execution",
+    "agentropy"
+  ],
   "engines": {
     "node": ">=24"
   },
