@@ -31,6 +31,7 @@
 - [ ] **TASK-067** · P2 · high · Audit verify, export, anchor and dispose work in pages with the chain position kept in the head row, not a tenant's whole log in one transaction
   - Done when: anchor reads a bounded number of rows, dispose removes a long prefix in bounded transactions and verify still passes; a rewritten row is still reported; `pnpm exec vitest run packages/testkit/test/audit-retention.test.ts`
   - Links: Ref: docs/contracts/security-v1.md
+  - State: branch todo/TASK-067-audit-verify-export-anchor-dispose from main; next: start TASK-067
 - [ ] **TASK-068** · P2 · mid · Peer replies are bounded while they are read (MCP, A2A client, federation cards, model responses), the reasoning timeout covers the body, a non-JSON A2A reply is RemoteUnavailable and remote output is capped at maxOutputBytes
   - Done when: an over-limit reply is refused without being buffered whole and a stalled body times out; `pnpm exec vitest run packages/testkit/test/bounded-replies.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
