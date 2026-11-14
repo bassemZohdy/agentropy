@@ -17,13 +17,88 @@ export function durabilityRank(level: string): number {
   return DURABILITY_LEVELS.indexOf(level as DurabilityLevel);
 }
 
+const text = { type: 'string', minLength: 1 } as const;
+
+/**
+ * Input schemas of the built-in operations (Capability v1 revision 15). The runtime validates an invocation's input
+ * against its operation's schema before the provider runs, so malformed handler input is a non-retryable
+ * `SchemaViolation` instead of a `TypeError` in the provider (which would become a retried `Internal`). They state
+ * what the reference providers read; an operation that is absent takes any input.
+ */
+const OPERATION_INPUTS: Record<string, unknown> = {
+  'delegation.delegate': {
+    type: 'object',
+    required: ['target'],
+    properties: {
+      target: { type: 'object' },
+      deadline: { type: 'string' },
+      budget: { type: 'object' },
+    },
+  },
+  'delegation.getTask': {
+    type: 'object',
+    required: ['taskId'],
+    properties: { taskId: text },
+  },
+  'delegation.cancel': {
+    type: 'object',
+    required: ['taskId'],
+    properties: { taskId: text, reason: { type: 'string' } },
+  },
+  'event-handling.subscribe': {
+    type: 'object',
+    required: ['source'],
+    properties: { source: text, filter: { type: 'object' } },
+  },
+  'event-handling.unsubscribe': {
+    type: 'object',
+    required: ['subscription'],
+    properties: { subscription: text },
+  },
+  'scheduling.nextOccurrence': {
+    type: 'object',
+    required: ['cron', 'timezone'],
+    properties: {
+      cron: text,
+      timezone: text,
+      after: { type: 'string' },
+    },
+  },
+  'reasoning.complete': {
+    type: 'object',
+    properties: {
+      prompt: { type: 'string' },
+      system: { type: 'string' },
+      messages: { type: 'array', items: { type: 'object' } },
+      maxTokens: { type: 'integer', minimum: 1 },
+      temperature: { type: 'number' },
+      tools: { type: 'array', items: { type: 'string' } },
+    },
+  },
+  'tool-use.call': {
+    type: 'object',
+    required: ['toolId'],
+    properties: { toolId: text },
+  },
+  'workflow.start': {
+    type: 'object',
+    required: ['workflow'],
+    properties: { workflow: text },
+  },
+  'workflow.status': {
+    type: 'object',
+    required: ['runId'],
+    properties: { runId: text },
+  },
+};
+
 const op = (
   capability: string,
   name: string,
   effect: OperationEffect,
 ): OperationContract => ({
   name,
-  inputSchema: true,
+  inputSchema: (OPERATION_INPUTS[`${capability}.${name}`] ?? true) as never,
   permission: `${capability}:${name}`,
   effect,
 });
