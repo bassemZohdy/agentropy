@@ -197,17 +197,7 @@ export class InstanceDirectory {
     caller: TrustedPrincipal,
     audit?: InstanceAudit,
   ): Promise<AgentInstance> {
-    // The owner is who the instance appears for in lists and the inbox: only a trusted service names another one.
-    if (req.ownerId !== caller.id && caller.type !== 'service')
-      throw new AgentropyError(
-        'PermissionDenied',
-        'Only a trusted service can create an instance for another owner',
-      );
-    const key = `instance:${caller.tenantId}|${caller.id}|${req.idempotencyKey}`;
-    const fingerprint = digestOf({
-      definition: req.definition,
-      ownerId: req.ownerId,
-    });
+    const { key, fingerprint } = this.createKey(req, caller);
     this.definitions.require(req.definition);
     return this.store.transaction(async (tx) => {
       const prior = await tx.get<InstanceIdempotency>('idempotency', key);
@@ -249,6 +239,85 @@ export class InstanceDirectory {
       });
       return instance;
     });
+  }
+
+  /**
+   * The instance `create` would make for this request, without storing it (FIX-063): a delegation by definition
+   * plans the instance, runs every refusal that can still happen, and stores it in the transaction that accepts the
+   * task (`insertPlanned`), so a refused delegation leaves nothing behind. The ID of an instance that already exists
+   * for the key is returned as it is (`stored`), so a retry gets the same instance.
+   */
+  async plan(
+    req: CreateInstanceRequest,
+    caller: TrustedPrincipal,
+  ): Promise<{ instance: AgentInstance; stored: boolean }> {
+    const { key, fingerprint } = this.createKey(req, caller);
+    this.definitions.require(req.definition);
+    const prior = await this.store.transaction(async (tx) => {
+      const rec = await tx.get<InstanceIdempotency>('idempotency', key);
+      return rec
+        ? {
+            rec,
+            doc: await tx.get<AgentInstance>('instances', rec.value.instanceId),
+          }
+        : undefined;
+    });
+    if (prior) {
+      if (prior.rec.value.fingerprint !== fingerprint)
+        throw new AgentropyError(
+          'IdempotencyConflict',
+          'Idempotency key reused with a different request',
+        );
+      return { instance: prior.doc!.value, stored: true };
+    }
+    return {
+      instance: {
+        id: this.newId(),
+        definition: { ...req.definition },
+        tenantId: caller.tenantId,
+        ownerId: req.ownerId,
+        state: 'available',
+        revision: 1,
+      },
+      stored: false,
+    };
+  }
+
+  /** Stores an instance from `plan` in the caller's transaction, under the instance quota. */
+  async insertPlanned(
+    tx: StoreTx,
+    req: CreateInstanceRequest,
+    caller: TrustedPrincipal,
+    instance: AgentInstance,
+  ): Promise<void> {
+    const { key, fingerprint } = this.createKey(req, caller);
+    await checkInstanceQuota(
+      tx,
+      caller.tenantId,
+      this.quotas?.(caller.tenantId),
+    );
+    await tx.insert('instances', instance.id, instance);
+    await tx.insert<InstanceIdempotency>('idempotency', key, {
+      tenantId: caller.tenantId,
+      instanceId: instance.id,
+      fingerprint,
+    });
+  }
+
+  private createKey(req: CreateInstanceRequest, caller: TrustedPrincipal) {
+    // The owner is who the instance appears for in lists and the inbox: only a trusted service names another one.
+    if (req.ownerId !== caller.id && caller.type !== 'service')
+      throw new AgentropyError(
+        'PermissionDenied',
+        'Only a trusted service can create an instance for another owner',
+      );
+    return {
+      key: `instance:${caller.tenantId}|${caller.id}|${req.idempotencyKey}`,
+      fingerprint: digestOf({
+        definition: req.definition,
+        ownerId: req.ownerId,
+      }),
+    };
   }
 
   /** Tenant-scoped lookup: another tenant's instance is indistinguishable from a missing one. */
