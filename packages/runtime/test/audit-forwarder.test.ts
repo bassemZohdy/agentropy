@@ -1,6 +1,7 @@
 // FEAT-039.1: the audit forwarder reads what is still to be forwarded, not the whole audit log on every tick.
 import type { Store, StoreTx } from '@agentropy/core';
 import { describe, expect, it } from 'vitest';
+import { AuditForwarder } from '../src/index.js';
 import { completes, harness, sqliteTempStore } from './harness.js';
 
 /** Counts the audit documents each `find` hands back. */
@@ -61,5 +62,37 @@ describe('audit forwarding cost (FEAT-039.1)', () => {
     expect(await h.forwarder.drain()).toBe(0);
     h.audit.failing = false;
     expect(await h.forwarder.drain()).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('audit forwarding budget (FIX-064)', () => {
+  it('FIX-064: a backlog larger than the budget is forwarded over several drain calls, in order', async () => {
+    const h = harness();
+    h.define('d', completes());
+    const inst = await h.instance('d');
+    for (let i = 0; i < 6; i++) await h.delegate(inst.id, {}, `k${i}`);
+    const seen: string[] = [];
+    const forwarder = new AuditForwarder({
+      store: h.store,
+      now: h.clock.iso,
+      drainBudgetMs: 25_000,
+      sink: {
+        record: async (e) => {
+          seen.push(String(e.details?.auditId));
+          h.clock.advanceBy(10_000);
+        },
+      },
+    });
+    expect(await forwarder.drain()).toBe(3);
+    let total = 3;
+    for (let calls = 0; calls < 40; calls++) {
+      const n = await forwarder.drain();
+      if (!n) break;
+      total += n;
+    }
+    expect(total).toBeGreaterThanOrEqual(6);
+    expect(seen).toHaveLength(total);
+    expect(new Set(seen).size).toBe(total);
+    expect(await forwarder.drain()).toBe(0);
   });
 });

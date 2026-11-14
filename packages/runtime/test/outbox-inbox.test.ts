@@ -752,3 +752,119 @@ describe('poisoned outbox rows (FEAT-039.4)', () => {
     expect(after?.value).toMatchObject({ published: 1, poisoned: true });
   });
 });
+
+describe('FIX-064: a drain works within a time budget and keeps its lease', () => {
+  const rowsOf = (h: H) =>
+    h.store.transaction((tx) =>
+      tx.find<OutboxRecord>('outbox', { orderBy: 'seq' }),
+    );
+
+  it('FIX-064: a backlog larger than the budget is spread over several drain calls, in order, once each', async () => {
+    const h = harness();
+    h.define('d', completes());
+    const inst = await h.instance('d');
+    for (let i = 0; i < 4; i++) await h.delegate(inst.id, {}, `k${i}`);
+    const rows = await rowsOf(h);
+    expect(rows.length).toBeGreaterThanOrEqual(8);
+    const got: string[] = [];
+    const relay = new OutboxRelay({
+      store: h.store,
+      now: h.clock.iso,
+      drainBudgetMs: 25_000,
+      consumers: [
+        {
+          id: 'slow',
+          handle: async (e: PublishedEvent) => {
+            got.push(e.eventId);
+            h.clock.advanceBy(10_000); // each delivery takes ten seconds
+          },
+        },
+      ],
+    });
+    expect(await relay.drain()).toBe(3); // 10 s, 20 s, 30 s: the budget is spent after the third row
+    expect(got).toHaveLength(3);
+    let total = 3;
+    for (let calls = 0; total < rows.length && calls < rows.length; calls++)
+      total += await relay.drain();
+    expect(total).toBe(rows.length);
+    expect(got).toEqual(rows.map((r) => r.value.eventId));
+    expect(await relay.drain()).toBe(0);
+  });
+
+  it('FIX-064: a drain longer than leaseMs keeps the lease, so another relay does not take over', async () => {
+    const h = harness();
+    h.define('d', completes());
+    const inst = await h.instance('d');
+    for (let i = 0; i < 3; i++) await h.delegate(inst.id, {}, `k${i}`);
+    const rows = await rowsOf(h);
+    const byA: string[] = [];
+    const byB: string[] = [];
+    const b = new OutboxRelay({
+      store: h.store,
+      relayId: 'relay-b',
+      leaseMs: 30_000,
+      now: h.clock.iso,
+      consumers: [{ id: 'b', handle: async (e) => void byB.push(e.eventId) }],
+    });
+    const takeovers: number[] = [];
+    const a = new OutboxRelay({
+      store: h.store,
+      relayId: 'relay-a',
+      leaseMs: 30_000,
+      now: h.clock.iso,
+      drainBudgetMs: 10 * 60_000,
+      consumers: [
+        {
+          id: 'a',
+          handle: async (e) => {
+            byA.push(e.eventId);
+            h.clock.advanceBy(20_000); // the whole drain takes longer than the 30 s lease
+            takeovers.push(await b.drain()); // another relay tries to lead meanwhile
+          },
+        },
+      ],
+    });
+    expect(await a.drain()).toBe(rows.length);
+    expect(byA).toEqual(rows.map((r) => r.value.eventId));
+    expect(byB).toEqual([]);
+    expect(takeovers.every((n) => n === 0)).toBe(true);
+  });
+
+  it('FIX-064: a relay that finds its lease taken stops publishing', async () => {
+    const h = harness();
+    h.define('d', completes());
+    const inst = await h.instance('d');
+    for (let i = 0; i < 3; i++) await h.delegate(inst.id, {}, `k${i}`);
+    const byA: string[] = [];
+    const a = new OutboxRelay({
+      store: h.store,
+      relayId: 'relay-a',
+      leaseMs: 30_000,
+      now: h.clock.iso,
+      drainBudgetMs: 10 * 60_000,
+      consumers: [
+        {
+          id: 'a',
+          handle: async (e) => {
+            byA.push(e.eventId);
+            // The lease lapses and another relay takes it over while this one is busy.
+            h.clock.advanceBy(60_000);
+            await h.store.transaction(async (tx) => {
+              const cur = await tx.get<{ holder: string }>(
+                'leases',
+                'outbox-relay',
+              );
+              await tx.update('leases', 'outbox-relay', cur!.revision, {
+                kind: 'relay',
+                holder: 'relay-b',
+                expiresAt: new Date(h.clock.now() + 30_000).toISOString(),
+              });
+            });
+          },
+        },
+      ],
+    });
+    await a.drain();
+    expect(byA).toHaveLength(1);
+  });
+});
