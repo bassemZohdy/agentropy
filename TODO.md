@@ -31,6 +31,7 @@
 - [ ] **FEAT-072** · P2 · mid · Graceful shutdown hands work over: after a bounded drain the host aborts the remaining handlers and expires their leases so another replica resumes them at once
   - Done when: an execution still running at the drain bound is aborted, its lease expired and shutdown completes; `pnpm exec vitest run packages/examples/test/host.test.ts`
   - Links: Ref: docs/deployment.md · Depends: FIX-051
+  - State: branch todo/FEAT-072-graceful-shutdown-hands-work-over from main; next: start FEAT-072
 - [ ] **FEAT-073** · P2 · mid · Host validates its numeric environment settings at start, detects the main module by path, and can run compaction on a schedule
   - Done when: a non-numeric AGENTROPY_TICK_MS stops the start with InvalidConfiguration and a configured schedule calls compact; `pnpm exec vitest run packages/examples/test/host.test.ts`
   - Links: Ref: docs/deployment.md
