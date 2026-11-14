@@ -8,8 +8,10 @@ import {
   type AuditEvent,
   type TrustedPrincipal,
 } from '@agentropy/core';
+import type { Store, StoreTx } from '@agentropy/core';
 import { describe, expect, it } from 'vitest';
 import {
+  AuditService,
   createLocalApp,
   verifyAuditChain,
   type AuditAnchor,
@@ -319,6 +321,135 @@ describe('integrity anchors and archive (ADR-0022 §7)', () => {
     expect(verifyAuditChain(bundle.rows, bundle.startHash)).toEqual({
       ok: false,
       brokenAt: bundle.rows[1]!.auditId,
+    });
+  });
+});
+
+describe('audit work in pages (TASK-067)', () => {
+  /** A service over the same store whose `find` calls on the audit log are counted and sized. */
+  function paged(s: Awaited<ReturnType<typeof setup>>, pageSize = 5) {
+    const stats = { rowsRead: 0, largest: 0 };
+    const store: Store = {
+      durability: s.store.durability,
+      close: () => s.store.close(),
+      transaction: (fn) =>
+        s.store.transaction((tx) =>
+          fn({
+            ...tx,
+            find: async (c, o) => {
+              const rows = await tx.find(c, o);
+              if (c === 'audit') {
+                stats.rowsRead += rows.length;
+                stats.largest = Math.max(stats.largest, rows.length);
+              }
+              return rows;
+            },
+            get: (c, id) => tx.get(c, id),
+            insert: (c, id, v) => tx.insert(c, id, v),
+            update: (c, id, r, v) => tx.update(c, id, r, v),
+            remove: (c, id, r) => tx.remove(c, id, r),
+          } as StoreTx),
+        ),
+    };
+    const service = new AuditService({
+      store,
+      pdp: s.pdp,
+      now: s.clock.iso,
+      retention: { defaultDays: 30, floorDays: 7 },
+      anchorSink: { publish: async (a) => void s.anchors.push(a) },
+      pageSize,
+    });
+    return { service, stats };
+  }
+
+  it('TASK-067: anchor reads a bounded number of rows however long the log is', async () => {
+    const s = await setup();
+    await s.activity(20);
+    const { service, stats } = paged(s);
+    const total = (await s.rows()).length;
+    expect(total).toBeGreaterThan(15);
+    const a = await service.anchor('t-1', auditor);
+    expect(stats.rowsRead).toBeLessThanOrEqual(1);
+    // The position and hash are those of the chain end, anchor event included.
+    const rows = await s.rows();
+    expect(a.position).toBe(rows.length);
+    expect(a.auditId).toBe(rows.at(-1)!.value.auditId);
+    expect(a.hash).toBe(rows.at(-1)!.value.hash);
+  });
+
+  it('TASK-067: dispose removes a long prefix in bounded transactions and verify still passes', async () => {
+    const s = await setup();
+    await s.activity(12);
+    const before = (await s.rows()).length;
+    s.clock.advanceBy(31 * DAY);
+    await s.activity(1);
+    await s.app.auditLog.anchor('t-1', auditor);
+    const { service, stats } = paged(s, 7);
+    const receipts: { fromPosition: number; toPosition: number }[] = [];
+    for (let calls = 0; calls < 50; calls++) {
+      const r = await service.dispose('t-1', auditor, { maxRows: 10 });
+      if (!r) break;
+      receipts.push(r);
+    }
+    expect(receipts.length).toBeGreaterThan(1);
+    for (const r of receipts)
+      expect(r.toPosition - r.fromPosition + 1).toBeLessThanOrEqual(10);
+    expect(receipts.at(-1)!.toPosition).toBe(before);
+    expect(stats.largest).toBeLessThanOrEqual(10);
+    expect(
+      await service.verify('t-1', auditor, { anchors: s.anchors }),
+    ).toMatchObject({ ok: true, disposed: before });
+  });
+
+  it('TASK-067: a head written before it kept the position is counted once, on the next append', async () => {
+    const s = await setup();
+    await s.activity(3);
+    const total = (await s.rows()).length;
+    await s.store.transaction(async (tx) => {
+      const head = (await tx.get<{ position?: number }>('auditHeads', 't-1'))!;
+      const { position: _p, ...legacy } = head.value;
+      void _p;
+      await tx.update('auditHeads', 't-1', head.revision, legacy);
+    });
+    const { service, stats } = paged(s);
+    // The anchor records its own event first, which counts the log once and writes the position back.
+    const a = await service.anchor('t-1', auditor);
+    expect(a.position).toBe(total + 1);
+    expect(stats.rowsRead).toBeGreaterThan(0);
+    stats.rowsRead = 0;
+    const b = await service.anchor('t-1', auditor);
+    expect(b.position).toBe(total + 2);
+    expect(stats.rowsRead).toBe(0);
+  });
+
+  it('TASK-067: verify and export work in pages, and a rewritten row is still reported', async () => {
+    const s = await setup();
+    await s.activity(6);
+    const { service, stats } = paged(s, 5);
+    const total = (await s.rows()).length;
+    expect(await service.verify('t-1', auditor)).toMatchObject({
+      ok: true,
+      count: expect.any(Number),
+    });
+    expect(stats.largest).toBeLessThanOrEqual(5);
+    const bundle = await service.exportLog('t-1', auditor);
+    expect(stats.largest).toBeLessThanOrEqual(5);
+    expect(bundle.rows.length).toBeGreaterThanOrEqual(total);
+    expect(verifyAuditChain(bundle.rows, bundle.startHash)).toEqual({
+      ok: true,
+    });
+    // One row in the middle of the log is rewritten without touching the links.
+    const rows = await s.rows();
+    const victim = rows[Math.floor(rows.length / 2)]!;
+    await s.store.transaction((tx) =>
+      tx.update('audit', victim.id, victim.revision, {
+        ...victim.value,
+        event: { ...victim.value.event, decision: 'deny' },
+      }),
+    );
+    expect(await service.verify('t-1', auditor)).toMatchObject({
+      ok: false,
+      brokenAt: victim.value.auditId,
     });
   });
 });
