@@ -31,6 +31,7 @@
 - [ ] **FIX-062** · P2 · mid · A2A ListTasks pages from the newest task, so a caller with more than 10,000 visible tasks still sees the latest and a correct totalSize
   - Done when: with the scan bound lowered in the test the newest task is on the first page and paging reaches the oldest; `pnpm exec vitest run packages/testkit/test/a2a.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
+  - State: branch todo/FIX-062-a2a-listtasks-pages-from-newest from main; next: start FIX-062
 - [ ] **FIX-063** · P2 · low · TaskService guards: fan-out counted inside the accepting transaction, Unauthenticated from getTaskByIdempotencyKey without a principal, no auto-created instance left by a refused delegation
   - Done when: concurrent delegations cannot exceed maxFanOut, a missing principal is Unauthenticated, a denied delegation by definition leaves no instance; `pnpm exec vitest run packages/runtime/test/task-service.test.ts`
 - [ ] **FIX-064** · P2 · mid · Outbox relay and audit forwarder work within a time budget per drain call, and the relay renews its leader lease while it drains
