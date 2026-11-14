@@ -50,6 +50,50 @@ describe('scheduler reads (FEAT-039.3)', () => {
     expect(read.humanActions ?? 0).toBe(0);
   });
 
+  it('FIX-058: the human-action sweep does not read the resolved requests whose deadline has passed', async () => {
+    const { store, read } = countingStore();
+    const h = harness({ store });
+    const past = '2020-01-01T00:00:00.000Z';
+    await store.transaction(async (tx) => {
+      for (const [i, status] of (
+        ['resolved', 'expired', 'cancelled'] as const
+      ).entries())
+        for (let n = 0; n < 15; n++)
+          await tx.insert('humanActions', `done-${i}-${n}`, {
+            taskId: `t-${i}-${n}`,
+            status,
+            dueAt: past,
+            claimExpiresAt: past,
+          });
+      await tx.insert('humanActions', 'open-due', {
+        taskId: 't-open',
+        requestId: 'open-due',
+        status: 'pending',
+        dueAt: past,
+      });
+      await tx.insert('humanActions', 'open-claim', {
+        taskId: 't-claim',
+        requestId: 'open-claim',
+        status: 'claimed',
+        claimedBy: 'alice',
+        claimExpiresAt: past,
+      });
+    });
+    read.humanActions = 0;
+    expect(await h.human.sweep()).toBe(2);
+    expect(read.humanActions ?? 0).toBe(2);
+    const status = async (id: string) =>
+      (await store.transaction((tx) =>
+        tx.get<{ status: string }>('humanActions', id),
+      ))!.value.status;
+    expect(await status('open-due')).toBe('expired');
+    expect(await status('open-claim')).toBe('pending');
+    // The next sweep finds nothing left to do and reads nothing.
+    read.humanActions = 0;
+    expect(await h.human.sweep()).toBe(0);
+    expect(read.humanActions ?? 0).toBe(0);
+  });
+
   it('a tick reads the executions that are due, not the queue of retries still waiting out their backoff', async () => {
     const { store, read } = countingStore();
     const h = harness({ store });
