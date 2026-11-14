@@ -8,6 +8,18 @@
     "url": "git+https://github.com/bassemZohdy/agentropy.git",
     "directory": "packages/runtime"
   },
+  "homepage": "https://github.com/bassemZohdy/agentropy/tree/main/packages/runtime#readme",
+  "bugs": {
+    "url": "https://github.com/bassemZohdy/agentropy/issues"
+  },
+  "keywords": [
+    "agents",
+    "multi-agent",
+    "runtime",
+    "durable-execution",
+    "a2a",
+    "agentropy"
+  ],
   "engines": {
     "node": ">=24"
   },

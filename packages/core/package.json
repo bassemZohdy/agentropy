@@ -8,6 +8,17 @@
     "url": "git+https://github.com/bassemZohdy/agentropy.git",
     "directory": "packages/core"
   },
+  "homepage": "https://github.com/bassemZohdy/agentropy/tree/main/packages/core#readme",
+  "bugs": {
+    "url": "https://github.com/bassemZohdy/agentropy/issues"
+  },
+  "keywords": [
+    "agents",
+    "multi-agent",
+    "contracts",
+    "typescript",
+    "agentropy"
+  ],
   "engines": {
     "node": ">=24"
   },

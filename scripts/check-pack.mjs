@@ -7,7 +7,9 @@
 //   node scripts/check-pack.mjs --no-install # metadata and tarball contents only (offline)
 import { spawnSync } from 'node:child_process';
 import {
+  existsSync,
   mkdirSync,
+  statSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -88,8 +90,9 @@ const libraries = readdirSync(join(root, 'packages')).filter((d) => {
 const versions = new Set(
   libraries.map(
     (d) =>
-      JSON.parse(readFileSync(join(root, 'packages', d, 'package.json'), 'utf8'))
-        .version,
+      JSON.parse(
+        readFileSync(join(root, 'packages', d, 'package.json'), 'utf8'),
+      ).version,
   ),
 );
 if (versions.size !== 1)
@@ -117,7 +120,8 @@ try {
       fail(`${at}: repository.directory must be ${at}`);
     if (j.engines?.node !== '>=24') fail(`${at}: engines.node must be >=24`);
     if (j.type !== 'module') fail(`${at}: type must be module`);
-    if (j.private) fail(`${at}: must not be "private", it is published (TASK-043.2)`);
+    if (j.private)
+      fail(`${at}: must not be "private", it is published (TASK-043.2)`);
     const dot = j.exports?.['.'];
     if (
       dot?.types !== './dist/index.d.ts' ||
@@ -126,6 +130,20 @@ try {
       fail(`${at}: exports["."] must map types/default to dist/index`);
     for (const f of ['dist', 'LICENSE'])
       if (!j.files?.includes(f)) fail(`${at}: files must include ${f}`);
+    // TASK-061: the npm page is the package's README and its links, so each library needs both before a publish.
+    if (!Array.isArray(j.keywords) || j.keywords.length < 3)
+      fail(`${at}: keywords must list at least three terms`);
+    if (!/^https:\/\//.test(j.homepage ?? ''))
+      fail(`${at}: homepage must be an https URL`);
+    if (!/^https:\/\//.test(j.bugs?.url ?? ''))
+      fail(`${at}: bugs.url must be an https URL`);
+    const readme = join(cwd, 'README.md');
+    if (!existsSync(readme) || statSync(readme).size < 400)
+      fail(
+        `${at}: README.md missing or too short to be the package's npm page`,
+      );
+    else if (!readFileSync(readme, 'utf8').includes(j.name))
+      fail(`${at}: README.md must name the package (${j.name})`);
 
     const before = new Set(readdirSync(work));
     run('pnpm', ['pack', '--pack-destination', work], cwd);
@@ -144,6 +162,7 @@ try {
       .map((e) => e.replace(/^package\//, ''));
     for (const need of [
       'package.json',
+      'README.md',
       'LICENSE',
       'dist/index.js',
       'dist/index.d.ts',

@@ -8,6 +8,17 @@
     "url": "git+https://github.com/bassemZohdy/agentropy.git",
     "directory": "packages/workflow-conductor"
   },
+  "homepage": "https://github.com/bassemZohdy/agentropy/tree/main/packages/workflow-conductor#readme",
+  "bugs": {
+    "url": "https://github.com/bassemZohdy/agentropy/issues"
+  },
+  "keywords": [
+    "agents",
+    "workflow",
+    "conductor",
+    "orchestration",
+    "agentropy"
+  ],
   "engines": {
     "node": ">=24"
   },

@@ -8,6 +8,17 @@
     "url": "git+https://github.com/bassemZohdy/agentropy.git",
     "directory": "packages/store-sqlite"
   },
+  "homepage": "https://github.com/bassemZohdy/agentropy/tree/main/packages/store-sqlite#readme",
+  "bugs": {
+    "url": "https://github.com/bassemZohdy/agentropy/issues"
+  },
+  "keywords": [
+    "agents",
+    "sqlite",
+    "storage",
+    "durable-execution",
+    "agentropy"
+  ],
   "engines": {
     "node": ">=24"
   },
