@@ -202,6 +202,8 @@ export interface LocalApp {
   readonly inbox: InboxService;
   readonly human: HumanActionService;
   readonly relay: OutboxRelay;
+  /** Hands committed audit intents to `audit`; present only when a sink is configured (FEAT-075). */
+  readonly auditForwarder?: AuditForwarder;
   /** Tenant-scoped audit read and hash-chain verification (needs `audit:read` / `audit:verify`). */
   readonly auditLog: AuditService;
   /** The effective, validated limits this app runs with. */
@@ -501,6 +503,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
         store,
         sink: o.audit,
         now,
+        ...(o.telemetry ? { telemetry: o.telemetry } : {}),
         ...(o.faults ? { faults: o.faults } : {}),
       })
     : undefined;
@@ -683,6 +686,7 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     inbox,
     human,
     relay,
+    ...(forwarder ? { auditForwarder: forwarder } : {}),
     auditLog: new AuditService({
       store,
       pdp: o.pdp,

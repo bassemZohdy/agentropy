@@ -11,6 +11,8 @@ import {
   AgentropyError,
   digestOf,
   enforcePolicy,
+  METRICS,
+  type Telemetry,
   type PolicyDecisionPoint,
   type TrustedPrincipal,
   redactDetails,
@@ -144,6 +146,8 @@ export class AuditForwarder {
       faults?: FaultHook;
       /** Clock for the drain budget (default: the system clock). */
       now?: () => string;
+      /** Counts every refused forward (`agentropy.audit.forward_failures`, FEAT-075). */
+      telemetry?: Telemetry;
       /**
        * Longest a drain call keeps forwarding (default 5000 ms): a backlog after an outage is forwarded over several
        * calls, in order. At least one row is forwarded per call.
@@ -176,6 +180,33 @@ export class AuditForwarder {
     }
   }
 
+  /**
+   * Rows the sink keeps refusing (`attempts` at or above `minAttempts`). Forwarding is in order and stops at the first
+   * refused row, so the oldest of them holds back every later one: what an operator or a readiness probe looks at
+   * (FEAT-075).
+   */
+  async stuck(
+    minAttempts = 5,
+  ): Promise<
+    { auditId: string; type: string; attempts: number; at: string }[]
+  > {
+    const rows = await this.o.store.transaction((tx) =>
+      tx.find<AuditIntentRow>('audit', {
+        where: { forwarded: 0 },
+        orderBy: 'seq',
+        limit: 100,
+      }),
+    );
+    return rows
+      .filter((r) => r.value.attempts >= minAttempts)
+      .map((r) => ({
+        auditId: r.value.auditId,
+        type: r.value.type,
+        attempts: r.value.attempts,
+        at: r.value.event.at,
+      }));
+  }
+
   private async forward(
     rows: { id: string; revision: number; value: AuditIntentRow }[],
     spent: () => boolean,
@@ -188,7 +219,10 @@ export class AuditForwarder {
           details: { ...row.value.event.details, auditId: row.value.auditId },
         });
         this.o.faults?.checkpoint('audit.markForwarded');
-      } catch (err) {
+      } catch {
+        this.o.telemetry?.count(METRICS.auditForwardFailures, 1, {
+          'agentropy.audit.type': row.value.type,
+        });
         await this.o.store.transaction(async (tx) => {
           const cur = await tx.get<AuditIntentRow>('audit', row.id);
           if (cur && cur.value.forwarded === 0)
@@ -197,7 +231,6 @@ export class AuditForwarder {
               attempts: cur.value.attempts + 1,
             });
         });
-        void err;
         return n;
       }
       await this.o.store.transaction(async (tx) => {

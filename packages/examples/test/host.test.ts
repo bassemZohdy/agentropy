@@ -523,6 +523,53 @@ describe('container host (M3-08)', () => {
     });
   });
 
+  it('FEAT-075: /readyz reports auditStuck while the audit sink refuses, and stays ready', async () => {
+    let refusing = true;
+    const app = createLocalApp({
+      store: new SqliteStore({
+        path: join(mkdtempSync(join(tmpdir(), 'agentropy-host-')), 'host.db'),
+      }),
+      pdp: new AllowListPolicy(
+        'agent:create,delegation:delegate,task:dispatch,capability:notification:use',
+      ),
+      profiles: BUILTIN_PROFILES,
+      audit: {
+        record: async () => {
+          if (refusing) throw new Error('sink down');
+        },
+      },
+    });
+    defineAgents(app);
+    const alice: TrustedPrincipal = { id: 'a', type: 'user', tenantId: 't' };
+    const inst = await app.createInstance(
+      {
+        definition: { id: 'echo', version: '1.0.0' },
+        ownerId: 'a',
+        idempotencyKey: 'i',
+      },
+      alice,
+    );
+    await app.delegate(
+      {
+        target: { instanceId: inst.id },
+        input: {},
+        idempotencyKey: 'k',
+        correlationId: 'c',
+      },
+      alice,
+    );
+    const h = healthHandler(app, { shuttingDown: false });
+    expect((await call(h, 'GET', '/readyz')).body).toEqual({ status: 'ready' });
+    for (let i = 0; i < 5; i++) await app.auditForwarder!.drain();
+    expect(await call(h, 'GET', '/readyz')).toEqual({
+      status: 200,
+      body: { status: 'ready', auditStuck: 1 },
+    });
+    refusing = false;
+    await app.auditForwarder!.drain();
+    expect((await call(h, 'GET', '/readyz')).body).toEqual({ status: 'ready' });
+  });
+
   it('a request whose handler rejects is answered 500 and never becomes an unhandled rejection (FIX-049)', async () => {
     const answer = (headersSent: boolean) => {
       const seen: { status?: number; body?: string; destroyed?: boolean } = {};

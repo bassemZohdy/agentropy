@@ -1,4 +1,4 @@
-# Agentropy Observability Contract v1 — revision 6 (traces, metrics, propagation)
+# Agentropy Observability Contract v1 — revision 7 (traces, metrics, propagation)
 
 **Status:** Accepted for M2 implementation (2026-11-05). Resolves design follow-ups D-12, D-13 and D-14 ([design follow-ups](../plans/DESIGN-FOLLOWUPS.md)). Implemented by `Telemetry` in `@agentropy/core` and the OpenTelemetry adapter `openTelemetry()` in `@agentropy/runtime`; verified by `packages/testkit/test/telemetry.test.ts` against the OpenTelemetry SDK.
 
@@ -12,6 +12,7 @@
 | 4 | 2026-11-07 | `agentropy.outbox.failures` counter for failed outbox deliveries (FEAT-039.4) |
 | 5 | 2026-11-08 | `agentropy.outbox.poisoned` counter for outbox rows given up on after `poisonAfter` failed deliveries |
 | 6 | 2026-11-14 | `agentropy.scheduler.errors` also counts a wake-up poll sweep that threw (workflow poll, remote sync, human-action expiry); the poll goes on (FIX-052) |
+| 7 | 2026-11-14 | `agentropy.audit.forward_failures` counter (attribute `agentropy.audit.type`) for audit rows the sink refused, counted per attempt (FEAT-075, review N-27); forwarding is in order and retried, so one refused row holds back the later ones, and `AuditForwarder.stuck(minAttempts)` lists it |
 
 ## Port (normative)
 
@@ -54,6 +55,7 @@ The default is a no-op. Telemetry never changes behavior: a failing exporter mus
 | `agentropy.store.conflicts` | counter | `agentropy.store.adapter` (`postgres`), `agentropy.store.outcome` (`retried`, `exhausted`), `agentropy.store.sqlstate` (`40001`, `40P01`) |
 | `agentropy.scheduler.errors` | counter | `agentropy.error.code` |
 | `agentropy.outbox.failures` | counter | `agentropy.event.type` |
+| `agentropy.audit.forward_failures` | counter | `agentropy.audit.type` |
 | `agentropy.outbox.poisoned` | counter | `agentropy.event.type` |
 
 Attribute values are identifiers, enums and codes with bounded cardinality per deployment; task and execution IDs appear on spans, never on metrics.
