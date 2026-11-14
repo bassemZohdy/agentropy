@@ -8,6 +8,10 @@
  * - AGENTROPY_PG_URL      PostgreSQL connection URL: use PostgreSQL instead of SQLite (the `pg` driver is an optional
  *                         dependency loaded only then); several replicas may share the database, the pod name
  *                         (HOSTNAME) becomes the worker and outbox-relay ID
+ * - AGENTROPY_PG_CONNECT_TIMEOUT_MS, AGENTROPY_PG_STATEMENT_TIMEOUT_MS, AGENTROPY_PG_LOCK_TIMEOUT_MS
+ *                         how long the pool waits for a connection (default 10000), and the per-transaction
+ *                         `statement_timeout` (30000) and `lock_timeout` (10000); positive integers in ms. A dropped idle
+ *                         connection is logged as one JSON line (`event: pg.pool.error`), not fatal
  * - PORT                  health port (default 8080)
  * - AGENTROPY_ALLOW       comma-separated policy actions the sample policy allows; everything else is denied
  * - AGENTROPY_TICK_MS     scheduler interval (default 250)
@@ -38,6 +42,7 @@ import {
   type ServerResponse,
 } from 'node:http';
 import {
+  AgentropyError,
   BUILTIN_PROFILES,
   type PolicyDecision,
   type PolicyDecisionPoint,
@@ -360,9 +365,34 @@ export async function telemetryFromEnv(
   };
 }
 
+/** The `pg` pool as far as the host uses it: a store pool that is also an event emitter. */
+export interface HostPgPool extends PgPool {
+  on(event: 'error', listener: (err: Error) => void): unknown;
+}
+
 /** The `pg` module's `Pool`, as far as the host uses it. */
 export interface PgModule {
-  Pool: new (options: { connectionString: string }) => PgPool;
+  Pool: new (options: {
+    connectionString: string;
+    connectionTimeoutMillis: number;
+  }) => HostPgPool;
+}
+
+/** A positive integer number of milliseconds from the environment, or the default; anything else is refused. */
+function envMs(
+  env: Record<string, string | undefined>,
+  name: string,
+  fallback: number,
+): number {
+  const raw = env[name];
+  if (raw === undefined) return fallback;
+  const ms = Number(raw);
+  if (raw.trim() === '' || !Number.isSafeInteger(ms) || ms < 1)
+    throw new AgentropyError(
+      'InvalidConfiguration',
+      `${name} must be a positive integer number of milliseconds`,
+    );
+  return ms;
 }
 
 /**
@@ -382,11 +412,39 @@ export async function openStore(
         path: env.AGENTROPY_DB ?? '/data/agentropy.db',
       }),
     };
+  const connectionTimeoutMillis = envMs(
+    env,
+    'AGENTROPY_PG_CONNECT_TIMEOUT_MS',
+    10_000,
+  );
+  const statementTimeoutMs = envMs(
+    env,
+    'AGENTROPY_PG_STATEMENT_TIMEOUT_MS',
+    30_000,
+  );
+  const lockTimeoutMs = envMs(env, 'AGENTROPY_PG_LOCK_TIMEOUT_MS', 10_000);
   const { Pool } = await loadPg();
+  const pool = new Pool({ connectionString: url, connectionTimeoutMillis });
+  // pg emits `error` on the pool when an idle connection is dropped (a database restart or failover); an
+  // unhandled `error` event ends the process, and every replica would go at once. The pool discards the connection
+  // and the next transaction opens a new one. The message is left out: it can carry the server's address.
+  pool.on('error', (err) => {
+    const code = (err as { code?: unknown }).code;
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        event: 'pg.pool.error',
+        error: err instanceof Error ? err.name : 'Error',
+        ...(typeof code === 'string' ? { code } : {}),
+      }),
+    );
+  });
   return {
     store: new PostgresStore({
-      pool: new Pool({ connectionString: url }),
+      pool,
       ownsConnection: true,
+      statementTimeoutMs,
+      lockTimeoutMs,
     }),
     workerId: env.HOSTNAME ?? `host-${randomUUID()}`,
   };
