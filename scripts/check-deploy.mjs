@@ -180,6 +180,36 @@ const svc = docs.find((d) => d.obj?.kind === 'Service')?.obj;
 if (svc && !svc.spec?.ports?.some((p) => p.targetPort === 'health'))
   fail('service.yaml: must target the container port named health');
 
+// TASK-077: workflow hygiene. A stuck job must not hold a runner for the default six hours, a superseded run of the
+// same ref should not go on, and the offline suite runs on the Node version the image ships.
+const workflows = join(root, '.github/workflows');
+for (const file of readdirSync(workflows).filter((f) => f.endsWith('.yml'))) {
+  const wf = YAML.parse(readFileSync(join(workflows, file), 'utf8'));
+  for (const [name, job] of Object.entries(wf.jobs ?? {})) {
+    const minutes = job['timeout-minutes'];
+    if (!(Number.isInteger(minutes) && minutes > 0 && minutes <= 60))
+      fail(`${file}: job ${name} needs timeout-minutes (1 to 60)`);
+  }
+}
+const ciYaml = YAML.parse(readFileSync(join(workflows, 'ci.yml'), 'utf8'));
+if (!String(ciYaml.concurrency?.group ?? '').includes('github.ref'))
+  fail(
+    'ci.yml: needs a concurrency group per ref, so a superseded run is cancelled',
+  );
+if (!ciYaml.concurrency?.['cancel-in-progress'])
+  fail('ci.yml: concurrency must cancel in-progress runs (of branches)');
+const imageNode = /^FROM node:(\d+)/m.exec(
+  readFileSync(join(root, 'deploy/Dockerfile'), 'utf8'),
+)?.[1];
+const onImageNode = Object.values(ciYaml.jobs ?? {}).some((job) =>
+  (job.steps ?? []).some(
+    (s) => String(s.with?.['node-version'] ?? '').split('.')[0] === imageNode,
+  ),
+);
+if (!imageNode) fail('Dockerfile: cannot read the Node major of the image');
+else if (!onImageNode)
+  fail(`ci.yml: no job runs on Node ${imageNode}, the image's runtime`);
+
 const dockerfile = readFileSync(join(root, 'deploy/Dockerfile'), 'utf8');
 const froms = [...dockerfile.matchAll(/^FROM\s+(\S+)/gm)].map((m) => m[1]);
 if (!froms.length) fail('Dockerfile: no FROM');
