@@ -28,9 +28,6 @@
   - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
   - Links: Ref: docs/skills.md
   - Blocked: a public listing needs the owner's submission and a second harness needs to be run by hand → n/a (manual) → owner submits the plugin, runs the five skills in another harness and records it under "Tested in" in docs/skills.md
-- [/] **FIX-065** · P2 · low · TaskEventStream removes a task's listener entry when its last subscriber leaves
-  - Done when: after many subscriptions end the stream holds no listener entries; `pnpm exec vitest run packages/runtime/test/outbox-inbox.test.ts`
-  - State: attempts 0/3; baseline 674 passing; branch todo/FIX-065-taskeventstream-removes-task-listener from main; next: read docs
 - [ ] **TASK-066** · P2 · mid · Compaction reads only what is due through indexes and in batches, validates retainMs, and reports counts that survive a transaction re-run
   - Done when: a run over already compacted tasks reads none of them, a negative or non-numeric retainMs is SchemaViolation; `pnpm exec vitest run packages/testkit/test/operations.test.ts`
   - Links: Ref: docs/operations.md
