@@ -31,7 +31,7 @@
 - [ ] **TASK-068** · P2 · mid · Peer replies are bounded while they are read (MCP, A2A client, federation cards, model responses), the reasoning timeout covers the body, a non-JSON A2A reply is RemoteUnavailable and remote output is capped at maxOutputBytes
   - Done when: an over-limit reply is refused without being buffered whole and a stalled body times out; `pnpm exec vitest run packages/testkit/test/bounded-replies.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
-  - State: next: decompose
+  - State: branch todo/TASK-068-peer-replies-bounded-while-read from main; next: start TASK-068
 - [ ] **TASK-069** · P2 · mid · MemoryStore rolls a failed transaction back with an undo log instead of cloning the whole store before every transaction
   - Done when: the Store conformance suite passes and a transaction on a large store copies only the documents it touches; `pnpm exec vitest run packages/store-sqlite/test/memory-store.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
