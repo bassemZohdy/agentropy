@@ -28,10 +28,10 @@
   - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
   - Links: Ref: docs/skills.md
   - Blocked: a public listing needs the owner's submission and a second harness needs to be run by hand → n/a (manual) → owner submits the plugin, runs the five skills in another harness and records it under "Tested in" in docs/skills.md
-- [ ] **TASK-076** · P2 · mid · Kubernetes manifests get a startup probe and a PodDisruptionBudget for the PostgreSQL variant, and the kind smoke script can apply that variant
+- [/] **TASK-076** · P2 · mid · Kubernetes manifests get a startup probe and a PodDisruptionBudget for the PostgreSQL variant, and the kind smoke script can apply that variant
   - Done when: check-deploy fails without the probe or the budget and passes with them; `node scripts/check-deploy.mjs`
   - Links: Ref: docs/deployment.md
-  - State: branch todo/TASK-076-kubernetes-manifests-get-startup-probe from main; next: start TASK-076
+  - State: attempts 0/3; baseline 711 passing; branch todo/TASK-076-kubernetes-manifests-get-startup-probe from main; next: read docs
 - [ ] **TASK-077** · P2 · low · CI cancels superseded runs per ref, gives every job a timeout and runs the offline suite on Node 26 (the image's runtime)
   - Done when: check-deploy fails for a workflow job without timeout-minutes, without the concurrency group or without the Node 26 job; `node scripts/check-deploy.mjs`
 - [ ] **TASK-078** · P2 · low · A2A HTTP binding counts a stream before awaiting it (maxStreams cannot be passed by concurrent requests) and sends WWW-Authenticate on 401
