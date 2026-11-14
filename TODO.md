@@ -27,6 +27,7 @@
 - [ ] **FIX-079** · P1 · low · Audit verify and export read again when a disposal commits during their paged read, instead of reporting a broken chain
   - Done when: a disposal that commits between two pages of verify and of export leaves both correct; `pnpm exec vitest run packages/testkit/test/audit-retention.test.ts`
   - Links: From: TASK-067
+  - State: branch todo/FIX-079-audit-verify-export-read-again from main; next: start FIX-079
 - [!] **TASK-045** · P2 · low · Skills: list the plugin in a public marketplace; run the five skills in a second harness (TASK-039 leftover)
   - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
   - Links: Ref: docs/skills.md
