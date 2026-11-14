@@ -29,6 +29,7 @@ import {
   type TaskSnapshot,
   type TrustedPrincipal,
 } from '@agentropy/core';
+import { DEFAULT_LIMITS } from './limits.js';
 import { hashKey, type TaskService } from './task-service.js';
 import { pokeWakeups } from './wake-index.js';
 
@@ -84,6 +85,8 @@ export class RemoteDelegationService {
       sync?: RemoteSyncOptions;
       /** Longest one call to a peer may take (default 30 s); a longer one fails `RemoteUnavailable` (FIX-053). */
       timeoutMs?: number;
+      /** Largest output a remote task may report (default `DEFAULT_LIMITS.maxOutputBytes`); a larger one fails it (TASK-068). */
+      maxOutputBytes?: number;
     },
   ) {
     const ms = o.timeoutMs;
@@ -486,6 +489,22 @@ export class RemoteDelegationService {
         (normalized === r.status && remoteState === r.remoteState)
       )
         return r;
+      // A peer's output is bound like a local handler's: one over `maxOutputBytes` (or not JSON at all) fails the
+      // projection with `SchemaViolation` instead of being stored whole (TASK-068).
+      const maxOutputBytes =
+        this.o.maxOutputBytes ?? DEFAULT_LIMITS.maxOutputBytes;
+      let oversize = false;
+      if (normalized === 'completed' && output !== undefined) {
+        try {
+          oversize = Buffer.byteLength(JSON.stringify(output)) > maxOutputBytes;
+        } catch {
+          oversize = true;
+        }
+      }
+      if (oversize) {
+        normalized = 'failed';
+        output = undefined;
+      }
       const next: RemoteTaskRecord = {
         ...r,
         status: normalized,
@@ -497,10 +516,15 @@ export class RemoteDelegationService {
           : {}),
         ...(normalized === 'failed'
           ? {
-              outcome: {
-                code: 'TaskFailed',
-                message: `Remote task ${remoteState}`,
-              },
+              outcome: oversize
+                ? {
+                    code: 'SchemaViolation',
+                    message: `Remote output exceeds the ${maxOutputBytes}-byte limit`,
+                  }
+                : {
+                    code: 'TaskFailed',
+                    message: `Remote task ${remoteState}`,
+                  },
             }
           : normalized === 'cancelled'
             ? {

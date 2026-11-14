@@ -23,6 +23,7 @@ import {
   type ToolProvider,
 } from '@agentropy/core';
 import { sseData } from './a2a-sse.js';
+import { ReplyTooLarge, readBoundedText } from './bounded-body.js';
 
 /** The MCP protocol revision this client asks for. */
 export const MCP_PROTOCOL_VERSION = '2025-06-18';
@@ -377,9 +378,20 @@ export function mcpHttpTransport(o: {
       const res = await send({ id, method, params }, opts);
       const sid = res.headers.get('mcp-session-id');
       if (method === 'initialize' && sid) session = sid;
-      const text = await res.text();
-      if (text.length > (o.maxResponseBytes ?? 1 << 20))
-        throw unavailable('The MCP reply is too large');
+      let text: string;
+      try {
+        text = await readBoundedText(
+          res,
+          o.maxResponseBytes ?? 1 << 20,
+          opts.signal,
+        );
+      } catch (err) {
+        throw unavailable(
+          err instanceof ReplyTooLarge
+            ? 'The MCP reply is too large'
+            : 'The MCP reply could not be read',
+        );
+      }
       const messages: unknown[] = [];
       if (
         (res.headers.get('content-type') ?? '').includes('text/event-stream')

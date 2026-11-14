@@ -38,11 +38,17 @@ import {
   type A2ATaskState,
 } from './a2a-protocol.js';
 import { sseData } from './a2a-sse.js';
+import {
+  ReplyNotJson,
+  ReplyTooLarge,
+  readBoundedJson,
+} from './bounded-body.js';
 
 /** The part of a fetch Response the provider reads; `headers` and `body` are needed only for streaming. */
 interface FetchResponse {
   status: number;
   json(): Promise<unknown>;
+  text?(): Promise<string>;
   headers?: { get(name: string): string | null };
   body?: AsyncIterable<Uint8Array | string> | null;
 }
@@ -76,6 +82,8 @@ export interface A2AProviderOptions {
   allowEndpoint: (url: URL) => boolean;
   /** Admit `http:` endpoints (default false: `https:` only). URLs with embedded credentials are always refused. */
   allowHttp?: boolean;
+  /** Largest reply body read from a peer (default 4 MiB); a larger one is `RemoteUnavailable` (TASK-068). */
+  maxResponseBytes?: number;
   fetch?: FetchLike;
   /** Credential for this runtime's identity at the peer (resolved per call, sent as a Bearer token). */
   credentialRef?: string;
@@ -212,7 +220,31 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
     ctx: CallContext,
   ): Promise<T> {
     const res = await this.post(endpoint, method, params, ctx);
-    return this.result<T>(await res.json());
+    return this.result<T>(await this.readJson(res, ctx));
+  }
+
+  /** The reply as JSON under the size cap, or `RemoteUnavailable`: a peer's reply never fails as `Internal`. */
+  private async readJson(
+    res: FetchResponse,
+    ctx: CallContext,
+  ): Promise<unknown> {
+    try {
+      return await readBoundedJson(
+        res,
+        this.o.maxResponseBytes ?? 4 * 1024 * 1024,
+        ctx.signal,
+      );
+    } catch (err) {
+      throw new AgentropyError(
+        'RemoteUnavailable',
+        err instanceof ReplyTooLarge
+          ? 'A2A reply is too large'
+          : err instanceof ReplyNotJson
+            ? 'A2A peer sent a reply that is not JSON'
+            : 'A2A reply could not be read',
+        { details: { protocol: 'a2a' } },
+      );
+    }
   }
 
   private async post(
@@ -538,7 +570,7 @@ export class A2ACommunicationProvider implements AgentCommunicationProvider {
         !res.body ||
         !(res.headers?.get('content-type') ?? '').includes('text/event-stream')
       ) {
-        this.result(await res.json()); // a JSON reply is an error (or a peer that ignored the method)
+        this.result(await this.readJson(res, ctx)); // a JSON reply is an error (or a peer that ignored the method)
         return;
       }
     } catch (err) {
