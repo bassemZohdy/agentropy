@@ -28,10 +28,10 @@
   - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
   - Links: Ref: docs/skills.md
   - Blocked: a public listing needs the owner's submission and a second harness needs to be run by hand → n/a (manual) → owner submits the plugin, runs the five skills in another harness and records it under "Tested in" in docs/skills.md
-- [ ] **TASK-069** · P2 · mid · MemoryStore rolls a failed transaction back with an undo log instead of cloning the whole store before every transaction
+- [/] **TASK-069** · P2 · mid · MemoryStore rolls a failed transaction back with an undo log instead of cloning the whole store before every transaction
   - Done when: the Store conformance suite passes and a transaction on a large store copies only the documents it touches; `pnpm exec vitest run packages/store-sqlite/test/memory-store.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
-  - State: branch todo/TASK-069-memorystore-rolls-failed-transaction from main; next: start TASK-069
+  - State: attempts 0/3; baseline 689 passing; branch todo/TASK-069-memorystore-rolls-failed-transaction from main; next: read docs
 - [ ] **FEAT-070** · P2 · high · Cancel or terminal failure of a parent propagates to its open child tasks, local and remote, as specified in a revision of Agent v1
   - Done when: cancelling a waiting parent cancels its running child and fences the child's late result; a task of another parent is untouched; `pnpm exec vitest run packages/testkit/test/cancel-propagation.test.ts`
   - Links: Ref: docs/contracts/agent-v1.md
