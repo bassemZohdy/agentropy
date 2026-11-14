@@ -69,7 +69,11 @@ wait_ready() {
 }
 
 # The names of the host's pods, sorted (one pod with SQLite, the replicas with PostgreSQL).
-pods() { kctl get pods -l app.kubernetes.io/name=agentropy -o jsonpath='{range .items[*]}{.metadata.uid}{"\n"}{end}' | sort; }
+# A pod that is still terminating (its deletionTimestamp is set) belongs to the old set and is not counted.
+pods() {
+  kctl get pods -l app.kubernetes.io/name=agentropy --no-headers \
+    -o custom-columns=UID:.metadata.uid,DELETED:.metadata.deletionTimestamp | awk '$2 == "<none>" { print $1 }' | sort
+}
 
 # A throwaway PostgreSQL for the variant, and the egress the default-deny NetworkPolicy has to be given to reach it.
 postgres() {
