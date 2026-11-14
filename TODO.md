@@ -27,6 +27,7 @@
 - [ ] **FIX-056** · P1 · low · A completed disposition whose output cannot be serialized fails the task once with SchemaViolation instead of re-running the handler until attempts are spent
   - Done when: a handler returning a BigInt output runs once and the task is failed SchemaViolation with no execution left running; `pnpm exec vitest run packages/runtime/test/runtime.test.ts`
   - Links: Ref: docs/review/2026-11-13-project-review.md
+  - State: branch todo/FIX-056-unserializable-disposition-output-fails from main; next: start FIX-056
 - [ ] **FIX-057** · P1 · mid · Instance directory: only a trusted service creates an instance for another owner, and create, suspend, resume, retire, drain and share pass a policy check and write an audit intent
   - Done when: a user creating an instance with another ownerId is PermissionDenied, a denied lifecycle call changes nothing, each allowed one is in the audit log; `pnpm exec vitest run packages/testkit/test/governance.test.ts`
   - Links: Ref: docs/contracts/agent-v1.md
