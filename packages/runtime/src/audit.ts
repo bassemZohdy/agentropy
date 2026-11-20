@@ -386,70 +386,60 @@ export class AuditService {
     return Math.max(1, Math.floor(this.o.pageSize ?? 500));
   }
 
-  /** The newest disposal receipt of a tenant: it changes when rows were removed. */
-  private lastReceipt(tenantId: string): Promise<string | undefined> {
-    return this.o.store.transaction(
-      async (tx) =>
-        (
-          await tx.find<AuditDisposalReceipt>('auditReceipts', {
-            where: { tenantId },
-            orderBy: 'seq',
-            descending: true,
-            limit: 1,
-          })
-        )[0]?.id,
-    );
-  }
-
-  /**
-   * Runs a paged read again, at most twice, when a disposal committed while it ran (FIX-079): the pages are separate
-   * transactions, so one that removes rows past the reader's cursor leaves the next page linked to a row the reader
-   * never saw, which would read as a broken chain. A disposal only ever removes the oldest rows, so a second pass is
-   * enough unless disposals keep coming.
-   */
-  private async steady<T>(tenantId: string, run: () => Promise<T>): Promise<T> {
-    for (let attempt = 0; ; attempt++) {
-      const before = await this.lastReceipt(tenantId);
-      const out = await run();
-      if (attempt >= 2 || (await this.lastReceipt(tenantId)) === before)
-        return out;
-    }
-  }
-
   /**
    * The tenant's chain in pages of `pageSize` rows, each in its own transaction, so a long log is never read in one
-   * transaction (under SERIALIZABLE such a read conflicts with every acceptance of the tenant). `first` runs in the
-   * transaction of the first page, which keeps what it reads (the disposal receipts) consistent with the rows: a
-   * disposal that commits later only removes rows older than the page cursor.
+   * transaction (under SERIALIZABLE such a read conflicts with every acceptance of the tenant). Every page transaction
+   * also reads the disposal receipts committed since the previous one (all of them with the first page), so the
+   * receipts a page comes with are consistent with its rows (FIX-082): a disposal that commits between two pages may
+   * have removed rows past the reader's cursor, and its receipt, read with the next page, says where the chain goes
+   * on. With new receipts after the first page, `oldest` is the oldest row left in the log, which must link to the
+   * newest receipt. Nothing is read twice and a read is never abandoned, however many disposals commit while it runs.
    */
-  private async pages<F>(
+  private async pages(
     tenantId: string,
-    first: (tx: StoreTx) => Promise<F>,
-    each: (rows: AuditIntentRow[], first: F) => boolean | void,
+    each: (page: {
+      receipts: AuditDisposalReceipt[];
+      oldest: AuditIntentRow | undefined;
+      rows: AuditIntentRow[];
+    }) => boolean | void,
   ): Promise<void> {
     let afterSeq = 0;
-    let head: F | undefined;
+    let receiptSeq = 0;
     for (let page = 0; ; page++) {
-      const { rows, seq, setup } = await this.o.store.transaction(
-        async (tx) => {
-          const setup = page === 0 ? await first(tx) : undefined;
-          const read = await tx.find<AuditIntentRow>('audit', {
-            where: { tenantId },
-            orderBy: 'seq',
-            afterSeq,
-            limit: this.page,
-          });
-          return {
-            rows: read.map((r) => r.value),
-            seq: read.at(-1)?.seq,
-            setup,
-          };
-        },
-      );
-      if (page === 0) head = setup as F;
-      if (each(rows, head as F) === false) return;
-      if (rows.length < this.page || seq === undefined) return;
-      afterSeq = seq;
+      const read = await this.o.store.transaction(async (tx) => {
+        const receipts = await tx.find<AuditDisposalReceipt>('auditReceipts', {
+          where: { tenantId },
+          orderBy: 'seq',
+          afterSeq: receiptSeq,
+        });
+        const oldest =
+          page > 0 && receipts.length
+            ? (
+                await tx.find<AuditIntentRow>('audit', {
+                  where: { tenantId },
+                  orderBy: 'seq',
+                  limit: 1,
+                })
+              )[0]?.value
+            : undefined;
+        const rows = await tx.find<AuditIntentRow>('audit', {
+          where: { tenantId },
+          orderBy: 'seq',
+          afterSeq,
+          limit: this.page,
+        });
+        return {
+          receipts: receipts.map((r) => r.value),
+          receiptSeq: receipts.at(-1)?.seq,
+          oldest,
+          rows: rows.map((r) => r.value),
+          seq: rows.at(-1)?.seq,
+        };
+      });
+      if (read.receiptSeq !== undefined) receiptSeq = read.receiptSeq;
+      if (each(read) === false) return;
+      if (read.rows.length < this.page || read.seq === undefined) return;
+      afterSeq = read.seq;
     }
   }
 
@@ -513,15 +503,6 @@ export class AuditService {
     });
   }
 
-  private async receipts(tx: StoreTx, tenantId: string) {
-    return (
-      await tx.find<AuditDisposalReceipt>('auditReceipts', {
-        where: { tenantId },
-        orderBy: 'seq',
-      })
-    ).map((r) => r.value);
-  }
-
   async query(
     q: { tenantId: string; type?: string; limit?: number },
     caller: TrustedPrincipal,
@@ -553,24 +534,13 @@ export class AuditService {
     options: { anchors?: AuditAnchor[] } = {},
   ): Promise<VerifyResult> {
     await this.authorize(caller, tenantId, 'audit:verify');
-    const done = await this.steady(tenantId, async () => {
-      let checker: ChainChecker | undefined;
-      let result: VerifyResult | undefined;
-      await this.pages(
-        tenantId,
-        (tx) => this.receipts(tx, tenantId),
-        (rows, receipts) => {
-          checker ??= new ChainChecker(
-            tenantId,
-            receipts,
-            options.anchors ?? [],
-          );
-          result = checker.feed(rows);
-          return result === undefined;
-        },
-      );
-      return result ?? checker!.finish();
+    const checker = new ChainChecker(tenantId, options.anchors ?? []);
+    let broken: VerifyResult | undefined;
+    await this.pages(tenantId, ({ receipts, oldest, rows }) => {
+      broken = checker.dispose(receipts, oldest) ?? checker.feed(rows);
+      return broken === undefined;
     });
+    const done = broken ?? checker.finish();
     await this.o.store.transaction((tx) =>
       this.record(tx, caller, 'audit:verify', 'allow', {
         ok: done.ok,
@@ -587,32 +557,31 @@ export class AuditService {
     caller: TrustedPrincipal,
   ): Promise<AuditExport> {
     await this.authorize(caller, tenantId, 'audit:export');
-    const { rows, last } = await this.steady(tenantId, async () => {
-      const rows: AuditExport['rows'] = [];
-      let last: AuditDisposalReceipt | undefined;
-      await this.pages(
-        tenantId,
-        async (tx) => (await this.receipts(tx, tenantId)).at(-1),
-        (page, receipt) => {
-          last = receipt;
-          for (const r of page)
-            rows.push({
-              auditId: r.auditId,
-              event: r.event,
-              prevHash: r.prevHash,
-              hash: r.hash,
-            });
-        },
-      );
-      return { rows, last };
+    // The bundle starts after the newest receipt read: a disposal that commits while the log is read removes rows
+    // the export may already hold, so those are dropped again and the rest links to that receipt (FIX-082).
+    const rows: AuditExport['rows'] = [];
+    let start = { hash: GENESIS, position: 1 };
+    await this.pages(tenantId, ({ receipts, rows: page }) => {
+      const last = receipts.at(-1);
+      if (last) {
+        rows.splice(0, Math.max(0, last.toPosition + 1 - start.position));
+        start = { hash: last.lastHash, position: last.toPosition + 1 };
+      }
+      for (const r of page)
+        rows.push({
+          auditId: r.auditId,
+          event: r.event,
+          prevHash: r.prevHash,
+          hash: r.hash,
+        });
     });
     await this.o.store.transaction((tx) =>
       this.record(tx, caller, 'audit:export', 'allow', { rows: rows.length }),
     );
     return {
       tenantId,
-      startHash: last?.lastHash ?? GENESIS,
-      startPosition: (last?.toPosition ?? 0) + 1,
+      startHash: start.hash,
+      startPosition: start.position,
       rows,
       exportedAt: this.now(),
     };
@@ -848,38 +817,72 @@ export class AuditService {
 /**
  * The chain check fed page by page: the links and hashes of every row, the disposal receipts that start the chain,
  * and the published anchors (truncation and wholesale rewriting). Only the rows at anchor positions are kept.
+ *
+ * Receipts are fed as they are read, with the page they were read with (FIX-082). They must chain from genesis
+ * (each `startHash` is the previous `lastHash`, positions contiguous). When the newest one ends past the rows checked
+ * so far, a disposal removed rows the reader had not reached: the check goes on from that receipt, as a verify that
+ * started after the disposal would. Rows checked and disposed since are counted as disposed, not as present.
  */
 class ChainChecker {
+  /** The hash the next row must link to, and the chain position of the last row checked or disposed. */
   private prev = GENESIS;
-  private position: number;
-  private readonly disposed: number;
-  private count = 0;
+  private position = 0;
+  /** The newest receipt's last position and hash. */
+  private disposed = 0;
+  private receiptHead = GENESIS;
+  private readonly receipts: AuditDisposalReceipt[] = [];
   private readonly wanted = new Set<number>();
   private readonly seen = new Map<number, { auditId: string; hash: string }>();
   private broken: VerifyResult | undefined;
 
   constructor(
     private readonly tenantId: string,
-    private readonly receipts: AuditDisposalReceipt[],
     private readonly anchors: AuditAnchor[],
   ) {
-    let position = 0;
+    for (const a of anchors)
+      if (a.tenantId === tenantId) this.wanted.add(a.position);
+  }
+
+  /**
+   * Takes the receipts committed since the last page, read in the same transaction as the next page, and `oldest`,
+   * the oldest row left in the log then (when there were new receipts), which must link to the newest receipt.
+   */
+  dispose(
+    receipts: AuditDisposalReceipt[],
+    oldest?: AuditIntentRow,
+  ): VerifyResult | undefined {
+    if (this.broken) return this.broken;
+    if (!receipts.length) return undefined;
     for (const r of receipts) {
-      if (this.broken) break;
-      if (r.startHash !== this.prev || r.fromPosition !== position + 1)
-        this.broken = {
+      if (
+        r.startHash !== this.receiptHead ||
+        r.fromPosition !== this.disposed + 1
+      )
+        return (this.broken = {
           ok: false,
           brokenAt: r.receiptId,
           reason: 'receipt-chain',
-        };
-      this.prev = r.lastHash;
-      position = r.toPosition;
+        });
+      this.receipts.push(r);
+      this.receiptHead = r.lastHash;
+      this.disposed = r.toPosition;
     }
-    this.disposed = position;
-    this.position = position;
-    for (const a of anchors)
-      if (a.tenantId === tenantId && a.position > position)
-        this.wanted.add(a.position);
+    if (oldest && oldest.prevHash !== this.receiptHead)
+      return (this.broken = { ok: false, brokenAt: oldest.auditId });
+    if (this.disposed > this.position) {
+      // Rows past the reader's cursor were disposed: the chain goes on from the receipt.
+      this.prev = this.receiptHead;
+      this.position = this.disposed;
+    } else if (
+      this.disposed === this.position &&
+      this.prev !== this.receiptHead
+    )
+      return (this.broken = {
+        ok: false,
+        brokenAt: receipts.at(-1)!.receiptId,
+        reason: 'receipt-chain',
+      });
+    return undefined;
   }
 
   /** Checks the next rows; a result means the check is over (the chain is broken). */
@@ -893,7 +896,6 @@ class ChainChecker {
         return (this.broken = { ok: false, brokenAt: v.auditId });
       this.prev = v.hash;
       this.position++;
-      this.count++;
       if (this.wanted.has(this.position))
         this.seen.set(this.position, { auditId: v.auditId, hash: v.hash });
     }
@@ -915,6 +917,10 @@ class ChainChecker {
       if (row.auditId !== a.auditId || row.hash !== a.hash)
         return { ok: false, brokenAt: a.auditId, reason: 'anchor-mismatch' };
     }
-    return { ok: true, count: this.count, disposed: this.disposed };
+    return {
+      ok: true,
+      count: this.position - this.disposed,
+      disposed: this.disposed,
+    };
   }
 }

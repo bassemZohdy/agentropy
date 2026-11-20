@@ -505,3 +505,163 @@ describe('a disposal during a paged read (FIX-079)', () => {
     expect(bundle.startPosition).toBeGreaterThan(1); // it starts after the receipt the disposal wrote
   });
 });
+
+describe('a retention job disposing while a paged read runs (FIX-082)', () => {
+  /**
+   * A service on a store where another worker disposes up to `maxRows` rows (through the real service) right after
+   * a page of the chain was read, before the reader's next transaction: after the first page of every pass over the
+   * chain (`every: false`, a retention job that outlasts any bounded number of re-reads), or after every page
+   * (`every: true`, one that overtakes the reader again and again). A page read is the `afterSeq` find on `audit`.
+   * The log has 150 expired rows, with an anchor published at position 41, and a few recent ones.
+   */
+  async function underRetentionJob(o: { maxRows: number; every: boolean }) {
+    const s = await setup();
+    await s.activity(40);
+    const anchor = await s.app.auditLog.anchor('t-1', auditor);
+    await s.activity(110);
+    s.clock.advanceBy(31 * DAY);
+    await s.activity(2);
+    let armed = false;
+    let on = false;
+    const disposals: number[] = [];
+    const store: Store = {
+      durability: s.store.durability,
+      close: () => s.store.close(),
+      transaction: async (fn) => {
+        if (on && armed) {
+          armed = false;
+          const receipt = await s.app.auditLog.dispose('t-1', auditor, {
+            maxRows: o.maxRows,
+          });
+          if (receipt) disposals.push(receipt.toPosition);
+        }
+        let paged = false;
+        const out = await s.store.transaction((tx) =>
+          fn({
+            get: (c, id) => tx.get(c, id),
+            insert: (c, id, v) => tx.insert(c, id, v),
+            update: (c, id, r, v) => tx.update(c, id, r, v),
+            remove: (c, id, r) => tx.remove(c, id, r),
+            find: (c, f) => {
+              if (
+                c === 'audit' &&
+                f?.afterSeq !== undefined &&
+                (o.every || f.afterSeq === 0)
+              )
+                paged = true;
+              return tx.find(c, f);
+            },
+          } as StoreTx),
+        );
+        if (paged) armed = true;
+        return out;
+      },
+    };
+    const service = new AuditService({
+      store,
+      pdp: s.pdp,
+      now: s.clock.iso,
+      retention: { defaultDays: 30, floorDays: 7 },
+      pageSize: 5,
+    });
+    const run = async <T>(read: () => Promise<T>): Promise<T> => {
+      on = true;
+      try {
+        return await read();
+      } finally {
+        on = false;
+      }
+    };
+    const verifyEvents = async () =>
+      (await s.rows())
+        .filter((r) => r.value.type === 'audit.verify')
+        .map((r) => r.value.event.details);
+    return { s, service, anchor, disposals, run, verifyEvents };
+  }
+
+  it('FIX-082: verify reports a sound chain as sound, and records it so, when a disposal follows every re-read', async () => {
+    const t = await underRetentionJob({ maxRows: 8, every: false });
+    const result = await t.run(() =>
+      t.service.verify('t-1', auditor, { anchors: [t.anchor] }),
+    );
+    expect(t.disposals.length).toBeGreaterThan(0);
+    expect(result).toMatchObject({ ok: true });
+    expect(await t.verifyEvents()).toEqual([
+      expect.objectContaining({ ok: true }),
+    ]);
+  });
+
+  it('FIX-082: verify stays sound while disposals overtake the reader page after page', async () => {
+    const t = await underRetentionJob({ maxRows: 8, every: true });
+    const before = (await t.s.rows()).length;
+    const result = await t.run(() =>
+      t.service.verify('t-1', auditor, { anchors: [t.anchor] }),
+    );
+    expect(t.disposals.length).toBeGreaterThan(3); // more than any bounded re-read would outlast
+    expect((await t.s.rows()).length).toBeLessThan(before);
+    expect(result).toMatchObject({ ok: true });
+    expect(await t.verifyEvents()).toEqual([
+      expect.objectContaining({ ok: true }),
+    ]);
+    // A quiet verify afterwards agrees; disposed rows are counted once, as disposed.
+    const quiet = await t.service.verify('t-1', auditor, {
+      anchors: [t.anchor],
+    });
+    expect(quiet).toMatchObject({ ok: true });
+    if (result.ok && quiet.ok) {
+      expect(result.disposed).toBe(t.disposals.at(-1));
+      expect(quiet.disposed).toBeGreaterThanOrEqual(result.disposed);
+      expect(quiet.count + quiet.disposed).toBeGreaterThan(
+        result.count + result.disposed,
+      ); // the rows the read and its disposals appended since
+    }
+  });
+
+  it('FIX-082: an anchor at a position a disposal removed before the reader got there is not reported as truncation', async () => {
+    // A disposal of 45 rows after the first 5-row page removes the anchored row (position 41) unread.
+    const t = await underRetentionJob({ maxRows: 45, every: false });
+    expect(t.anchor.position).toBeGreaterThan(5);
+    expect(t.anchor.position).toBeLessThanOrEqual(45);
+    const result = await t.run(() =>
+      t.service.verify('t-1', auditor, { anchors: [t.anchor] }),
+    );
+    expect(t.disposals[0]).toBe(45);
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it('FIX-082: an export taken while disposals overtake it is a chain that verifies offline', async () => {
+    for (const every of [false, true]) {
+      const t = await underRetentionJob({ maxRows: 8, every });
+      const bundle = await t.run(() => t.service.exportLog('t-1', auditor));
+      expect(t.disposals.length).toBeGreaterThan(0);
+      expect(verifyAuditChain(bundle.rows, bundle.startHash)).toEqual({
+        ok: true,
+      });
+      // It starts right after the newest receipt it saw.
+      expect(bundle.startPosition).toBe(t.disposals.at(-1)! + 1);
+      expect(bundle.rows.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('FIX-082: a rewritten row is still reported while disposals run', async () => {
+    for (const every of [false, true]) {
+      const t = await underRetentionJob({ maxRows: 8, every });
+      const rows = await t.s.rows();
+      // The oldest row that has not expired: no disposal removes it, and every disposal ends right before it.
+      const now = Date.parse(t.s.clock.iso());
+      const victim = rows.find((r) => Date.parse(r.value.event.at) >= now)!;
+      await t.s.store.transaction((tx) =>
+        tx.update('audit', victim.id, victim.revision, {
+          ...victim.value,
+          event: { ...victim.value.event, decision: 'deny' },
+        }),
+      );
+      const result = await t.run(() => t.service.verify('t-1', auditor));
+      expect(t.disposals.length).toBeGreaterThan(0);
+      expect(result).toMatchObject({
+        ok: false,
+        brokenAt: victim.value.auditId,
+      });
+    }
+  });
+});
