@@ -664,4 +664,273 @@ describe('a retention job disposing while a paged read runs (FIX-082)', () => {
       });
     }
   });
+
+  it('FIX-082: disposals that end behind the reader, at rows it already checked, keep verify and export sound', async () => {
+    // 3-row disposals after every 5-row page end behind the reader's cursor, at a row it has checked.
+    for (const read of ['verify', 'export'] as const) {
+      const t = await underRetentionJob({ maxRows: 3, every: true });
+      if (read === 'verify') {
+        const result = await t.run(() =>
+          t.service.verify('t-1', auditor, { anchors: [t.anchor] }),
+        );
+        expect(result).toMatchObject({ ok: true });
+      } else {
+        const bundle = await t.run(() => t.service.exportLog('t-1', auditor));
+        expect(verifyAuditChain(bundle.rows, bundle.startHash)).toEqual({
+          ok: true,
+        });
+        expect(bundle.startPosition).toBeGreaterThan(1);
+      }
+      expect(t.disposals.length).toBeGreaterThan(3);
+    }
+  });
+
+  /**
+   * A 5-row-page service on a store where someone with write access to it changes the log (`tamper`, through the
+   * store, not the service) once, right after the reader's `afterPages`-th page and before its next transaction.
+   * With `dispose`, a legitimate disposal of that many rows (through the real service) follows the change.
+   */
+  async function tamperedAfterPages(
+    s: Awaited<ReturnType<typeof setup>>,
+    afterPages: number,
+    tamper: (tx: StoreTx) => Promise<void>,
+    o: { checkWindow?: number; dispose?: number } = {},
+  ) {
+    let pages = 0;
+    let pending = false;
+    const store: Store = {
+      durability: s.store.durability,
+      close: () => s.store.close(),
+      transaction: async (fn) => {
+        if (pending) {
+          pending = false;
+          await s.store.transaction(tamper);
+          if (o.dispose)
+            expect(
+              await s.app.auditLog.dispose('t-1', auditor, {
+                maxRows: o.dispose,
+              }),
+            ).toMatchObject({ toPosition: o.dispose });
+        }
+        let paged = false;
+        const out = await s.store.transaction((tx) =>
+          fn({
+            get: (c, id) => tx.get(c, id),
+            insert: (c, id, v) => tx.insert(c, id, v),
+            update: (c, id, r, v) => tx.update(c, id, r, v),
+            remove: (c, id, r) => tx.remove(c, id, r),
+            find: (c, f) => {
+              if (c === 'audit' && f?.afterSeq !== undefined) paged = true;
+              return tx.find(c, f);
+            },
+          } as StoreTx),
+        );
+        if (paged && ++pages === afterPages) pending = true;
+        return out;
+      },
+    };
+    return new AuditService({
+      store,
+      pdp: s.pdp,
+      now: s.clock.iso,
+      retention: { defaultDays: 30, floorDays: 7 },
+      pageSize: 5,
+      ...(o.checkWindow ? { checkWindow: o.checkWindow } : {}),
+    });
+  }
+
+  /** A receipt nobody's disposal wrote: rows 1..toPosition, from genesis to `lastHash`. */
+  const forgedReceipt = (toPosition: number, lastHash: string) => ({
+    receiptId: 'forged',
+    tenantId: 't-1',
+    fromPosition: 1,
+    toPosition,
+    startHash: 'sha256:genesis',
+    lastHash,
+    countByType: {},
+    oldestAt: '2026-01-01T00:00:00.000Z',
+    newestAt: '2026-01-01T00:00:00.000Z',
+    authorizedBy: 'mallory',
+    at: '2026-01-01T00:00:00.000Z',
+  });
+
+  it('FIX-082: an export refuses a receipt read mid-export that no disposal backs', async () => {
+    const s = await setup();
+    await s.activity(11);
+    const rows = await s.rows();
+    expect(rows.length).toBeGreaterThanOrEqual(12);
+    // After the first page, a receipt claims rows 1..5 were disposed; none was removed.
+    const service = await tamperedAfterPages(s, 1, (tx) =>
+      tx.insert(
+        'auditReceipts',
+        'forged',
+        forgedReceipt(5, rows[4]!.value.hash),
+      ),
+    );
+    expect(await code(service.exportLog('t-1', auditor))).toBe('InvalidState');
+    const exported = (await s.rows())
+      .filter((r) => r.value.type === 'audit.export')
+      .map((r) => r.value.event.details);
+    expect(exported).toEqual([
+      expect.objectContaining({ ok: false, brokenAt: rows[0]!.value.auditId }),
+    ]);
+  });
+
+  it('FIX-082: an export refuses a receipt read mid-export whose last hash is not the row it holds there', async () => {
+    const s = await setup();
+    await s.activity(11);
+    const rows = await s.rows();
+    // After two pages, rows 1..7 go and a receipt says 1..5, ending at row 7's hash.
+    const service = await tamperedAfterPages(s, 2, async (tx) => {
+      for (const r of rows.slice(0, 7))
+        await tx.remove('audit', r.id, r.revision);
+      await tx.insert(
+        'auditReceipts',
+        'forged',
+        forgedReceipt(5, rows[6]!.value.hash),
+      );
+    });
+    expect(await code(service.exportLog('t-1', auditor))).toBe('InvalidState');
+  });
+
+  it('FIX-082: verify reports a receipt read mid-read that understates the disposal behind the reader', async () => {
+    const s = await setup();
+    await s.activity(14);
+    const rows = await s.rows();
+    expect(rows.length).toBeGreaterThanOrEqual(15);
+    const at = rows[11]!.value;
+    const anchors: AuditAnchor[] = [
+      {
+        tenantId: 't-1',
+        position: 12,
+        auditId: at.auditId,
+        hash: at.hash,
+        at: s.clock.iso(),
+      },
+    ];
+    // After two pages (rows 1..10 checked), rows 1..7 go and a receipt says 1..5, ending at row 7's hash.
+    const service = await tamperedAfterPages(s, 2, async (tx) => {
+      for (const r of rows.slice(0, 7))
+        await tx.remove('audit', r.id, r.revision);
+      await tx.insert(
+        'auditReceipts',
+        'forged',
+        forgedReceipt(5, rows[6]!.value.hash),
+      );
+    });
+    expect(await service.verify('t-1', auditor, { anchors })).toMatchObject({
+      ok: false,
+      brokenAt: 'forged',
+      reason: 'receipt-chain',
+    });
+    // A fresh read reports it too.
+    expect(await service.verify('t-1', auditor, { anchors })).toMatchObject({
+      ok: false,
+    });
+  });
+
+  it('FIX-082: a receipt read mid-export is refused when the oldest row was relinked to it but not disposed', async () => {
+    const s = await setup();
+    await s.activity(11);
+    const rows = await s.rows();
+    // After the first page: a receipt for rows 1..5, none removed, and row 1 relinked to the receipt's last hash.
+    const service = await tamperedAfterPages(s, 1, async (tx) => {
+      await tx.insert(
+        'auditReceipts',
+        'forged',
+        forgedReceipt(5, rows[4]!.value.hash),
+      );
+      await tx.update('audit', rows[0]!.id, rows[0]!.revision, {
+        ...rows[0]!.value,
+        prevHash: rows[4]!.value.hash,
+      });
+    });
+    expect(await code(service.exportLog('t-1', auditor))).toBe('InvalidState');
+  });
+
+  it('FIX-082: verify reports a receipt read mid-read when the oldest row left is not the one after it', async () => {
+    const s = await setup();
+    await s.activity(14);
+    const rows = await s.rows();
+    // After two pages: rows 1..7 go, a receipt says 1..5 (row 5's hash), and row 8 is relinked to that hash.
+    const service = await tamperedAfterPages(s, 2, async (tx) => {
+      for (const r of rows.slice(0, 7))
+        await tx.remove('audit', r.id, r.revision);
+      await tx.insert(
+        'auditReceipts',
+        'forged',
+        forgedReceipt(5, rows[4]!.value.hash),
+      );
+      await tx.update('audit', rows[7]!.id, rows[7]!.revision, {
+        ...rows[7]!.value,
+        prevHash: rows[4]!.value.hash,
+      });
+    });
+    expect(await service.verify('t-1', auditor)).toMatchObject({
+      ok: false,
+      brokenAt: rows[7]!.value.auditId,
+    });
+    // A fresh read reports the same row.
+    expect(await service.verify('t-1', auditor)).toMatchObject({
+      ok: false,
+      brokenAt: rows[7]!.value.auditId,
+    });
+  });
+
+  it('FIX-082: a receipt that ends behind the check window fails the read with a retryable error, inside it is checked', async () => {
+    // Expired rows; after two 5-row pages (rows 1..10 checked) a legitimate disposal removes rows 1..N.
+    const expired = async () => {
+      const s = await setup();
+      await s.activity(14);
+      s.clock.advanceBy(31 * DAY);
+      await s.activity(2);
+      return s;
+    };
+    const noChange = async () => undefined;
+    const events = async (s: Awaited<ReturnType<typeof setup>>) =>
+      (await s.rows())
+        .map((r) => r.value.type)
+        .filter((t) => t === 'audit.verify' || t === 'audit.export');
+    // A window of 3 holds rows 8..10: a disposal of rows 1..5 ends at a row the reader can no longer compare.
+    for (const read of ['verify', 'export'] as const) {
+      const s = await expired();
+      const service = await tamperedAfterPages(s, 2, noChange, {
+        checkWindow: 3,
+        dispose: 5,
+      });
+      const err = await (
+        read === 'verify'
+          ? service.verify('t-1', auditor)
+          : service.exportLog('t-1', auditor)
+      ).catch((e: unknown) => e);
+      expect(err).toMatchObject({
+        code: 'StaleRevision',
+        retryable: true,
+        details: { reason: 'checkWindow', position: 5, window: 3 },
+      });
+      expect(await events(s)).toEqual([]); // neither a sound nor a tampered result is recorded
+      // Read again, it is sound.
+      expect(await service.verify('t-1', auditor)).toMatchObject({ ok: true });
+    }
+    // A disposal of rows 1..8 ends inside the window: checked, and sound.
+    for (const read of ['verify', 'export'] as const) {
+      const s = await expired();
+      const service = await tamperedAfterPages(s, 2, noChange, {
+        checkWindow: 3,
+        dispose: 8,
+      });
+      if (read === 'verify')
+        expect(await service.verify('t-1', auditor)).toMatchObject({
+          ok: true,
+          disposed: 8,
+        });
+      else {
+        const bundle = await service.exportLog('t-1', auditor);
+        expect(bundle.startPosition).toBe(9);
+        expect(verifyAuditChain(bundle.rows, bundle.startHash)).toEqual({
+          ok: true,
+        });
+      }
+    }
+  });
 });
