@@ -36,7 +36,7 @@ Each library is ESM-only (`"type": "module"`), needs Node.js 24 or newer (`engin
 
 Nothing is published yet ([owner decisions](#owner-decisions)), so nothing is signed yet. When publishing starts, the release workflow is to:
 
-1. **npm provenance.** Publish from GitHub Actions with `id-token: write` and `pnpm -r publish --provenance` (or npm trusted publishing), so each package version carries a Sigstore-signed SLSA provenance statement linking it to the commit and workflow run. Attach the package SBOMs to the GitHub release.
+1. **npm provenance.** Publish from GitHub Actions with `id-token: write` through npm trusted publishing (`npm publish --provenance` of the `pnpm pack` tarballs), so each package version carries a Sigstore-signed SLSA provenance statement linking it to the commit and workflow run. Attach the package SBOMs to the GitHub release.
 2. **Image signature and attestations.** Push the image by digest. Sign the digest with cosign keyless (`cosign sign --yes <registry>/agentropy-host@sha256:…`, identity = the release workflow), and attach the SBOM and build provenance as attestations (`cosign attest --type cyclonedx`, or `actions/attest-build-provenance` and `actions/attest-sbom`). Deployments verify with `cosign verify --certificate-identity-regexp '^https://github.com/<owner>/agentropy/' --certificate-oidc-issuer https://token.actions.githubusercontent.com`.
 3. **Air-gapped mirrors** copy the signature and attestations with the image (`cosign copy`), so they can still be verified offline against the bundled transparency-log entries.
 
@@ -47,13 +47,13 @@ Nothing is published yet ([owner decisions](#owner-decisions)), so nothing is si
 | Job | Does | Permissions |
 |---|---|---|
 | `verify` | Every library version equals the tag; `pnpm audit --prod`; `pnpm check`; `pnpm build`; `node scripts/check-pack.mjs`; package SBOMs (artifact `sbom-packages`) | `contents: read` |
-| `publish` | `pnpm -r publish --provenance --tag next --access public --no-git-checks`; no npm token, authentication is the OIDC identity of this workflow | `id-token: write` |
+| `publish` | Checks that npm is 11.5.1 or newer; packs each library with `pnpm pack` (which rewrites `workspace:*` ranges to the release version); runs `npm publish <tarball> --provenance --tag next --access public` for each, `@agentropy/core` first, skipping a version already on npm so the job can be rerun; no npm token, authentication is the OIDC identity of this workflow | `id-token: write` |
 | `image` | Builds `deploy/Dockerfile`, pushes `ghcr.io/<owner>/agentropy-host:<version>` (never `latest`), resolves the digest, scans it with syft, signs the digest with cosign (keyless), attaches the CycloneDX SBOM (`cosign attest`) and the build provenance (`actions/attest-build-provenance`) | `packages: write`, `id-token: write`, `attestations: write` |
 | `release` | Creates the GitHub release as a pre-release from the `CHANGELOG.md` section of the version (else `[Unreleased]`), with all SBOMs attached | `contents: write` |
 
 `publish` and `image` run in parallel after `verify`, so a failure in one can leave the other done: rerun the failed job, never retag. `node scripts/check-deploy.mjs` parses every workflow, requires every action to be pinned by commit SHA, and holds the rules above for this file (verify first, provenance under `next`, no token, no `latest`).
 
-Not proven until the first tag: that `pnpm publish` authenticates through trusted publishing, and the cosign and attestation steps against GHCR. What is known (checked 2026-11-20): trusted publishing needs npm 11.5.1 or newer, and Node 24.22.3 ships npm 11.19.1; pnpm 10 hands the publish of each packed tarball to that npm CLI; with trusted publishing npm adds provenance on its own, so `--provenance` is redundant but harmless. If `pnpm publish` still does not authenticate, publish the tarballs that `pnpm pack` writes, never the package folders: `npm publish` run in a package folder does not rewrite `workspace:*` ranges and would publish dependencies nobody can install. Per package: `pnpm --filter <name> pack --pack-destination out` and then `npm publish out/<tarball> --tag next --access public`.
+Not proven until the first tag: the trusted-publishing token exchange, and the cosign and attestation steps against GHCR. What is known (checked 2026-11-20): trusted publishing needs npm 11.5.1 or newer, and Node 24.22.3 ships npm 11.19.1; with trusted publishing npm adds provenance on its own, so `--provenance` is redundant but harmless. The workflow publishes with the npm CLI rather than `pnpm publish`, because nothing confirmed that pnpm 10 does the token exchange; it publishes the tarballs that `pnpm pack` writes, never the package folders, since `npm publish` run in a package folder does not rewrite `workspace:*` ranges and would publish dependencies nobody can install. `node scripts/check-deploy.mjs` holds both rules.
 
 ## Owner decisions
 
