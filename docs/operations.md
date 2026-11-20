@@ -50,7 +50,7 @@ Trace from user request through delegation, agent instance, task, attempts, prov
 | `memories` (agent memory, FEAT-045) | until the entry's TTL ends, or forever when it has none | entries past their expiry, whatever the window (`CompactionResult.memories`) |
 | `mailbox` (consumed), `inboundEvents` | inside the window | consumed rows; dedupe records older than the window (duplicate events are only detected inside it) |
 | `remoteTasks` | while non-terminal | terminal projections last observed before the window |
-| `inbox` | until resolved or acknowledged | entries resolved or acknowledged before the window |
+| `inbox` | until resolved or acknowledged | entries resolved or acknowledged before the window, including open entries written before the indexed `pending` field existed (FIX-083) |
 | `instances`, instance idempotency records, `sessions`, `leases`, `gates`, `policyInvalidations`, `auditPolicies`, `auditHolds` | configuration and control state | pruned by their own owners (gates on task end; invalidations after 10 min) |
 
 Deleting task rows themselves is a deployment decision (it makes old task IDs answer `NotFound`); `compact` leaves them.

@@ -1,7 +1,9 @@
 // TASK-026.5: operations — provider failover rules (D-04), validated operational limits (D-05) and the isolation
 // guarantee (N-02).
+import { PGlite } from '@electric-sql/pglite';
 import {
   BUILTIN_PROFILES,
+  MemoryStore,
   type AgentDefinition,
   type ToolDescriptor,
   type TrustedPrincipal,
@@ -14,10 +16,13 @@ import {
   DirectToolProvider,
   InMemoryToolRegistry,
   ToolProviderRegistry,
+  compactStore,
   createLocalApp,
   resolveLimits,
+  type TaskService,
 } from '../../runtime/src/index.js';
 import { code, sqliteTempStore } from '../../runtime/test/harness.js';
+import { PostgresStore } from '../../store-postgres/src/index.js';
 import { FakeAudit, FakeClock, FakePolicy } from '../src/index.js';
 
 const admin: TrustedPrincipal = { id: 'admin', type: 'user', tenantId: 't-1' };
@@ -607,3 +612,86 @@ describe('compaction reads what is due (TASK-066)', () => {
     expect(first.idempotency).toBe(3);
   });
 });
+
+describe.each([
+  ['memory', (): Store => new MemoryStore()],
+  ['sqlite', (): Store => sqliteTempStore()],
+  [
+    'postgres-pglite',
+    (): Store =>
+      new PostgresStore({ client: new PGlite(), ownsConnection: true }),
+  ],
+] as const)(
+  'compaction of inbox entries written before `pending` (FIX-083) on %s',
+  (_name, make) => {
+    const OLD = '2026-01-01T00:00:00.000Z';
+    const NOW = '2026-06-01T00:00:00.000Z';
+    const base = { tenantId: 't', ownerId: 'o', applied: [], revision: 2 };
+    /** Inbox entries as written before FEAT-039.3 (no `pending` field) and as written now. */
+    const entries: [string, Record<string, unknown>][] = [
+      [
+        'legacy-acknowledged',
+        { ...base, status: 'open', markers: { acknowledgedAt: OLD } },
+      ],
+      [
+        'current-acknowledged',
+        {
+          ...base,
+          status: 'open',
+          pending: 0,
+          markers: { acknowledgedAt: OLD },
+        },
+      ],
+      [
+        'legacy-acknowledged-recently',
+        { ...base, status: 'open', markers: { acknowledgedAt: NOW } },
+      ],
+      // Never acknowledged, never presented: the briefing still has to show it.
+      ['legacy-unseen', { ...base, status: 'open', markers: {} }],
+      // A stale resolution marker on an open entry nobody has acknowledged or seen does not make it removable.
+      [
+        'legacy-unseen-marked',
+        { ...base, status: 'open', markers: { resolvedAt: OLD } },
+      ],
+      // Presented at its current revision but not acknowledged: kept until it is (nothing says when it was done).
+      [
+        'legacy-presented',
+        {
+          ...base,
+          status: 'open',
+          markers: { presentedAt: OLD, presentedRevision: 2 },
+        },
+      ],
+      [
+        'legacy-resolved',
+        { ...base, status: 'resolved', markers: { resolvedAt: OLD } },
+      ],
+    ];
+
+    it('FIX-083: acknowledged legacy entries are removed like current ones; entries still pending are kept', async () => {
+      const store = make();
+      try {
+        await store.transaction(async (tx) => {
+          for (const [id, value] of entries)
+            await tx.insert('inbox', id, value);
+        });
+        const tasks = {
+          o: { store, now: () => NOW },
+        } as unknown as TaskService;
+        const out = await compactStore(tasks, 86_400_000);
+        const left = (await store.transaction((tx) => tx.find('inbox', {})))
+          .map((d) => d.id)
+          .sort();
+        expect(left).toEqual([
+          'legacy-acknowledged-recently',
+          'legacy-presented',
+          'legacy-unseen',
+          'legacy-unseen-marked',
+        ]);
+        expect(out.inbox).toBe(3);
+      } finally {
+        await store.close();
+      }
+    });
+  },
+);
