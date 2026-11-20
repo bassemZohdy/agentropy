@@ -160,7 +160,8 @@ describe('host PostgreSQL pool (FIX-055)', () => {
     expect(sql).toContain('SET LOCAL statement_timeout = 4000');
     expect(sql).toContain('SET LOCAL lock_timeout = 1500');
     await db.close();
-    for (const bad of ['0', '-1', '1.5', 'abc', '']) {
+    // FIX-086: '3000000000' passes the largest timer delay (2^31-1 ms); Node would shorten it to 1 ms.
+    for (const bad of ['0', '-1', '1.5', 'abc', '', '3000000000']) {
       await expect(
         openStore(
           { ...env, AGENTROPY_PG_STATEMENT_TIMEOUT_MS: bad },

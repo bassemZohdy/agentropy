@@ -416,6 +416,16 @@ describe('lease heartbeat of a started worker (FIX-051)', () => {
     expect(w1.schedulerStatus().running).toBe(false);
     void c.store.close();
   });
+
+  it('FIX-086: refuses a tick interval a timer cannot keep (above 2^31-1 ms) instead of ticking every 1 ms', () => {
+    const { c, w1 } = pair();
+    for (const intervalMs of [0, 2.5, 2_147_483_648, 3_000_000_000])
+      expect(() => w1.start(intervalMs)).toThrowError(
+        expect.objectContaining({ code: 'InvalidConfiguration' }),
+      );
+    expect(w1.schedulerStatus().running).toBe(false);
+    void c.store.close();
+  });
 });
 
 describe('fair dispatch and per-tenant concurrency (M3-02)', () => {

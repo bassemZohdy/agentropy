@@ -33,7 +33,8 @@
  * - AGENTROPY_PUBLIC_URL  external base URL written into the AgentCard (default http://localhost:PORT)
  *
  * Every numeric setting is checked when the host starts: one that is not a whole number in its range (a typo such as
- * `AGENTROPY_TICK_MS=fast`) stops the start with `InvalidConfiguration` instead of becoming a 1 ms interval.
+ * `AGENTROPY_TICK_MS=fast`) stops the start with `InvalidConfiguration` instead of becoming a 1 ms interval. A time
+ * setting is at most 2147483647 ms (about 24.8 days), the longest delay a Node.js timer keeps (FIX-086).
  *
  * Endpoints: GET /healthz (process alive), GET /readyz (store answers a transaction, the scheduler loop is not
  * stalled, not shutting down); with AGENTROPY_A2A_TOKENS also POST /a2a (A2A JSON-RPC, SSE streaming) and
@@ -397,7 +398,13 @@ export interface PgModule {
   }) => HostPgPool;
 }
 
-/** A positive integer number of milliseconds from the environment, or the default; anything else is refused. */
+/**
+ * The largest delay a Node.js timer keeps (2^31-1 ms, about 24.8 days): a longer one is shortened to 1 ms with only a
+ * warning, so a setting meant as "very long" would become a busy loop or no wait at all (FIX-086).
+ */
+const MAX_TIMER_MS = 2_147_483_647;
+
+/** A positive integer number of milliseconds, at most `MAX_TIMER_MS`, from the environment, or the default; anything else is refused. */
 function envMs(
   env: Record<string, string | undefined>,
   name: string,
@@ -406,10 +413,15 @@ function envMs(
   const raw = env[name];
   if (raw === undefined) return fallback;
   const ms = Number(raw);
-  if (raw.trim() === '' || !Number.isSafeInteger(ms) || ms < 1)
+  if (
+    raw.trim() === '' ||
+    !Number.isSafeInteger(ms) ||
+    ms < 1 ||
+    ms > MAX_TIMER_MS
+  )
     throw new AgentropyError(
       'InvalidConfiguration',
-      `${name} must be a positive integer number of milliseconds`,
+      `${name} must be a positive integer number of milliseconds, at most ${MAX_TIMER_MS}`,
     );
   return ms;
 }
@@ -454,9 +466,9 @@ export function parseHostEnv(
     0,
   );
   return {
-    tickMs: envInt(env, 'AGENTROPY_TICK_MS', 250, 1),
+    tickMs: envInt(env, 'AGENTROPY_TICK_MS', 250, 1, MAX_TIMER_MS),
     port: envInt(env, 'PORT', 8080, 0, 65_535),
-    drainMs: envInt(env, 'AGENTROPY_DRAIN_MS', 20_000, 1),
+    drainMs: envInt(env, 'AGENTROPY_DRAIN_MS', 20_000, 1, MAX_TIMER_MS),
     ...(env.AGENTROPY_OUTBOX_POISON_AFTER
       ? {
           poisonAfter: envInt(env, 'AGENTROPY_OUTBOX_POISON_AFTER', 1, 1),
@@ -465,7 +477,13 @@ export function parseHostEnv(
     ...(everyMs !== undefined
       ? {
           compaction: {
-            everyMs: envInt(env, 'AGENTROPY_COMPACT_EVERY_MS', 1, 1),
+            everyMs: envInt(
+              env,
+              'AGENTROPY_COMPACT_EVERY_MS',
+              1,
+              1,
+              MAX_TIMER_MS,
+            ),
             retainMs,
           },
         }

@@ -103,6 +103,9 @@ import {
   type OperationHandler,
 } from './wakeups.js';
 
+/** The largest delay a Node.js timer keeps; a longer one is shortened to 1 ms (FIX-086). */
+const MAX_TIMER_MS = 2_147_483_647;
+
 export interface LocalAppOptions {
   store: Store;
   /** Required: there is no implicit allow-all policy. */
@@ -380,7 +383,8 @@ export interface LocalApp {
    * The stop function waits for running executions without bound, or, with `{ drainMs }`, for at most that long
    * (FEAT-072): what is still running then is aborted and its lease expired, so another worker on the store resumes
    * it at once instead of after `leaseMs`, and the stop function settles. Use it where a process is killed after a
-   * grace period (a pod's `terminationGracePeriodSeconds`).
+   * grace period (a pod's `terminationGracePeriodSeconds`). `intervalMs` is an integer in [1, 2^31-1]; a `drainMs`
+   * above 2^31-1 ms (about 24.8 days, the longest delay a Node.js timer keeps) waits that long (FIX-086).
    */
   start(
     intervalMs?: number,
@@ -906,6 +910,18 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
     },
     schedulerStatus: () => ({ ...scheduler }),
     start(intervalMs = 250, options = {}) {
+      // A Node.js timer shortens a delay above 2^31-1 ms to 1 ms (FIX-086): refuse such an interval instead of
+      // running a busy loop.
+      if (
+        !Number.isInteger(intervalMs) ||
+        intervalMs < 1 ||
+        intervalMs > MAX_TIMER_MS
+      )
+        throw new AgentropyError(
+          'InvalidConfiguration',
+          `intervalMs must be an integer in [1, ${MAX_TIMER_MS}]`,
+          { details: { field: 'intervalMs', value: String(intervalMs) } },
+        );
       const heartbeatMs =
         options.heartbeatMs ?? Math.max(1, Math.floor(limits.leaseMs / 3));
       if (
@@ -987,7 +1003,11 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
           const settled = await Promise.race([
             runtime.idle().then(() => true),
             new Promise<boolean>((r) => {
-              bound = setTimeout(() => r(false), Math.max(0, stop.drainMs!));
+              // A longer drain than a timer keeps is the longest one it does keep, not 1 ms (FIX-086).
+              bound = setTimeout(
+                () => r(false),
+                Math.min(Math.max(0, stop.drainMs!), MAX_TIMER_MS),
+              );
               bound.unref?.();
             }),
           ]);
