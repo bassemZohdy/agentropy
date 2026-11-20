@@ -1,4 +1,4 @@
-# Agentropy Tool Contract v1 — revision 7
+# Agentropy Tool Contract v1 — revision 8
 
 **Status:** Accepted for M1 implementation (2026-11-05) of the protocol-neutral core and a direct adapter. MCP, UTCP and REST/OpenAPI adapters are later work; no adapter is claimed beyond the executable tests in `packages/*/test`.
 **Decision:** [ADR-0026](../adr/0026-protocol-agnostic-tool-integration.md). **Security:** [Security v1](security-v1.md), [ADR-0021](../adr/0021-delegated-authorization.md). **Errors:** [Errors v1](errors-v1.md).
@@ -14,6 +14,7 @@
 | 5 | 2026-11-14 | TASK-068 (review N-20): the MCP HTTP transport enforces `maxResponseBytes` (default 1 MiB) while it reads the reply, so an endless reply is cut off and its connection released instead of being buffered whole; the caller's abort signal covers the body |
 | 6 | 2026-11-14 | FEAT-074 (review N-26): the status an operator sets (activate, suspend, revoke) is kept in the store when the registry is given one (`new InMemoryToolRegistry(security, verify, { store })`), one row per version in the `lifecycle` collection, so a revoke or suspend reaches every worker on the store at once and survives a restart: the executor (and skill loader) act on the stored status, not on the process's memory; `register` after a restart adopts it (a suspended or revoked version comes back as such) and returns the effective record, so a bootstrap activates only a `registered` version; `revoked` is final; a row names the content digest it was set for and never applies to different content; a stored `active` does not make unverified content usable; `ToolRegistry.refreshed(ref)` returns a record with that status |
 | 7 | 2026-11-20 | FIX-085: the MCP HTTP transport no longer reads the reply to a notification (it expects `202` with no body): any body is cancelled, so a server that answers `notifications/initialized` with a large or endless body cannot make the client buffer it, which `maxResponseBytes` did not cover. An error reply (status 300 or above) also has its body cancelled before the error is raised, so the connection is released at once rather than at garbage collection |
+| 8 | 2026-11-20 | FIX-084: task acceptance also acts on the stored status: resolution step 2 reads the versions with `InMemoryToolRegistry.refreshedVersions(id)`, so a version activated on another worker is accepted and one revoked or suspended there is refused (`CapabilityUnavailable`) instead of being pinned and failing at first call; `AcceptanceEnvironment.toolVersions` (and `skillVersions`) may answer with a promise. `reasoning.complete` reads an offered tool's stored status too and refuses a pinned tool that is no longer `active` with `PermissionDenied` (details `status`) before the model is asked. The synchronous `get` and `versions` stay this process's view |
 
 ## Concepts
 
@@ -128,7 +129,7 @@ export interface ToolExecutor {
 For each `ToolSelection` (`id`, `versionRange`, `required`, optional `bindingId`):
 
 1. `tool-use` must be in the effective capability set when any tool is selected → otherwise `InvalidConfiguration`.
-2. Choose the highest `active` version that satisfies the range; none → `CapabilityUnavailable` (details `{ kind: "tool", id }`).
+2. Choose the highest `active` version that satisfies the range, by the status kept in the store when the registry has one (revision 8), so an operator action on any worker counts; none → `CapabilityUnavailable` (details `{ kind: "tool", id }`).
 3. Choose the binding: explicit `bindingId`, else the single `default` binding, else the only binding; zero or ambiguous → `CapabilityUnavailable` (`reason: "binding"`). The binding's provider must be registered.
 4. Ask the PDP for `descriptor.permission` for the accepting principal (visibility check); deny → `PermissionDenied`; PDP failure → `PolicyDecisionUnavailable`.
 5. A failing **optional** selection is omitted and recorded in `AcceptanceSnapshot.omitted` with its error code; a failing **required** selection rejects acceptance. `PolicyDecisionUnavailable` always rejects (fail closed).
@@ -149,7 +150,7 @@ Tool manifests, outputs and errors are untrusted data: they are validated and ne
 
 ## Conformance checks
 
-Discovery-only tool cannot be invoked; unverified tool cannot be activated; unauthorized activation denied; suspended/revoked tool denied at invocation; PDP outage fails closed; spoofed tenant rejected; missing step key on an external tool; schema violation in/out; same logical tool through two bindings gives the same result without agent code change; audit intent failure prevents dispatch; secrets never present in pins, config snapshots or errors.
+Discovery-only tool cannot be invoked; unverified tool cannot be activated; unauthorized activation denied; suspended/revoked tool denied at invocation; PDP outage fails closed; spoofed tenant rejected; missing step key on an external tool; schema violation in/out; same logical tool through two bindings gives the same result without agent code change; audit intent failure prevents dispatch; secrets never present in pins, config snapshots or errors; with two workers on one store, a version activated on one is accepted by the other and one revoked on one is refused at the other's acceptance and not offered by its `reasoning.complete` (revision 8, `packages/testkit/test/lifecycle-acceptance.test.ts`).
 
 ## MCP adapter (FEAT-035.1)
 

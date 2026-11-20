@@ -109,14 +109,24 @@ export function reasoningOperationHandlers(o: {
       const tools: ReasoningToolSpec[] = [];
       for (const id of input.tools ?? []) {
         const pin = task.value.snapshot.tools?.find((p) => p.toolId === id);
+        // The stored status (FIX-084): a tool suspended or revoked on another worker since acceptance is not offered.
         const record = pin
-          ? o.tools?.get({ id: pin.toolId, version: pin.toolVersion })
+          ? await o.tools?.refreshed({
+              id: pin.toolId,
+              version: pin.toolVersion,
+            })
           : undefined;
         if (!pin || !record)
           throw new AgentropyError(
             'CapabilityNotDeclared',
             `Tool ${id} is not pinned for this task`,
             { details: { id } },
+          );
+        if (record.status !== 'active')
+          throw new AgentropyError(
+            'PermissionDenied',
+            `Tool ${id} is ${record.status}`,
+            { details: { status: record.status } },
           );
         const name = toolName(id);
         // Two tool IDs that map to one function name would hand the handler the wrong tool back.

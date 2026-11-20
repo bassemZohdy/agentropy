@@ -445,9 +445,13 @@ export function createLocalApp(o: LocalAppOptions): LocalApp {
       ],
       runtimeDurability: store.durability,
       implementationProvider: (id, v) => implementations.find(id, v),
-      toolVersions: (id) => o.tools?.registry.versions(id) ?? [],
+      // The stored lifecycle status, not this process's memory: another worker may have activated or revoked a
+      // version (FIX-084).
+      toolVersions: async (id) =>
+        (await o.tools?.registry.refreshedVersions(id)) ?? [],
       toolProviderRegistered: (id, v) => o.tools?.providers.has(id, v) ?? false,
-      skillVersions: (id) => o.skills?.registry.versions(id) ?? [],
+      skillVersions: async (id) =>
+        (await o.skills?.registry.refreshedVersions(id)) ?? [],
       pdp: o.pdp,
       now,
     },

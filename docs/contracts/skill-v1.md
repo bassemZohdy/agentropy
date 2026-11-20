@@ -1,4 +1,4 @@
-# Agentropy Skill Contract v1 — revision 2
+# Agentropy Skill Contract v1 — revision 3
 
 **Status:** Accepted for M1 implementation (2026-11-05) of registry, metadata-first loading and resolution. Script execution is **not** supported in v1 (`UnsupportedOperation`).
 **Decision:** [ADR-0026](../adr/0026-protocol-agnostic-tool-integration.md#agent-skills-standard-alignment-accepted-2026-11-05). **Format:** [Agent Skills specification](https://agentskills.io/specification), validated against the published text of 2026-11-05 (the specification carries no version identifier; Agentropy records `specVersion: "agentskills-2026-11-05"`). **Errors:** [Errors v1](errors-v1.md).
@@ -9,6 +9,7 @@
 |---|---|---|
 | 1 | 2026-11-05 | `SkillRecord`, `SkillPin`, `SkillRegistry`, `SkillLoader`, `SkillAccess`, resolution and loading rules |
 | 2 | 2026-11-14 | FEAT-074 (review N-26): the status an operator sets (activate, revoke) is kept in the store when the registry is given one (`new InMemorySkillRegistry(security, verify, { store })`), one row per version in the `lifecycle` collection, so a revoke or suspend reaches every worker on the store at once and survives a restart: the executor (and skill loader) act on the stored status, not on the process's memory; `register` after a restart adopts it (a suspended or revoked version comes back as such) and returns the effective record, so a bootstrap activates only a `registered` version; `revoked` is final; a row names the content digest it was set for and never applies to different content; a stored `active` does not make unverified content usable |
+| 3 | 2026-11-20 | FIX-084: task acceptance also acts on the stored status: resolution reads the versions with `InMemorySkillRegistry.refreshedVersions(id)`, so a version activated on another worker is accepted and one revoked there is refused (`CapabilityUnavailable`) instead of being pinned and failing at first load; the synchronous `get` and `versions` stay this process's view |
 
 ## Boundaries
 
@@ -80,7 +81,7 @@ export interface SkillAccess {
 
 ## Resolution at task acceptance
 
-For each `SkillSelection`: highest `active` version in range (none → `CapabilityUnavailable`, details `{ kind: "skill" }`); then every `requires.capabilities` entry must be in the effective capability set and every `requires.tools` entry must be among the task's resolved tool pins, otherwise `CapabilityUnavailable` (`reason: "dependency"`). Dependencies are **checked, never granted**. Failing optional selections are omitted and recorded in `AcceptanceSnapshot.omitted`; failing required selections reject acceptance.
+For each `SkillSelection`: highest `active` version in range, by the status kept in the store when the registry has one (revision 3) (none → `CapabilityUnavailable`, details `{ kind: "skill" }`); then every `requires.capabilities` entry must be in the effective capability set and every `requires.tools` entry must be among the task's resolved tool pins, otherwise `CapabilityUnavailable` (`reason: "dependency"`). Dependencies are **checked, never granted**. Failing optional selections are omitted and recorded in `AcceptanceSnapshot.omitted`; failing required selections reject acceptance.
 
 ## Loading rules
 
@@ -91,4 +92,4 @@ For each `SkillSelection`: highest `active` version in range (none → `Capabili
 
 ## Conformance checks
 
-Official-format fixture registers without conversion; invalid names/descriptions rejected; metadata-first listing does not read the body; lazy instructions/resources; pinned version and digest per task; content tampering detected; path traversal denied; missing required skill and missing dependency fail typed; optional skill omitted; `allowed-tools` does not make a tool visible or callable; script execution unsupported.
+Official-format fixture registers without conversion; invalid names/descriptions rejected; metadata-first listing does not read the body; lazy instructions/resources; pinned version and digest per task; content tampering detected; path traversal denied; missing required skill and missing dependency fail typed; optional skill omitted; `allowed-tools` does not make a tool visible or callable; script execution unsupported; with two workers on one store, a version activated on one is accepted by the other and one revoked on one is refused at the other's acceptance (revision 3, `packages/testkit/test/lifecycle-acceptance.test.ts`).
