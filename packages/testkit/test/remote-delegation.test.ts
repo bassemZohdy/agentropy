@@ -105,6 +105,8 @@ function runtimeA(
     maxOutputBytes?: number;
     /** Answers instead of the peer, to see what the provider does with it. */
     reply?: () => { status: number } | undefined;
+    /** A JSON-RPC error code the peer answers a method with instead of handling it (FIX-080). */
+    refuse?: (method: string) => number | undefined;
   } = {},
 ) {
   const wire: string[] = [];
@@ -131,6 +133,17 @@ function runtimeA(
       });
       const canned = opts.reply?.();
       if (canned) return { status: canned.status, json: async () => ({}) };
+      const rpc = JSON.parse(init.body) as { id: string; method: string };
+      const refused = opts.refuse?.(rpc.method);
+      if (refused !== undefined)
+        return {
+          status: 200,
+          json: async () => ({
+            jsonrpc: '2.0',
+            id: rpc.id,
+            error: { code: refused, message: 'refused' },
+          }),
+        };
       const hung = opts.hang?.();
       if (hung) {
         await hung;
@@ -772,5 +785,107 @@ describe('the endpoints the A2A provider may call (FIX-054)', () => {
     expect(() => new A2ACommunicationProvider()).toThrowError(
       expect.objectContaining({ code: 'InvalidConfiguration' }),
     );
+  });
+});
+
+describe('a cancel the peer refuses settles the projection (FIX-080)', () => {
+  const calls = (wire: string[], method: string) =>
+    wire.filter((w) => (JSON.parse(w) as { method: string }).method === method)
+      .length;
+
+  it('FIX-080: a remote child that finished before the parent was cancelled is settled from GetTask after the peer refuses the cancel (InvalidState)', async () => {
+    const { b, server } = await runtimeB();
+    const { a, wire } = runtimeA(server);
+    const parent = await startCoordinator(a);
+    await a.runUntilIdle();
+    await b.runUntilIdle(); // the remote task completes at the peer; A has not looked since
+    await a.cancel(parent.taskId, alice);
+    expect((await projections(a))[0]!.cancelRequestedAt).toBeDefined();
+    await a.runUntilIdle(); // CancelTask is refused (TaskNotCancelable), GetTask in the same poll
+    const [settled] = await projections(a);
+    expect(settled).toMatchObject({
+      status: 'completed',
+      remoteState: 'TASK_STATE_COMPLETED',
+    });
+    expect(settled!.lastError).toBeUndefined();
+    expect(calls(wire, 'CancelTask')).toBe(1);
+    const asked = calls(wire, 'GetTask');
+    for (let i = 0; i < 3; i++) await a.runUntilIdle();
+    expect(calls(wire, 'CancelTask')).toBe(1); // terminal: the peer is not asked again
+    expect(calls(wire, 'GetTask')).toBe(asked);
+    expect((await a.getTask(parent.taskId, alice)).status).toBe('cancelled');
+  });
+
+  it('FIX-080: a peer that no longer knows the task (NotFound) fails the projection with NotFound, on CancelTask or on the GetTask after a refusal', async () => {
+    for (const refuse of [
+      (m: string) => (m === 'CancelTask' ? -32001 : undefined),
+      (m: string) =>
+        m === 'CancelTask' ? -32002 : m === 'GetTask' ? -32001 : undefined,
+    ]) {
+      const { server } = await runtimeB();
+      let refusing = false;
+      const { a, wire } = runtimeA(server, {
+        refuse: (m) => (refusing ? refuse(m) : undefined),
+      });
+      const parent = await startCoordinator(a);
+      await a.runUntilIdle();
+      refusing = true;
+      await a.cancel(parent.taskId, alice);
+      await a.runUntilIdle();
+      const [gone] = await projections(a);
+      expect(gone).toMatchObject({
+        status: 'failed',
+        outcome: { code: 'NotFound' },
+      });
+      const sent = wire.length;
+      await a.runUntilIdle();
+      expect(wire.length).toBe(sent);
+    }
+  });
+
+  it('FIX-080: a peer that cannot cancel (UnsupportedOperation) is followed by GetTask until the remote task ends', async () => {
+    const { b, server } = await runtimeB();
+    let refusing = false;
+    const { a, wire } = runtimeA(server, {
+      refuse: (m) => (refusing && m === 'CancelTask' ? -32004 : undefined),
+    });
+    const parent = await startCoordinator(a);
+    await a.runUntilIdle();
+    refusing = true;
+    await a.cancel(parent.taskId, alice);
+    await a.runUntilIdle();
+    const [open] = await projections(a);
+    expect(open).toMatchObject({ status: 'created' }); // still running at the peer
+    expect(open!.cancelRequestedAt).toBeDefined();
+    expect(open!.lastError).toBeUndefined();
+    await b.runUntilIdle(); // the peer finishes it anyway
+    await a.runUntilIdle();
+    expect((await projections(a))[0]).toMatchObject({ status: 'completed' });
+    const sent = wire.length;
+    await a.runUntilIdle();
+    expect(wire.length).toBe(sent);
+  });
+
+  it('FIX-080: an unreachable peer still leaves a cancel-requested projection as last observed; the cancel goes through when it returns', async () => {
+    const { b, server } = await runtimeB();
+    let offline = false;
+    const { a } = runtimeA(server, { offline: () => offline });
+    const parent = await startCoordinator(a);
+    await a.runUntilIdle();
+    offline = true;
+    await a.cancel(parent.taskId, alice);
+    await a.runUntilIdle();
+    expect((await projections(a))[0]).toMatchObject({
+      status: 'created',
+      lastError: 'RemoteUnavailable',
+    });
+    offline = false;
+    await a.runUntilIdle();
+    expect((await projections(a))[0]).toMatchObject({ status: 'cancelled' });
+    await b.runUntilIdle();
+    const remote = await b.store.transaction((tx) =>
+      tx.find<{ status: string }>('tasks', {}),
+    );
+    expect(remote.map((r) => r.value.status)).toEqual(['cancelled']);
   });
 });

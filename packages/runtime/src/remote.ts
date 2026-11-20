@@ -60,7 +60,8 @@ export interface RemoteTaskRecord {
   quiet?: number;
   /**
    * Set when the parent task was cancelled or failed (FEAT-070): the next sync asks the peer to cancel the remote task
-   * instead of asking for its state, and keeps asking, backing off, until the peer has answered.
+   * instead of asking for its state, and keeps asking, backing off, until the peer has answered. A refused cancel
+   * (`InvalidState`, `UnsupportedOperation`) is followed by `getTask` in the same sync; `NotFound` fails it (FIX-080).
    */
   cancelRequestedAt?: string;
 }
@@ -392,21 +393,36 @@ export class RemoteDelegationService {
   /** One poll of a projection: true when the peer's answer changed it; otherwise its next poll is pushed back. */
   private async poll(doc: StoredDocument<RemoteTaskRecord>): Promise<boolean> {
     const r = doc.value;
+    const ctx: CallContext = {
+      caller: {
+        id: r.callerId,
+        type: r.callerType,
+        tenantId: r.tenantId,
+      },
+      correlationId: r.correlationId,
+    };
+    // Looked up inside each call: a pinned route that is no longer available fails this poll, not the whole sync.
+    const provider = () => this.o.router.provider(r.route);
+    const getTask = () =>
+      this.bounded(ctx, (c) => provider().getTask(this.ref(r), c));
     try {
-      const state = await this.bounded(
-        {
-          caller: {
-            id: r.callerId,
-            type: r.callerType,
-            tenantId: r.tenantId,
-          },
-          correlationId: r.correlationId,
-        },
-        (c) =>
-          r.cancelRequestedAt
-            ? this.o.router.provider(r.route).cancel(this.ref(r), c)
-            : this.o.router.provider(r.route).getTask(this.ref(r), c),
-      );
+      let state: Awaited<ReturnType<typeof getTask>>;
+      try {
+        state = r.cancelRequestedAt
+          ? await this.bounded(ctx, (c) => provider().cancel(this.ref(r), c))
+          : await getTask();
+      } catch (err) {
+        // A cancel the peer refuses is an answer, not an outage (FIX-080): the task already ended there (A2A
+        // TaskNotCancelable is `InvalidState`) or the peer cannot cancel (`UnsupportedOperation`), so its state is
+        // read in the same poll and applied.
+        const code = (err as { code?: string }).code;
+        if (
+          !r.cancelRequestedAt ||
+          (code !== 'InvalidState' && code !== 'UnsupportedOperation')
+        )
+          throw err;
+        state = await getTask();
+      }
       const before = r.revision;
       const after = await this.apply(
         r.taskId,
@@ -418,12 +434,18 @@ export class RemoteDelegationService {
       await this.schedule(doc.id, (r.quiet ?? 0) + 1);
       return false;
     } catch (err) {
+      const code = (err as { code?: string }).code ?? 'Internal';
+      // A projection whose cancel was requested and whose peer no longer knows the task (`NotFound`, on the cancel or
+      // on the read after a refused cancel) can never settle from the peer: it fails with `NotFound` (FIX-080).
+      if (r.cancelRequestedAt && code === 'NotFound') {
+        await this.apply(r.taskId, 'failed', 'not-found', undefined, {
+          code: 'NotFound',
+          message: 'Remote task not found at the peer',
+        });
+        return true;
+      }
       // The remote task stays authoritative: an unreachable peer leaves the projection as last observed.
-      await this.schedule(
-        doc.id,
-        (r.quiet ?? 0) + 1,
-        (err as { code?: string }).code ?? 'Internal',
-      );
+      await this.schedule(doc.id, (r.quiet ?? 0) + 1, code);
       return false;
     }
   }
@@ -486,6 +508,8 @@ export class RemoteDelegationService {
     normalized: TaskSnapshot['status'] | 'unknown',
     remoteState: string,
     output: unknown,
+    /** The outcome of a `failed` projection, when the runtime rather than the peer's state decides it (FIX-080). */
+    failure?: { code: string; message: string },
   ): Promise<RemoteTaskRecord> {
     return this.store.transaction(async (tx) => {
       const doc = (
@@ -494,6 +518,7 @@ export class RemoteDelegationService {
       const r = doc.value;
       if (
         normalized === 'unknown' ||
+        (failure && isTerminal(TASK_MACHINE, r.status)) ||
         (normalized === r.status && remoteState === r.remoteState)
       )
         return r;
@@ -529,10 +554,10 @@ export class RemoteDelegationService {
                     code: 'SchemaViolation',
                     message: `Remote output exceeds the ${maxOutputBytes}-byte limit`,
                   }
-                : {
+                : (failure ?? {
                     code: 'TaskFailed',
                     message: `Remote task ${remoteState}`,
-                  },
+                  }),
             }
           : normalized === 'cancelled'
             ? {
