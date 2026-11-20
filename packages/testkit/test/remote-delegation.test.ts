@@ -889,3 +889,43 @@ describe('a cancel the peer refuses settles the projection (FIX-080)', () => {
     expect(remote.map((r) => r.value.status)).toEqual(['cancelled']);
   });
 });
+
+describe('a remote child accepted after its parent ended (FIX-081)', () => {
+  it('FIX-081: a remote delegation that returns after the parent ended stores its projection marked for cancellation, and the next sync cancels it at the peer', async () => {
+    const { b, server } = await runtimeB();
+    const { a, wire } = runtimeA(server);
+    const parent = await startCoordinator(a);
+    await a.runUntilIdle();
+    await a.cancel(parent.taskId, alice); // the parent ends while (here: before) the peer call is in flight
+    await a.runUntilIdle();
+    const h = await a.delegate(
+      {
+        target: { remote: { endpoint: ENDPOINT, definitionId: 'summarizer' } },
+        input: { doc: 'orphan' },
+        idempotencyKey: 'orphan',
+        correlationId: 'orphan',
+        parentTaskId: parent.taskId,
+      },
+      alice,
+    );
+    const orphan = async () =>
+      (await projections(a)).find((p) => p.taskId === h.taskId)!;
+    expect((await orphan()).cancelRequestedAt).toBeDefined();
+    const cancels = () =>
+      wire.filter(
+        (w) => (JSON.parse(w) as { method: string }).method === 'CancelTask',
+      ).length;
+    const before = cancels();
+    await a.runUntilIdle();
+    expect(cancels()).toBe(before + 1);
+    expect(await orphan()).toMatchObject({ status: 'cancelled' });
+    await b.runUntilIdle();
+    const remote = await b.store.transaction((tx) =>
+      tx.find<{ status: string }>('tasks', {}),
+    );
+    expect(remote.map((r) => r.value.status)).toEqual([
+      'cancelled',
+      'cancelled',
+    ]);
+  });
+});

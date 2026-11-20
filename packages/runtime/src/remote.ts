@@ -250,6 +250,19 @@ export class RemoteDelegationService {
     const stored = await this.store.transaction(async (tx) => {
       const raced = await tx.get<RemoteTaskRecord>('remoteTasks', docId);
       if (raced) return raced.value;
+      // The peer has accepted the task by now, so it cannot be refused: a parent that ended while the peer was being
+      // called (FEAT-070 never saw this child) gets it stored already marked for cancellation, and the next sync
+      // cancels it at the peer (FIX-081).
+      if (request.parentTaskId) {
+        const parent = await tx.get<{ status: TaskSnapshot['status'] }>(
+          'tasks',
+          request.parentTaskId,
+        );
+        if (parent && isTerminal(TASK_MACHINE, parent.value.status)) {
+          record.cancelRequestedAt = now;
+          record.nextSyncAt = now;
+        }
+      }
       await tx.insert<RemoteTaskRecord>('remoteTasks', docId, record);
       await this.o.tasks.audit(tx, caller, {
         type: 'task.delegate.remote',
