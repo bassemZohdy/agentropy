@@ -53,7 +53,7 @@ Nothing is published yet ([owner decisions](#owner-decisions)), so nothing is si
 
 `publish` and `image` run in parallel after `verify`, so a failure in one can leave the other done: rerun the failed job, never retag. `node scripts/check-deploy.mjs` parses every workflow, requires every action to be pinned by commit SHA, and holds the rules above for this file (verify first, provenance under `next`, no token, no `latest`).
 
-Not proven until the first tag: that `pnpm publish` authenticates through trusted publishing with the npm that ships with Node 24 (if it does not, publish each package with `npm publish --provenance --tag next --access public` instead), and the cosign and attestation steps against GHCR.
+Not proven until the first tag: that `pnpm publish` authenticates through trusted publishing, and the cosign and attestation steps against GHCR. What is known (checked 2026-11-20): trusted publishing needs npm 11.5.1 or newer, and Node 24.22.3 ships npm 11.19.1; pnpm 10 hands the publish of each packed tarball to that npm CLI; with trusted publishing npm adds provenance on its own, so `--provenance` is redundant but harmless. If `pnpm publish` still does not authenticate, publish the tarballs that `pnpm pack` writes, never the package folders: `npm publish` run in a package folder does not rewrite `workspace:*` ranges and would publish dependencies nobody can install. Per package: `pnpm --filter <name> pack --pack-destination out` and then `npm publish out/<tarball> --tag next --access public`.
 
 ## Owner decisions
 
@@ -77,3 +77,26 @@ The owner accepted these defaults. They take effect when the first release is cu
 
 What the owner must do regardless: create the npm organization, configure the trusted publisher for each package (or choose a token), and decide the repository owner name that appears in the image path.
 
+### Owner setup runbook (TASK-043.3)
+
+npm offers a trusted publisher only in the settings of a package that already exists, so the release workflow cannot make the first publish of a package. The owner decided on 2026-11-20 to create each package with a placeholder published by hand, so that `release.yml` keeps publishing without any npm token. The steps, in order:
+
+1. **Create the organization.** On npmjs.com, logged in as the maintainer account (with two-factor authentication on), create the free organization `agentropy`. The scope was still unclaimed on 2026-11-20.
+2. **Create the six packages with a placeholder.** From a checkout of `main`, run `npm login` and then `node scripts/npm-bootstrap.mjs` (a dry run that lists what it would do), then `node scripts/npm-bootstrap.mjs --publish`. For each library it publishes a version `0.0.0-bootstrap.0` that holds only a README, under the dist-tag `bootstrap`, and deprecates that version at once. A package that already exists on npm is skipped, so the script can be run again after a failure.
+3. **Add a trusted publisher to each package** (npmjs.com → the package → Settings → Trusted publishing → GitHub Actions), for all six packages, with the same values:
+
+   | Field                | Value                                                                                  |
+   | -------------------- | -------------------------------------------------------------------------------------- |
+   | Organization or user | `bassemZohdy`                                                                          |
+   | Repository           | `agentropy`                                                                            |
+   | Workflow filename    | `release.yml`                                                                          |
+   | Environment name     | empty (the workflow uses no environment)                                               |
+   | Allowed actions      | allow `npm publish` (the workflow publishes directly, not through `npm stage publish`) |
+
+   A new trusted publisher expires unless a publish through it succeeds within 2 days, so add them only when the v0.1.0 tag (TASK-043.4) can follow within that time. An expired one is deleted and added again.
+
+4. **Restrict token publishing** (each package → Settings → Publishing access → require two-factor authentication and disallow tokens), so the only way to publish without the maintainer's second factor is the release workflow.
+5. **Image path.** No setting is needed: the workflow writes the repository owner in lower case, so the image is `ghcr.io/bassemzohdy/agentropy-host`. After the first image push the package appears under the account's GitHub packages. Set its visibility to public there, and link it to the repository if GitHub did not.
+6. **Record it.** When steps 1–4 are done, add a dated line to this section saying the owner setup is done, in the exact words that the Done-when command of TASK-043.3 in `TODO.md` checks for.
+
+After the v0.1.0 release: npm gives a new package a `latest` tag on its first publish whatever `--tag` says, so for each package `latest` still names the deprecated placeholder, and `npm install @agentropy/core` without a version would install it. Point `latest` at the release with `npm dist-tag add @agentropy/<package>@0.1.0 latest` for each package. `next` keeps naming the newest pre-1.0 version. This is a change from "`latest` only at 1.0" above, made for the owner to confirm: the other choice leaves the placeholder as what a plain install gets.
