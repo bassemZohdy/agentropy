@@ -1,4 +1,4 @@
-# Agentropy Tool Contract v1 — revision 6
+# Agentropy Tool Contract v1 — revision 7
 
 **Status:** Accepted for M1 implementation (2026-11-05) of the protocol-neutral core and a direct adapter. MCP, UTCP and REST/OpenAPI adapters are later work; no adapter is claimed beyond the executable tests in `packages/*/test`.
 **Decision:** [ADR-0026](../adr/0026-protocol-agnostic-tool-integration.md). **Security:** [Security v1](security-v1.md), [ADR-0021](../adr/0021-delegated-authorization.md). **Errors:** [Errors v1](errors-v1.md).
@@ -13,6 +13,7 @@
 | 4 | 2026-11-14 | FIX-059 (review N-11): the MCP HTTP transport recovers from a lost session: a 404 for a request that carried `Mcp-Session-Id` means the server dropped the session, so the client forgets it, initializes a new session and repeats the request once (a second loss is `ProviderUnavailable`); the `initialize` request sends the runtime package version as `clientInfo.version` |
 | 5 | 2026-11-14 | TASK-068 (review N-20): the MCP HTTP transport enforces `maxResponseBytes` (default 1 MiB) while it reads the reply, so an endless reply is cut off and its connection released instead of being buffered whole; the caller's abort signal covers the body |
 | 6 | 2026-11-14 | FEAT-074 (review N-26): the status an operator sets (activate, suspend, revoke) is kept in the store when the registry is given one (`new InMemoryToolRegistry(security, verify, { store })`), one row per version in the `lifecycle` collection, so a revoke or suspend reaches every worker on the store at once and survives a restart: the executor (and skill loader) act on the stored status, not on the process's memory; `register` after a restart adopts it (a suspended or revoked version comes back as such) and returns the effective record, so a bootstrap activates only a `registered` version; `revoked` is final; a row names the content digest it was set for and never applies to different content; a stored `active` does not make unverified content usable; `ToolRegistry.refreshed(ref)` returns a record with that status |
+| 7 | 2026-11-20 | FIX-085: the MCP HTTP transport no longer reads the reply to a notification (it expects `202` with no body): any body is cancelled, so a server that answers `notifications/initialized` with a large or endless body cannot make the client buffer it, which `maxResponseBytes` did not cover. An error reply (status 300 or above) also has its body cancelled before the error is raised, so the connection is released at once rather than at garbage collection |
 
 ## Concepts
 

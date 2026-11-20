@@ -57,7 +57,8 @@ function until<T>(p: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
   });
 }
 
-const release = (body: unknown): void => {
+/** Cancels a reply body that will not be read, so its connection is released now rather than at garbage collection. */
+export const release = (body: unknown): void => {
   const b = body as { cancel?: () => Promise<unknown> } | null | undefined;
   void Promise.resolve(b?.cancel?.()).catch(() => undefined);
 };

@@ -23,7 +23,7 @@ import {
   type ToolProvider,
 } from '@agentropy/core';
 import { sseData } from './a2a-sse.js';
-import { ReplyTooLarge, readBoundedText } from './bounded-body.js';
+import { ReplyTooLarge, readBoundedText, release } from './bounded-body.js';
 
 /** The MCP protocol revision this client asks for. */
 export const MCP_PROTOCOL_VERSION = '2025-06-18';
@@ -297,6 +297,8 @@ export interface McpHttpResponse {
   status: number;
   headers: { get(name: string): string | null };
   text(): Promise<string>;
+  /** The body stream, when the fetch has one: cancelled when the reply is not read (FIX-085). */
+  body?: unknown;
 }
 
 export type McpFetch = (
@@ -351,6 +353,8 @@ export function mcpHttpTransport(o: {
       if (err instanceof AgentropyError) throw err;
       throw unavailable('The MCP server is unreachable');
     }
+    // An error reply is not read: release its body so the connection is not held until garbage collection (FIX-085).
+    if (res.status >= 300) release(res.body);
     if (res.status === 401 || res.status === 403)
       throw new AgentropyError(
         'AuthorityExpired',
@@ -430,7 +434,8 @@ export function mcpHttpTransport(o: {
     },
     async notify(method, params, opts) {
       const res = await send({ method, params }, opts);
-      await res.text().catch(() => undefined);
+      // A notification has no reply (202, no body): whatever the server sends anyway is not read (FIX-085).
+      release(res.body);
     },
   };
 }
