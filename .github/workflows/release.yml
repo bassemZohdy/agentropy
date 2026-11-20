@@ -79,8 +79,34 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm build
-      - name: Publish the libraries (trusted publishing, provenance, dist-tag next)
-        run: pnpm -r publish --provenance --tag next --access public --no-git-checks
+      # pnpm pack rewrites workspace:* ranges to the release version; npm publish of the tarball then does the
+      # trusted-publishing token exchange itself, which needs npm 11.5.1 or newer (docs/release.md).
+      - name: npm supports trusted publishing
+        run: |
+          v="$(npm --version)"
+          node -e 'const [a,b,c]=process.argv[1].split(".").map(Number); process.exit(a>11||(a===11&&(b>5||(b===5&&c>=1)))?0:1)' "$v" \
+            || { echo "npm $v is older than 11.5.1, which trusted publishing needs"; exit 1; }
+      - name: Pack the libraries
+        run: |
+          mkdir -p out
+          for p in core runtime store-sqlite store-postgres workflow-conductor testkit; do
+            (cd "packages/$p" && pnpm pack --pack-destination "$GITHUB_WORKSPACE/out")
+          done
+          ls -l out
+      - name: Publish the tarballs (trusted publishing, provenance, dist-tag next)
+        run: |
+          # core first: every other library depends on it. A version already on npm (a rerun) is skipped.
+          for p in core runtime store-sqlite store-postgres workflow-conductor testkit; do
+            name="$(node -p "require('./packages/$p/package.json').name")"
+            version="$(node -p "require('./packages/$p/package.json').version")"
+            tarball="out/$(echo "${name#@}" | tr / -)-${version}.tgz"
+            test -f "$tarball" || { echo "missing $tarball"; exit 1; }
+            if npm view "${name}@${version}" version >/dev/null 2>&1; then
+              echo "${name}@${version} is already on npm, skipped"
+              continue
+            fi
+            npm publish "$tarball" --provenance --tag next --access public
+          done
 
   image:
     timeout-minutes: 30

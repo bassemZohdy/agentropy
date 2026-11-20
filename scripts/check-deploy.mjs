@@ -345,8 +345,12 @@ if (release) {
       'request an OIDC token (trusted publishing, keyless signing)',
     ],
     [
-      /pnpm -r publish\b[^\n]*--provenance\b[^\n]*--tag next\b/,
-      'publish with --provenance under the next dist-tag',
+      /pnpm pack\b[^\n]*--pack-destination/,
+      'pack the libraries with pnpm pack (rewrites workspace:* ranges)',
+    ],
+    [
+      /npm publish "\$tarball"[^\n]*--provenance\b[^\n]*--tag next\b/,
+      'publish the packed tarballs with --provenance under the next dist-tag',
     ],
     [/ghcr\.io\//, 'publish the image to ghcr.io'],
     [/cosign sign\b/, 'sign the image digest with cosign'],
@@ -358,6 +362,10 @@ if (release) {
   ];
   for (const [re, what] of need)
     if (!re.test(release)) fail(`release.yml: must ${what}`);
+  if (/pnpm (-r )?publish\b/.test(release))
+    fail(
+      'release.yml: publish the pnpm pack tarballs with npm publish, not pnpm publish',
+    );
   if (/NPM_TOKEN|NODE_AUTH_TOKEN/.test(release))
     fail('release.yml: no long-lived npm token, use trusted publishing');
   if (/:latest\b/.test(release))

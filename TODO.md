@@ -13,7 +13,7 @@
     - Done when: `grep -q '"version": "0.1.0"' packages/core/package.json` `node scripts/check-pack.mjs`
   - [!] **TASK-043.3** · low · Owner: create the `@agentropy` npm org, trusted publishers per package, repository owner name for the image path
     - Done when: `grep -q 'owner setup done' docs/release.md`
-    - Blocked: nothing is published and no npm org exists → `npm view @agentropy/core` finds no package → owner creates the org and trusted publishers, then records it in docs/release.md
+    - Blocked: nothing is published and no npm org exists → `npm view @agentropy/core` finds no package → owner follows the owner setup runbook in docs/release.md (org, placeholder publish with scripts/npm-bootstrap.mjs, trusted publishers), then records it there
   - [ ] **TASK-043.4** · mid · Cut v0.1.0 (tag, workflow publishes packages and image), verify provenance and signature
     - Done when: `gh release view v0.1.0`
     - Links: Depends: TASK-043.1, TASK-043.2, TASK-043.3, TASK-040, TASK-044
