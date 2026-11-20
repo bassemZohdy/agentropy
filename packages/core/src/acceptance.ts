@@ -28,11 +28,18 @@ export interface AcceptanceEnvironment extends CapabilityEnvironment {
     providerId: string,
     providerVersion: string,
   ): AgentImplementationProvider | undefined;
-  /** All registered versions of a tool (any status). */
-  toolVersions(id: string): readonly ToolRecord[];
+  /**
+   * All registered versions of a tool (any status). With a shared store the status must be the stored one, so a
+   * runtime answers asynchronously after reading it (FIX-084).
+   */
+  toolVersions(
+    id: string,
+  ): readonly ToolRecord[] | Promise<readonly ToolRecord[]>;
   toolProviderRegistered(providerId: string, providerVersion: string): boolean;
-  /** All registered versions of a skill (any status). */
-  skillVersions(id: string): readonly SkillRecord[];
+  /** All registered versions of a skill (any status), with the stored status as for `toolVersions`. */
+  skillVersions(
+    id: string,
+  ): readonly SkillRecord[] | Promise<readonly SkillRecord[]>;
   pdp: PolicyDecisionPoint;
   now(): string;
 }
@@ -149,7 +156,7 @@ async function resolveTool(
   req: AcceptanceRequest,
 ): Promise<ToolPin> {
   const record = highestActive(
-    env.toolVersions(sel.id),
+    await env.toolVersions(sel.id),
     (r) => r.descriptor.version,
     sel.versionRange,
   );
@@ -199,14 +206,14 @@ async function resolveTool(
   };
 }
 
-function resolveSkill(
+async function resolveSkill(
   sel: NonNullable<AgentDefinition['skills']>[number],
   env: AcceptanceEnvironment,
   capabilityIds: Set<string>,
   tools: ToolPin[],
-): SkillPin {
+): Promise<SkillPin> {
   const record = highestActive(
-    env.skillVersions(sel.id),
+    await env.skillVersions(sel.id),
     (r) => r.version,
     sel.versionRange,
   );
@@ -308,7 +315,7 @@ export async function resolveAcceptance(
   const skills: SkillPin[] = [];
   for (const sel of def.skills ?? []) {
     try {
-      skills.push(resolveSkill(sel, env, capabilityIds, tools));
+      skills.push(await resolveSkill(sel, env, capabilityIds, tools));
     } catch (err) {
       if (sel.required === false && omittable(err))
         omitted.push({ kind: 'skill', id: sel.id, code: err.code });

@@ -1,4 +1,4 @@
-# Agentropy Capability Contract v1.0 — revision 15
+# Agentropy Capability Contract v1.0 — revision 16
 
 **Status:** Accepted for M1 implementation (2026-11-05). The catalog, profiles and resolver live in `packages/core`; behavior is claimed only where an executable test exists. **Errors:** [Errors v1](errors-v1.md).
 
@@ -21,6 +21,7 @@
 | 13 | 2026-11-07 | FEAT-035.3: `reasoning.complete` accepts `route?: { zone?, dataClass?, tier?, latency? }` (plain identifiers set by calling code; other values are dropped) as hints for a routing `ReasoningProvider`; a plain provider ignores them. FEAT-041.3: the call's tokens are reserved against `budget.maxCostUnits` before the model is asked and settled after, so concurrent calls cannot overspend |
 | 14 | 2026-11-11 | FEAT-045.1: the `memory` capability gets operation I/O and a behaviour contract — `remember` `{ key?, text, tags?, ttlMs? }` and `recall` `{ key?, tag?, query?, limit? }`, entries scoped to tenant and acting principal, bounded, retained by TTL and removed by `compact()`; see [Memory provider](#memory-provider-feat-045) |
 | 15 | 2026-11-14 | FEAT-071 (review N-23): the built-in operations that take fields declare an `inputSchema` (`delegation.delegate`, `getTask` and `cancel`, `event-handling.subscribe` and `unsubscribe`, `scheduling.nextOccurrence`, `reasoning.complete` with an integer `maxTokens` of at least 1, `tool-use.call`, `workflow.start` and `status`), and the runtime validates an invocation's input against its operation's `inputSchema` after the policy decision and before the provider runs: a malformed input fails the call with `SchemaViolation`, which is not retried. Operations that tolerate any input (and those a provider validates itself, such as `notification.notify` and `human-input.requestAction`) keep `inputSchema: true` |
+| 16 | 2026-11-20 | FIX-084: `reasoning.complete` reads each offered tool's lifecycle status as the store has it ([Tool v1](tool-v1.md) revision 8) and fails the call with `PermissionDenied` (details `status`) before the model is asked when a pinned tool is no longer `active` (suspended or revoked since acceptance, on any worker), instead of offering a tool whose call would be refused |
 
 ## Classification
 

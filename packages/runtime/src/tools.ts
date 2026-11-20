@@ -237,10 +237,40 @@ export class InMemoryToolRegistry implements ToolRegistry {
     return r ? structuredClone(r) : undefined;
   }
 
+  /**
+   * Every version of a tool with this process's own status, which only moves when this process acts on it or calls
+   * `refreshed`. What must agree with other workers on the store (task acceptance) uses `refreshedVersions`.
+   */
   versions(id: string): ToolRecord[] {
     return [...this.records.values()]
       .filter((r) => r.descriptor.id === id)
       .map((r) => structuredClone(r));
+  }
+
+  /**
+   * Every version of a tool with the status the store has (FIX-084): an activation or revoke on another worker counts.
+   * Task acceptance resolves against this. Without a store it answers as `versions` does.
+   */
+  async refreshedVersions(id: string): Promise<ToolRecord[]> {
+    const mine = [...this.records.values()].filter(
+      (r) => r.descriptor.id === id,
+    );
+    if (this.options.store && mine.length > 0) {
+      const rows = await readLifecycles(this.options.store, 'tool');
+      for (const r of mine) {
+        const status = effectiveStatus(
+          r.status,
+          rows.get(lifecycleKey('tool', r.descriptor)),
+          r.provenance.digest,
+          r.provenance.verified,
+        );
+        if (status !== r.status) {
+          r.status = status;
+          r.revision += 1;
+        }
+      }
+    }
+    return mine.map((r) => structuredClone(r));
   }
 
   /** Metadata only. Discovery never implies invocation permission. */

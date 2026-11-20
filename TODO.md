@@ -21,3 +21,6 @@
   - Done when: `claude plugin validate .` `grep -q 'Tested in' docs/skills.md`
   - Links: Ref: docs/skills.md
   - Blocked: a public listing needs the owner's submission and a second harness needs to be run by hand → n/a (manual) → owner submits the plugin, runs the five skills in another harness and records it under "Tested in" in docs/skills.md
+- [ ] **FIX-087** · P2 · low · A remote projection whose peer answers NotFound to a plain status poll fails after a bounded time instead of polling forever
+  - Done when: `pnpm exec vitest run packages/testkit/test/remote-not-found.test.ts`
+  - Links: Ref: docs/review/2026-11-20-post-review-delta.md

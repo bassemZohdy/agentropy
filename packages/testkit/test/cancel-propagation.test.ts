@@ -2,7 +2,7 @@
 // are not running end at once, a running child is asked to stop and fenced like any cancelled task, a task of another
 // parent is untouched, and a parent that completes leaves its children alone.
 import { describe, expect, it, vi } from 'vitest';
-import { alice, completes, harness } from '../../runtime/test/harness.js';
+import { alice, code, completes, harness } from '../../runtime/test/harness.js';
 
 type H = ReturnType<typeof harness>;
 
@@ -150,5 +150,97 @@ describe('cancel and failure propagate to open children (FEAT-070)', () => {
     await h.runtime.runUntilIdle();
     expect(await status(h, parent.taskId)).toBe('completed');
     expect(await status(h, child.taskId)).toBe('waiting');
+  });
+});
+
+describe('no child is accepted under a parent that has ended (FIX-081)', () => {
+  it('FIX-081: delegating under a cancelled parent is InvalidState and stores no child; a retry of a child accepted before still gets its handle', async () => {
+    const h = harness();
+    const { parentInst, childInst } = await tree(h);
+    const parent = await h.delegate(parentInst.id, {}, 'p');
+    await h.runtime.tick();
+    await h.runtime.idle();
+    const early = await h.delegate(childInst.id, {}, 'early', alice, {
+      parentTaskId: parent.taskId,
+    });
+    await h.tasks.cancel(parent.taskId, alice);
+    expect(await status(h, parent.taskId)).toBe('cancelled');
+    expect(
+      await code(
+        h.delegate(childInst.id, {}, 'late', alice, {
+          parentTaskId: parent.taskId,
+        }),
+      ),
+    ).toBe('InvalidState');
+    const children = await h.store.transaction((tx) =>
+      tx.find('tasks', { where: { parentTaskId: parent.taskId } }),
+    );
+    expect(children.map((c) => c.id)).toEqual([early.taskId]);
+    // Idempotency replay comes before state: the same request gets its original answer.
+    expect(
+      (
+        await h.delegate(childInst.id, {}, 'early', alice, {
+          parentTaskId: parent.taskId,
+        })
+      ).taskId,
+    ).toBe(early.taskId);
+  });
+
+  it('FIX-081: a completed parent accepts no new child either', async () => {
+    const h = harness();
+    h.define('parent', completes('done'));
+    h.define('child', sleeps);
+    const parent = await h.delegate((await h.instance('parent')).id, {}, 'p');
+    await h.runtime.runUntilIdle();
+    expect(await status(h, parent.taskId)).toBe('completed');
+    expect(
+      await code(
+        h.delegate((await h.instance('child')).id, {}, 'c', alice, {
+          parentTaskId: parent.taskId,
+        }),
+      ),
+    ).toBe('InvalidState');
+  });
+
+  it('FIX-081: a handler that ignores its abort signal and delegates after its task was cancelled and fenced gets InvalidState; no child is created', async () => {
+    const h = harness({ cancelGraceMs: 20, builtin: true });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let late: Promise<unknown> | undefined;
+    h.define('child', sleeps);
+    const childInst = await h.instance('child');
+    h.define(
+      'stubborn',
+      {
+        handle: async (_inv, ctx) => {
+          await gate; // ignores ctx.signal
+          late = ctx.capabilities.invoke(
+            'delegation',
+            'delegate',
+            { target: { instanceId: childInst.id }, input: {} },
+            { stepKey: 'late-child' },
+          );
+          await late.catch(() => undefined);
+          return { kind: 'completed', output: 'late' };
+        },
+      },
+      { profile: { id: 'coordinator', version: '1.0.0' } },
+    );
+    const parent = await h.delegate((await h.instance('stubborn')).id, {}, 'p');
+    await h.runtime.tick();
+    expect(await status(h, parent.taskId)).toBe('running');
+    await h.tasks.cancel(parent.taskId, alice);
+    await h.runtime.renewLeases();
+    await vi.waitFor(async () =>
+      expect(await status(h, parent.taskId)).toBe('cancelled'),
+    );
+    release();
+    await vi.waitFor(() => expect(late).toBeDefined());
+    expect(await code(late!)).toBe('InvalidState');
+    await h.runtime.idle();
+    const children = await h.store.transaction((tx) =>
+      tx.find('tasks', { where: { parentTaskId: parent.taskId } }),
+    );
+    expect(children).toEqual([]);
   });
 });
