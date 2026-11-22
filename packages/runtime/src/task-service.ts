@@ -389,6 +389,7 @@ export class TaskService {
       (!parent || parent.value.tenantId !== caller.tenantId)
     )
       throw new AgentropyError('NotFound', 'Parent task not found');
+    if (parent) assertParentOpen(parent.value);
     const depth = parent ? parent.value.depth + 1 : 0;
     if (depth > (this.o.limits?.maxDepth ?? 5))
       throw new AgentropyError(
@@ -455,6 +456,13 @@ export class TaskService {
         // The fan-out is counted here, where the child is inserted: counted before the transaction, concurrent
         // delegations would all see room (FIX-063). Reading one row past the limit is enough to know it is full.
         if (parent) {
+          // A parent that ended in the meantime takes no new child (FIX-081): FEAT-070 ends the children it has when
+          // it ends, so a child accepted after that would never be cancelled. Re-read in the transaction that inserts
+          // the child: the check before it can be overtaken by the parent's cancel or a fenced handler's late call.
+          const live = await tx.get<TaskRecord>('tasks', parent.id);
+          if (!live)
+            throw new AgentropyError('NotFound', 'Parent task not found');
+          assertParentOpen(live.value);
           const maxFanOut = this.o.limits?.maxFanOut ?? 20;
           const children = await tx.find('tasks', {
             where: { parentTaskId: parent.id },
@@ -1199,4 +1207,16 @@ export class TaskService {
     });
     return executionId;
   }
+}
+
+/** A child is accepted only under a parent that has not ended (Agent v1 revision 16, FIX-081). */
+function assertParentOpen(parent: TaskRecord): void {
+  if (isTerminal(TASK_MACHINE, parent.status))
+    throw new AgentropyError(
+      'InvalidState',
+      `Parent task is ${parent.status}`,
+      {
+        details: { kind: 'parent', status: parent.status },
+      },
+    );
 }

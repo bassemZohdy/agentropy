@@ -379,6 +379,12 @@ export class AuditService {
       anchorSink?: AuditAnchorSink;
       /** Rows read per transaction by `verify` and `exportLog` (default 500). */
       pageSize?: number;
+      /**
+       * Hashes of the most recently checked rows `verify` and `exportLog` keep (default 100 000), to check a disposal
+       * receipt that commits during the read and ends at a row already read. One that ends further back than this
+       * fails the read with a retryable `StaleRevision`; memory stays bounded however long the log.
+       */
+      checkWindow?: number;
     },
   ) {}
 
@@ -386,70 +392,65 @@ export class AuditService {
     return Math.max(1, Math.floor(this.o.pageSize ?? 500));
   }
 
-  /** The newest disposal receipt of a tenant: it changes when rows were removed. */
-  private lastReceipt(tenantId: string): Promise<string | undefined> {
-    return this.o.store.transaction(
-      async (tx) =>
-        (
-          await tx.find<AuditDisposalReceipt>('auditReceipts', {
-            where: { tenantId },
-            orderBy: 'seq',
-            descending: true,
-            limit: 1,
-          })
-        )[0]?.id,
-    );
-  }
-
-  /**
-   * Runs a paged read again, at most twice, when a disposal committed while it ran (FIX-079): the pages are separate
-   * transactions, so one that removes rows past the reader's cursor leaves the next page linked to a row the reader
-   * never saw, which would read as a broken chain. A disposal only ever removes the oldest rows, so a second pass is
-   * enough unless disposals keep coming.
-   */
-  private async steady<T>(tenantId: string, run: () => Promise<T>): Promise<T> {
-    for (let attempt = 0; ; attempt++) {
-      const before = await this.lastReceipt(tenantId);
-      const out = await run();
-      if (attempt >= 2 || (await this.lastReceipt(tenantId)) === before)
-        return out;
-    }
+  private get checkWindow(): number {
+    return Math.max(1, Math.floor(this.o.checkWindow ?? 100_000));
   }
 
   /**
    * The tenant's chain in pages of `pageSize` rows, each in its own transaction, so a long log is never read in one
-   * transaction (under SERIALIZABLE such a read conflicts with every acceptance of the tenant). `first` runs in the
-   * transaction of the first page, which keeps what it reads (the disposal receipts) consistent with the rows: a
-   * disposal that commits later only removes rows older than the page cursor.
+   * transaction (under SERIALIZABLE such a read conflicts with every acceptance of the tenant). Every page transaction
+   * also reads the disposal receipts committed since the previous one (all of them with the first page), so the
+   * receipts a page comes with are consistent with its rows (FIX-082): a disposal that commits between two pages may
+   * have removed rows past the reader's cursor, and its receipt, read with the next page, says where the chain goes
+   * on. With new receipts after the first page, `oldest` is the oldest row left in the log (`null` when none is),
+   * which must be the row right after the newest receipt and link to it; it is `undefined` when it was not read.
+   * Nothing is read twice and a read is never abandoned, however many disposals commit while it runs.
    */
-  private async pages<F>(
+  private async pages(
     tenantId: string,
-    first: (tx: StoreTx) => Promise<F>,
-    each: (rows: AuditIntentRow[], first: F) => boolean | void,
+    each: (page: {
+      receipts: AuditDisposalReceipt[];
+      oldest: AuditIntentRow | null | undefined;
+      rows: AuditIntentRow[];
+    }) => boolean | void,
   ): Promise<void> {
     let afterSeq = 0;
-    let head: F | undefined;
+    let receiptSeq = 0;
     for (let page = 0; ; page++) {
-      const { rows, seq, setup } = await this.o.store.transaction(
-        async (tx) => {
-          const setup = page === 0 ? await first(tx) : undefined;
-          const read = await tx.find<AuditIntentRow>('audit', {
-            where: { tenantId },
-            orderBy: 'seq',
-            afterSeq,
-            limit: this.page,
-          });
-          return {
-            rows: read.map((r) => r.value),
-            seq: read.at(-1)?.seq,
-            setup,
-          };
-        },
-      );
-      if (page === 0) head = setup as F;
-      if (each(rows, head as F) === false) return;
-      if (rows.length < this.page || seq === undefined) return;
-      afterSeq = seq;
+      const read = await this.o.store.transaction(async (tx) => {
+        const receipts = await tx.find<AuditDisposalReceipt>('auditReceipts', {
+          where: { tenantId },
+          orderBy: 'seq',
+          afterSeq: receiptSeq,
+        });
+        const oldest =
+          page > 0 && receipts.length
+            ? ((
+                await tx.find<AuditIntentRow>('audit', {
+                  where: { tenantId },
+                  orderBy: 'seq',
+                  limit: 1,
+                })
+              )[0]?.value ?? null)
+            : undefined;
+        const rows = await tx.find<AuditIntentRow>('audit', {
+          where: { tenantId },
+          orderBy: 'seq',
+          afterSeq,
+          limit: this.page,
+        });
+        return {
+          receipts: receipts.map((r) => r.value),
+          receiptSeq: receipts.at(-1)?.seq,
+          oldest,
+          rows: rows.map((r) => r.value),
+          seq: rows.at(-1)?.seq,
+        };
+      });
+      if (read.receiptSeq !== undefined) receiptSeq = read.receiptSeq;
+      if (each(read) === false) return;
+      if (read.rows.length < this.page || read.seq === undefined) return;
+      afterSeq = read.seq;
     }
   }
 
@@ -513,15 +514,6 @@ export class AuditService {
     });
   }
 
-  private async receipts(tx: StoreTx, tenantId: string) {
-    return (
-      await tx.find<AuditDisposalReceipt>('auditReceipts', {
-        where: { tenantId },
-        orderBy: 'seq',
-      })
-    ).map((r) => r.value);
-  }
-
   async query(
     q: { tenantId: string; type?: string; limit?: number },
     caller: TrustedPrincipal,
@@ -553,24 +545,17 @@ export class AuditService {
     options: { anchors?: AuditAnchor[] } = {},
   ): Promise<VerifyResult> {
     await this.authorize(caller, tenantId, 'audit:verify');
-    const done = await this.steady(tenantId, async () => {
-      let checker: ChainChecker | undefined;
-      let result: VerifyResult | undefined;
-      await this.pages(
-        tenantId,
-        (tx) => this.receipts(tx, tenantId),
-        (rows, receipts) => {
-          checker ??= new ChainChecker(
-            tenantId,
-            receipts,
-            options.anchors ?? [],
-          );
-          result = checker.feed(rows);
-          return result === undefined;
-        },
-      );
-      return result ?? checker!.finish();
+    const checker = new ChainChecker(
+      tenantId,
+      options.anchors ?? [],
+      this.checkWindow,
+    );
+    let broken: VerifyResult | undefined;
+    await this.pages(tenantId, ({ receipts, oldest, rows }) => {
+      broken = checker.dispose(receipts, oldest, rows[0]) ?? checker.feed(rows);
+      return broken === undefined;
     });
+    const done = broken ?? checker.finish();
     await this.o.store.transaction((tx) =>
       this.record(tx, caller, 'audit:verify', 'allow', {
         ok: done.ok,
@@ -587,32 +572,64 @@ export class AuditService {
     caller: TrustedPrincipal,
   ): Promise<AuditExport> {
     await this.authorize(caller, tenantId, 'audit:export');
-    const { rows, last } = await this.steady(tenantId, async () => {
-      const rows: AuditExport['rows'] = [];
-      let last: AuditDisposalReceipt | undefined;
-      await this.pages(
-        tenantId,
-        async (tx) => (await this.receipts(tx, tenantId)).at(-1),
-        (page, receipt) => {
-          last = receipt;
-          for (const r of page)
-            rows.push({
-              auditId: r.auditId,
-              event: r.event,
-              prevHash: r.prevHash,
-              hash: r.hash,
-            });
+    // The bundle starts after the newest receipt read: a disposal that commits while the log is read removes rows
+    // the export may already hold, so those are dropped again and the rest links to that receipt (FIX-082). Only
+    // receipts that pass verify's checks move the start: they chain on from the ones read before, one that ends at a
+    // row already held names that row's hash, and the oldest row left is the one right after the newest and links to
+    // it. Otherwise the export is refused. A broken row does not stop it: the bundle carries it and
+    // `verifyAuditChain` reports it offline.
+    const checker = new ChainChecker(tenantId, [], this.checkWindow);
+    const rows: AuditExport['rows'] = [];
+    let start = { hash: GENESIS, position: 1 };
+    let broken: VerifyResult | undefined;
+    await this.pages(tenantId, ({ receipts, oldest, rows: page }) => {
+      broken = checker.dispose(receipts, oldest, page[0]);
+      if (broken) return false;
+      checker.feed(page);
+      const last = receipts.at(-1);
+      if (last) {
+        rows.splice(0, Math.max(0, last.toPosition + 1 - start.position));
+        start = { hash: last.lastHash, position: last.toPosition + 1 };
+      }
+      for (const r of page)
+        rows.push({
+          auditId: r.auditId,
+          event: r.event,
+          prevHash: r.prevHash,
+          hash: r.hash,
+        });
+    });
+    const refused = broken && !broken.ok ? broken : undefined;
+    await this.o.store.transaction((tx) =>
+      this.record(
+        tx,
+        caller,
+        'audit:export',
+        'allow',
+        refused
+          ? {
+              ok: false,
+              brokenAt: refused.brokenAt,
+              ...(refused.reason ? { reason: refused.reason } : {}),
+            }
+          : { rows: rows.length },
+      ),
+    );
+    if (refused)
+      throw new AgentropyError(
+        'InvalidState',
+        'The audit chain does not hold across the disposal receipts read during the export',
+        {
+          details: {
+            brokenAt: refused.brokenAt,
+            ...(refused.reason ? { reason: refused.reason } : {}),
+          },
         },
       );
-      return { rows, last };
-    });
-    await this.o.store.transaction((tx) =>
-      this.record(tx, caller, 'audit:export', 'allow', { rows: rows.length }),
-    );
     return {
       tenantId,
-      startHash: last?.lastHash ?? GENESIS,
-      startPosition: (last?.toPosition ?? 0) + 1,
+      startHash: start.hash,
+      startPosition: start.position,
       rows,
       exportedAt: this.now(),
     };
@@ -847,61 +864,157 @@ export class AuditService {
 
 /**
  * The chain check fed page by page: the links and hashes of every row, the disposal receipts that start the chain,
- * and the published anchors (truncation and wholesale rewriting). Only the rows at anchor positions are kept.
+ * and the published anchors (truncation and wholesale rewriting). Only the rows at anchor positions are kept, and the
+ * hashes of at most the last `window` rows checked since the newest receipt read.
+ *
+ * Receipts are fed as they are read, with the page they were read with (FIX-082). They must chain from genesis
+ * (each `startHash` is the previous `lastHash`, positions contiguous). A receipt that ends at a row already checked
+ * must name that row's hash as its `lastHash`, and the oldest row left must be the one right after the newest
+ * receipt (the row checked there, or the next one to check), so a receipt read mid-read that misstates a disposal
+ * is caught; one that ends at a row that fell out of the window fails the read with a retryable `StaleRevision`
+ * (nothing is recorded). When the newest one ends past the rows checked so far, a disposal removed rows the reader had not
+ * reached: the check goes on from that receipt, as a verify that started after the disposal would.
+ * Rows checked and disposed since are counted as disposed, not as present.
+ *
+ * A broken receipt ends the check; a broken row ends it for `verify`, but `exportLog` reads on (its bundle carries
+ * the evidence, which `verifyAuditChain` reports offline) and stops only on a broken receipt.
  */
 class ChainChecker {
+  /** The hash the next row must link to, and the chain position of the last row checked or disposed. */
   private prev = GENESIS;
-  private position: number;
-  private readonly disposed: number;
-  private count = 0;
+  private position = 0;
+  /** The newest receipt's last position and hash. */
+  private disposed = 0;
+  private receiptHead = GENESIS;
+  private readonly receipts: AuditDisposalReceipt[] = [];
+  /**
+   * Hashes of the last `window` rows checked, a ring indexed by position modulo `window`: the row at position `p`
+   * is held while `p >= this.held()`.
+   */
+  private readonly checked: string[] = [];
   private readonly wanted = new Set<number>();
   private readonly seen = new Map<number, { auditId: string; hash: string }>();
+  /** A broken receipt chain (ends the check) and the first broken row. */
   private broken: VerifyResult | undefined;
+  private rowBroken: VerifyResult | undefined;
 
   constructor(
     private readonly tenantId: string,
-    private readonly receipts: AuditDisposalReceipt[],
     private readonly anchors: AuditAnchor[],
+    private readonly window: number,
   ) {
-    let position = 0;
+    for (const a of anchors)
+      if (a.tenantId === tenantId) this.wanted.add(a.position);
+  }
+
+  /** The first position whose hash is held: rows checked since the newest receipt, at most the last `window`. */
+  private held(): number {
+    return Math.max(this.disposed + 1, this.position - this.window + 1);
+  }
+
+  /**
+   * The hash of the row checked at `p` (a position the reader has checked past the newest receipt). A position that
+   * fell out of the window cannot be checked: the read is given up with a retryable error, never reported as sound
+   * or as tampered with.
+   */
+  private hashAt(p: number): string {
+    if (p < this.held())
+      throw new AgentropyError(
+        'StaleRevision',
+        'A disposal committed during the read ends at a row checked too long ago to compare; read again',
+        {
+          details: { reason: 'checkWindow', position: p, window: this.window },
+        },
+      );
+    return this.checked[p % this.window]!;
+  }
+
+  /**
+   * Takes the receipts committed since the last page, read in the same transaction as the next page, `oldest`, the
+   * oldest row left in the log then (`null` for none, `undefined` when not read), and `next`, the first row of that
+   * page. `oldest` must link to the newest receipt and be the row right after it: the row the reader checked at that
+   * position, or `next` when the receipt ends at or past the reader's cursor. A result means the receipts do not
+   * hold (the check is over).
+   */
+  dispose(
+    receipts: AuditDisposalReceipt[],
+    oldest?: AuditIntentRow | null,
+    next?: AuditIntentRow,
+  ): VerifyResult | undefined {
+    if (this.broken) return this.broken;
+    if (!receipts.length) return undefined;
     for (const r of receipts) {
-      if (this.broken) break;
-      if (r.startHash !== this.prev || r.fromPosition !== position + 1)
-        this.broken = {
+      const broken = (): VerifyResult =>
+        (this.broken = {
           ok: false,
           brokenAt: r.receiptId,
           reason: 'receipt-chain',
-        };
-      this.prev = r.lastHash;
-      position = r.toPosition;
-    }
-    this.disposed = position;
-    this.position = position;
-    for (const a of anchors)
-      if (a.tenantId === tenantId && a.position > position)
-        this.wanted.add(a.position);
-  }
-
-  /** Checks the next rows; a result means the check is over (the chain is broken). */
-  feed(rows: AuditIntentRow[]): VerifyResult | undefined {
-    if (this.broken) return this.broken;
-    for (const v of rows) {
+        });
       if (
-        v.prevHash !== this.prev ||
-        v.hash !== chainHash(this.prev, v.auditId, v.event)
+        r.startHash !== this.receiptHead ||
+        r.fromPosition !== this.disposed + 1 ||
+        r.toPosition < r.fromPosition
       )
-        return (this.broken = { ok: false, brokenAt: v.auditId });
-      this.prev = v.hash;
-      this.position++;
-      this.count++;
-      if (this.wanted.has(this.position))
-        this.seen.set(this.position, { auditId: v.auditId, hash: v.hash });
+        return broken();
+      // A receipt that ends at a row already checked names that row's hash.
+      if (
+        r.toPosition <= this.position &&
+        this.hashAt(r.toPosition) !== r.lastHash
+      )
+        return broken();
+      this.receipts.push(r);
+      this.receiptHead = r.lastHash;
+      this.disposed = r.toPosition;
+    }
+    if (oldest && oldest.prevHash !== this.receiptHead)
+      return (this.broken = { ok: false, brokenAt: oldest.auditId });
+    // The oldest row left is the one right after the newest receipt: a row already checked, or the next to check.
+    if (
+      oldest !== undefined &&
+      (this.disposed < this.position
+        ? oldest?.hash !== this.hashAt(this.disposed + 1)
+        : oldest?.auditId !== next?.auditId)
+    )
+      return (this.broken = oldest
+        ? { ok: false, brokenAt: oldest.auditId }
+        : {
+            ok: false,
+            brokenAt: receipts.at(-1)!.receiptId,
+            reason: 'receipt-chain',
+          });
+    if (this.disposed > this.position) {
+      // Rows past the reader's cursor were disposed: the chain goes on from the receipt.
+      this.prev = this.receiptHead;
+      this.position = this.disposed;
     }
     return undefined;
   }
 
+  /**
+   * Checks the next rows. A result means the chain is broken: `verify` stops there, `exportLog` feeds on, and the
+   * first broken row stays the result.
+   */
+  feed(rows: AuditIntentRow[]): VerifyResult | undefined {
+    if (this.broken) return this.broken;
+    for (const v of rows) {
+      if (
+        !this.rowBroken &&
+        (v.prevHash !== this.prev ||
+          v.hash !== chainHash(this.prev, v.auditId, v.event))
+      )
+        this.rowBroken = { ok: false, brokenAt: v.auditId };
+      this.prev = v.hash;
+      this.position++;
+      this.checked[this.position % this.window] = v.hash;
+      if (this.wanted.has(this.position))
+        this.seen.set(this.position, { auditId: v.auditId, hash: v.hash });
+    }
+    return this.rowBroken;
+  }
+
   finish(): VerifyResult {
     if (this.broken) return this.broken;
+    if (this.rowBroken) return this.rowBroken;
     for (const a of this.anchors) {
       if (a.tenantId !== this.tenantId) continue;
       if (a.position <= this.disposed) {
@@ -915,6 +1028,10 @@ class ChainChecker {
       if (row.auditId !== a.auditId || row.hash !== a.hash)
         return { ok: false, brokenAt: a.auditId, reason: 'anchor-mismatch' };
     }
-    return { ok: true, count: this.count, disposed: this.disposed };
+    return {
+      ok: true,
+      count: this.position - this.disposed,
+      disposed: this.disposed,
+    };
   }
 }

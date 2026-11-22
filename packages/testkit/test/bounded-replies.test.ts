@@ -100,6 +100,46 @@ describe('every reader of a peer reply is bounded (TASK-068)', () => {
     expect(e.seen.cancelled).toBe(true);
   });
 
+  it('FIX-085: the reply to an MCP notification is not read, so an endless one costs nothing', async () => {
+    const e = endless();
+    const client = new McpClient(
+      mcpHttpTransport({
+        url: 'https://mcp.example/mcp',
+        maxResponseBytes: 100 * 1024,
+        fetch: async (_url, init) => {
+          const m = (JSON.parse(init.body) as { method: string }).method;
+          if (m === 'initialize')
+            return json('{"jsonrpc":"2.0","id":1,"result":{}}') as never;
+          if (m === 'notifications/initialized') return json(e.body) as never;
+          return json(
+            '{"jsonrpc":"2.0","id":2,"result":{"tools":[]}}',
+          ) as never;
+        },
+      }),
+    );
+    expect(await client.listTools()).toEqual([]);
+    expect(e.seen.pulls).toBeLessThanOrEqual(2);
+    expect(e.seen.cancelled).toBe(true);
+  });
+
+  it('FIX-085: an MCP error reply (401, 404, 5xx) has its body released, not left holding the connection', async () => {
+    for (const status of [401, 404, 500]) {
+      const e = endless();
+      const client = new McpClient(
+        mcpHttpTransport({
+          url: 'https://mcp.example/mcp',
+          fetch: async () =>
+            new Response(e.body, {
+              status,
+              headers: { 'content-type': 'application/json' },
+            }) as never,
+        }),
+      );
+      await code(client.listTools());
+      expect(e.seen.cancelled, String(status)).toBe(true);
+    }
+  });
+
   it('TASK-068: a federation card is cut off at the cap, and a stalled card body times out', async () => {
     const e = endless();
     const clock = new FakeClock('2026-11-06T00:00:00.000Z');

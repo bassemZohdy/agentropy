@@ -364,10 +364,40 @@ export class InMemorySkillRegistry {
     return e ? structuredClone(e.record) : undefined;
   }
 
+  /**
+   * Every version of a skill with this process's own status, which only moves when this process acts on it or calls
+   * `refreshed`. What must agree with other workers on the store (task acceptance) uses `refreshedVersions`.
+   */
   versions(id: string): SkillRecord[] {
     return [...this.entries.values()]
       .filter((e) => e.record.id === id)
       .map((e) => structuredClone(e.record));
+  }
+
+  /**
+   * Every version of a skill with the status the store has (FIX-084): an activation or revoke on another worker
+   * counts. Task acceptance resolves against this. Without a store it answers as `versions` does.
+   */
+  async refreshedVersions(id: string): Promise<SkillRecord[]> {
+    const mine = [...this.entries.values()]
+      .map((e) => e.record)
+      .filter((r) => r.id === id);
+    if (this.options.store && mine.length > 0) {
+      const rows = await readLifecycles(this.options.store, 'skill');
+      for (const r of mine) {
+        const status = effectiveStatus(
+          r.status,
+          rows.get(lifecycleKey('skill', r)),
+          r.digest,
+          r.provenance.verified,
+        ) as SkillRecord['status'];
+        if (status !== r.status) {
+          r.status = status;
+          r.revision += 1;
+        }
+      }
+    }
+    return mine.map((r) => structuredClone(r));
   }
 
   /** Metadata-first discovery: never reads instructions or resources. */

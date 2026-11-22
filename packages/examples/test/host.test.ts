@@ -679,6 +679,28 @@ describe('host settings, main module and compaction schedule (FEAT-073)', () => 
     });
   });
 
+  it('FIX-086: a timer setting above the largest timer delay (2^31-1 ms) is refused, not shortened to 1 ms', async () => {
+    for (const name of [
+      'AGENTROPY_TICK_MS',
+      'AGENTROPY_DRAIN_MS',
+      'AGENTROPY_COMPACT_EVERY_MS',
+    ]) {
+      const env = { AGENTROPY_DB: ':memory:', [name]: '3000000000' };
+      expect(() => parseHostEnv(env), name).toThrow(
+        expect.objectContaining({ code: 'InvalidConfiguration' }),
+      );
+      await expect(main(env), name).rejects.toMatchObject({
+        code: 'InvalidConfiguration',
+      });
+    }
+    expect(
+      parseHostEnv({
+        AGENTROPY_TICK_MS: '2147483647',
+        AGENTROPY_DRAIN_MS: '2147483647',
+      }),
+    ).toMatchObject({ tickMs: 2_147_483_647, drainMs: 2_147_483_647 });
+  });
+
   it('FEAT-073: a configured schedule calls compact until it is stopped, and a failing run is logged without stopping it', async () => {
     const app = createLocalApp({
       store: new SqliteStore({ path: ':memory:' }),

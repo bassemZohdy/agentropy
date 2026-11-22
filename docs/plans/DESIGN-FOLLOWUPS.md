@@ -1,6 +1,6 @@
 # Design follow-ups (TASK-026)
 
-- Status: Open. Created 2026-11-05 by the todo-skills migration (TASK-010). Text below is copied from the [legacy TODO archive](archive/TODO-legacy-2026-11-05.md) without loss; only link paths were rebased.
+- Status: Closed (2026-11-20): every item in the resolution ledger below is closed except D-09, which the owner kept deferred on 2026-11-08 (TASK-034.2). Created 2026-11-05 by the todo-skills migration (TASK-010). Text below is copied from the [legacy TODO archive](archive/TODO-legacy-2026-11-05.md) without loss; only link paths were rebased.
 - Rule: each item is closed only by a contract/ADR change **and** an executable test or an explicit, recorded deferral with milestone. None of these items blocks the M1 walking skeleton unless an M1 root names it in `Depends:`.
 - M1 coverage already accepted elsewhere: minimal PDP/PEP/audit/credential shapes in [Security v1](../contracts/security-v1.md) (partial D-17/D-18/D-21); suspend/resume/retire instance operations in M1 (partial D-03).
 

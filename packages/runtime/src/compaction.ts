@@ -196,16 +196,22 @@ export async function compactStore(
     );
 
   // Inbox entries resolved, or acknowledged, before the window: the resolved ones by status, the open ones that are
-  // neither new nor changed since they were shown (`pending: 0`) for an acknowledgement.
+  // neither new nor changed since they were shown (`pending: 0`) for an acknowledgement. Open entries written before
+  // `pending` existed have none (null in the index; FIX-083): for them it is worked out from the markers as the inbox
+  // does on every write, so an acknowledged one goes and one the briefing would still show stays.
   for (const where of [
     { status: 'resolved' },
     { status: 'open', pending: 0 },
+    { status: 'open', pending: null },
   ] as const)
     await sweep<StoredInboxEntry>('inbox', { where }, async (tx, rows) => {
       let n = 0;
       for (const e of rows) {
-        const done =
-          e.value.markers.resolvedAt ?? e.value.markers.acknowledgedAt;
+        const { markers, revision } = e.value;
+        const pending =
+          !markers.acknowledgedAt && markers.presentedRevision !== revision;
+        if ('pending' in where && where.pending === null && pending) continue;
+        const done = markers.resolvedAt ?? markers.acknowledgedAt;
         if (done !== undefined && done < cutoff) {
           await tx.remove('inbox', e.id, e.revision);
           n++;
