@@ -95,7 +95,7 @@ function runtimeA(
     /** While it returns a promise, the peer accepts the connection and never answers (the signal is ignored). */
     hang?: () => Promise<unknown> | undefined;
     clock?: FakeClock;
-    sync?: { minMs?: number; maxMs?: number };
+    sync?: { minMs?: number; maxMs?: number; notFoundMs?: number };
     /** Longest a call to the peer may take (FIX-053). */
     timeoutMs?: number;
     /** Which endpoints the A2A provider may call (FIX-054); default: exactly the peer's origin. */
@@ -927,5 +927,99 @@ describe('a remote child accepted after its parent ended (FIX-081)', () => {
       'cancelled',
       'cancelled',
     ]);
+  });
+});
+
+describe('a peer that keeps answering NotFound to a status poll (FIX-087)', () => {
+  const DAY = 24 * 3_600_000;
+  const getTasks = (wire: string[]) =>
+    wire.filter(
+      (w) => (JSON.parse(w) as { method: string }).method === 'GetTask',
+    ).length;
+
+  it('FIX-087: a projection whose peer answers NotFound for 24 hours fails with NotFound and wakes its parent', async () => {
+    const { server } = await runtimeB();
+    const clock = new FakeClock('2026-11-06T00:00:00.000Z');
+    let refusing = false;
+    const { a, wire } = runtimeA(server, {
+      clock,
+      refuse: (m) => (refusing && m === 'GetTask' ? -32001 : undefined),
+    });
+    const parent = await startCoordinator(a);
+    await a.runUntilIdle();
+    refusing = true;
+    await a.runUntilIdle();
+    const [first] = await projections(a);
+    expect(first).toMatchObject({ status: 'created', lastError: 'NotFound' });
+    expect(first!.notFoundSince).toBe('2026-11-06T00:00:00.000Z');
+    clock.advanceBy(DAY - 1);
+    await a.runUntilIdle();
+    const [still] = await projections(a);
+    expect(still!.status).toBe('created'); // one ms short of the window
+    expect(still!.notFoundSince).toBe('2026-11-06T00:00:00.000Z'); // the first answer counts, not the latest
+    clock.advanceBy(1);
+    await a.runUntilIdle();
+    const [gone] = await projections(a);
+    expect(gone).toMatchObject({
+      status: 'failed',
+      outcome: { code: 'NotFound' },
+    });
+    expect((await a.getTask(parent.taskId, alice)).status).toBe('failed'); // the parent was woken and failed
+    const asked = getTasks(wire);
+    clock.advanceBy(DAY);
+    await a.runUntilIdle();
+    expect(getTasks(wire)).toBe(asked); // terminal: the peer is not asked again
+  });
+
+  it('FIX-087: a NotFound that passes before the window ends is forgotten, and the task completes from the peer', async () => {
+    const { b, server } = await runtimeB();
+    const clock = new FakeClock('2026-11-06T00:00:00.000Z');
+    let refusing = false;
+    const { a } = runtimeA(server, {
+      clock,
+      refuse: (m) => (refusing && m === 'GetTask' ? -32001 : undefined),
+    });
+    const parent = await startCoordinator(a);
+    await a.runUntilIdle();
+    refusing = true;
+    await a.runUntilIdle();
+    clock.advanceBy(DAY - 1_000);
+    refusing = false; // the peer knows the task again (a restore, a misrouted request)
+    await a.runUntilIdle();
+    const [back] = await projections(a);
+    expect(back!.status).not.toBe('failed');
+    expect(back!.notFoundSince).toBeUndefined();
+    refusing = true; // a later NotFound starts a new window
+    clock.advanceBy(2_000);
+    await a.runUntilIdle();
+    const [again] = await projections(a);
+    expect(again!.status).not.toBe('failed');
+    expect(again!.notFoundSince).toBe(new Date(clock.now()).toISOString());
+    refusing = false;
+    await b.runUntilIdle();
+    await a.runUntilIdle();
+    expect((await projections(a))[0]).toMatchObject({ status: 'completed' });
+    expect((await a.getTask(parent.taskId, alice)).status).toBe('completed');
+  });
+
+  it('FIX-087: sync.notFoundMs sets the window (0 fails on the first NotFound), and a bad value is InvalidConfiguration', async () => {
+    const { server } = await runtimeB();
+    let refusing = false;
+    const { a } = runtimeA(server, {
+      sync: { minMs: 0, maxMs: 0, notFoundMs: 0 },
+      refuse: (m) => (refusing && m === 'GetTask' ? -32001 : undefined),
+    });
+    await startCoordinator(a);
+    await a.runUntilIdle();
+    refusing = true;
+    await a.runUntilIdle();
+    expect((await projections(a))[0]).toMatchObject({
+      status: 'failed',
+      outcome: { code: 'NotFound' },
+    });
+    for (const notFoundMs of [-1, 1.5])
+      expect(() =>
+        runtimeA(server, { sync: { minMs: 0, maxMs: 0, notFoundMs } }),
+      ).toThrowError(expect.objectContaining({ code: 'InvalidConfiguration' }));
   });
 });

@@ -18,11 +18,11 @@ How each finding was established: **run** = reproduced with a test or script; **
 | P-06 | medium | The MCP client read the reply to a notification (`notifications/initialized`, sent on every handshake) with no size cap, which TASK-068 had added only to requests; error replies were thrown without releasing their body | run: 50 MiB read against a 1 MiB cap; the regression test was killed for lack of memory before the fix; `packages/runtime/src/mcp.ts` | FIX-085 |
 | P-07 | low | Host timer settings had no upper bound: Node shortens a delay above 2^31-1 ms to 1 ms, so `AGENTROPY_DRAIN_MS=3000000000` meant no drain at SIGTERM and an oversized tick or compaction interval a busy loop; `LocalApp.start` had the same gap | run: `parseHostEnv` accepted the value, a 3e9 ms timer fired after 2 ms; `packages/examples/src/host.ts`, `packages/runtime/src/app.ts` | FIX-086 |
 
-## Open
+## Fixed later the same day
 
-| ID | Sev | Finding | Proposed action | Root |
+| ID | Sev | Finding | Action taken | Root |
 |---|---|---|---|---|
-| P-08 | low | A projection with no cancel requested whose peer answers `NotFound` to `GetTask` is rescheduled indefinitely (backing off to one poll per `sync.maxMs`), so its parent waits until its own deadline. Failing it on the first `NotFound` would be wrong for a peer that answers it briefly (a restore, a misrouted request) | Fail the projection with `NotFound` after `NotFound` answers for longer than a configurable window; revise [Communication v1](../contracts/communication-v1.md) | FIX-087 |
+| P-08 | low | A projection with no cancel requested whose peer answers `NotFound` to `GetTask` is rescheduled indefinitely (backing off to one poll per `sync.maxMs`), so its parent waits until its own deadline. Failing it on the first `NotFound` would be wrong for a peer that answers it briefly (a restore, a misrouted request) | The projection fails with `NotFound` once the answers have lasted `sync.notFoundMs`, default 24 hours as the owner chose; [Communication v1](../contracts/communication-v1.md) revision 19 | FIX-087 |
 
 ## Checked and found sound
 
