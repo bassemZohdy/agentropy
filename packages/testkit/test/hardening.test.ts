@@ -27,10 +27,10 @@ import {
 } from '../../runtime/src/index.js';
 import * as api from '@opentelemetry/api';
 import {
-  BasicTracerProvider,
+  TracerProvider,
   InMemorySpanExporter,
   SimpleSpanProcessor,
-} from '@opentelemetry/sdk-trace-base';
+} from '@opentelemetry/sdk-trace';
 
 const user = (id: string): TrustedPrincipal => ({
   id,
@@ -220,8 +220,8 @@ describe('secret canary (M3-05)', () => {
     const spans = new InMemorySpanExporter();
     const telemetry = openTelemetry({
       api,
-      tracer: new BasicTracerProvider({
-        spanProcessors: [new SimpleSpanProcessor(spans)],
+      tracer: new TracerProvider({
+        spanProcessors: [new SimpleSpanProcessor({ exporter: spans })],
       }).getTracer('canary'),
     });
     const vault: CredentialProvider = {

@@ -340,7 +340,7 @@ export async function telemetryFromEnv(
     await Promise.all(
       [
         '@opentelemetry/api',
-        '@opentelemetry/sdk-trace-base',
+        '@opentelemetry/sdk-trace',
         '@opentelemetry/sdk-metrics',
         '@opentelemetry/resources',
         '@opentelemetry/exporter-trace-otlp-http',
@@ -351,12 +351,14 @@ export async function telemetryFromEnv(
     'service.name': env.AGENTROPY_SERVICE_NAME ?? 'agentropy-host',
     ...(env.HOSTNAME ? { 'service.instance.id': env.HOSTNAME } : {}),
   });
-  const tracerProvider = new trace.BasicTracerProvider({
+  const tracerProvider = new trace.TracerProvider({
     resource,
     spanProcessors: [
-      new trace.BatchSpanProcessor(
-        new traceExporter.OTLPTraceExporter({ url: `${base}/v1/traces` }),
-      ),
+      new trace.BatchSpanProcessor({
+        exporter: new traceExporter.OTLPTraceExporter({
+          url: `${base}/v1/traces`,
+        }),
+      }),
     ],
   });
   const meterProvider = new metrics.MeterProvider({
