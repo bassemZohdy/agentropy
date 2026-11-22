@@ -18,7 +18,7 @@ How each finding was established: **run** = reproduced with a test or script; **
 | P-06 | medium | The MCP client read the reply to a notification (`notifications/initialized`, sent on every handshake) with no size cap, which TASK-068 had added only to requests; error replies were thrown without releasing their body | run: 50 MiB read against a 1 MiB cap; the regression test was killed for lack of memory before the fix; `packages/runtime/src/mcp.ts` | FIX-085 |
 | P-07 | low | Host timer settings had no upper bound: Node shortens a delay above 2^31-1 ms to 1 ms, so `AGENTROPY_DRAIN_MS=3000000000` meant no drain at SIGTERM and an oversized tick or compaction interval a busy loop; `LocalApp.start` had the same gap | run: `parseHostEnv` accepted the value, a 3e9 ms timer fired after 2 ms; `packages/examples/src/host.ts`, `packages/runtime/src/app.ts` | FIX-086 |
 
-## Fixed later the same day
+## Fixed after the review (2026-11-22)
 
 | ID | Sev | Finding | Action taken | Root |
 |---|---|---|---|---|
