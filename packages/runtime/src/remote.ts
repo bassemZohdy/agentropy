@@ -64,13 +64,25 @@ export interface RemoteTaskRecord {
    * (`InvalidState`, `UnsupportedOperation`) is followed by `getTask` in the same sync; `NotFound` fails it (FIX-080).
    */
   cancelRequestedAt?: string;
+  /**
+   * When the peer first answered `NotFound` to a status poll of this projection, in the current run of such answers
+   * (FIX-087). Cleared by any other answer; once `sync.notFoundMs` has passed since it, the projection fails `NotFound`.
+   */
+  notFoundSince?: string;
 }
 
-/** How often a projection is refreshed: `minMs` after a change, doubling per quiet poll up to `maxMs`. */
+/**
+ * How often a projection is refreshed: `minMs` after a change, doubling per quiet poll up to `maxMs`. `notFoundMs` is
+ * how long a peer may keep answering `NotFound` to the status poll before the projection fails `NotFound` (FIX-087).
+ */
 export interface RemoteSyncOptions {
   minMs?: number;
   maxMs?: number;
+  notFoundMs?: number;
 }
+
+/** How long a peer may keep answering `NotFound` to the status poll of a remote task before it fails (FIX-087). */
+export const DEFAULT_REMOTE_NOT_FOUND_MS = 24 * 3_600_000;
 
 /** Longest one call to a peer may take unless configured otherwise. */
 export const DEFAULT_REMOTE_TIMEOUT_MS = 30_000;
@@ -101,6 +113,13 @@ export class RemoteDelegationService {
         'InvalidConfiguration',
         'communication.timeoutMs must be a positive integer',
         { details: { field: 'timeoutMs', value: String(ms) } },
+      );
+    const nf = o.sync?.notFoundMs;
+    if (nf !== undefined && (!Number.isSafeInteger(nf) || nf < 0))
+      throw new AgentropyError(
+        'InvalidConfiguration',
+        'communication.sync.notFoundMs must be a non-negative integer',
+        { details: { field: 'sync.notFoundMs', value: String(nf) } },
       );
   }
 
@@ -436,6 +455,8 @@ export class RemoteDelegationService {
           throw err;
         state = await getTask();
       }
+      // Any answer but NotFound ends a run of NotFound answers (FIX-087).
+      if (r.notFoundSince) await this.forgetNotFound(doc.id);
       const before = r.revision;
       const after = await this.apply(
         r.taskId,
@@ -448,6 +469,23 @@ export class RemoteDelegationService {
       return false;
     } catch (err) {
       const code = (err as { code?: string }).code ?? 'Internal';
+      // A peer that keeps answering NotFound to the status poll (FIX-087): it may be brief (a restore, a misrouted
+      // request), so the projection fails only once the answers have lasted `sync.notFoundMs` (default 24 h), counted
+      // from the first of them.
+      if (!r.cancelRequestedAt && code === 'NotFound') {
+        const now = this.now();
+        const since = r.notFoundSince ?? now;
+        const window = this.o.sync?.notFoundMs ?? DEFAULT_REMOTE_NOT_FOUND_MS;
+        if (Date.parse(now) - Date.parse(since) >= window) {
+          await this.apply(r.taskId, 'failed', 'not-found', undefined, {
+            code: 'NotFound',
+            message: 'Remote task not found at the peer',
+          });
+          return true;
+        }
+        await this.schedule(doc.id, (r.quiet ?? 0) + 1, code, since);
+        return false;
+      }
       // A projection whose cancel was requested and whose peer no longer knows the task (`NotFound`, on the cancel or
       // on the read after a refused cancel) can never settle from the peer: it fails with `NotFound` (FIX-080).
       if (r.cancelRequestedAt && code === 'NotFound') {
@@ -489,6 +527,7 @@ export class RemoteDelegationService {
     docId: string,
     quiet: number,
     error?: string,
+    notFoundSince?: string,
   ): Promise<void> {
     const next = this.due(quiet);
     await this.store.transaction(async (tx) => {
@@ -498,12 +537,24 @@ export class RemoteDelegationService {
       if (next) value.nextSyncAt = next;
       else delete value.nextSyncAt;
       if (error) value.lastError = error;
+      if (notFoundSince) value.notFoundSince = notFoundSince;
       if (
         error === undefined &&
         value.quiet === cur.value.quiet &&
         value.nextSyncAt === cur.value.nextSyncAt
       )
         return;
+      await tx.update('remoteTasks', cur.id, cur.revision, value);
+    });
+  }
+
+  /** Ends a run of NotFound answers: the peer answered something else (FIX-087). */
+  private async forgetNotFound(docId: string): Promise<void> {
+    await this.store.transaction(async (tx) => {
+      const cur = await tx.get<RemoteTaskRecord>('remoteTasks', docId);
+      if (!cur?.value.notFoundSince) return;
+      const value: RemoteTaskRecord = { ...cur.value };
+      delete value.notFoundSince;
       await tx.update('remoteTasks', cur.id, cur.revision, value);
     });
   }
