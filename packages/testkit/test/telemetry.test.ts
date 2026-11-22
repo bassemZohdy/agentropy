@@ -9,11 +9,11 @@ import {
   PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics';
 import {
-  BasicTracerProvider,
+  TracerProvider,
   InMemorySpanExporter,
   SimpleSpanProcessor,
   type ReadableSpan,
-} from '@opentelemetry/sdk-trace-base';
+} from '@opentelemetry/sdk-trace';
 import {
   BUILTIN_PROFILES,
   METRICS,
@@ -53,8 +53,8 @@ const def = (
 
 function setup() {
   const spans = new InMemorySpanExporter();
-  const tracerProvider = new BasicTracerProvider({
-    spanProcessors: [new SimpleSpanProcessor(spans)],
+  const tracerProvider = new TracerProvider({
+    spanProcessors: [new SimpleSpanProcessor({ exporter: spans })],
   });
   const metrics = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
   const reader = new PeriodicExportingMetricReader({

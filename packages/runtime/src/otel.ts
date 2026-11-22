@@ -118,8 +118,10 @@ export function openTelemetry(o: {
           : formatTraceparent(sc.traceId, sc.spanId, (sc.traceFlags & 1) === 1),
         setAttributes: (a) => void span.setAttributes(a),
         fail: (code) =>
-          void (span.setAttributes({ 'agentropy.error.code': code }),
-          span.setStatus({ code: o.api.SpanStatusCode.ERROR, message: code })),
+          void (
+            span.setAttributes({ 'agentropy.error.code': code }),
+            span.setStatus({ code: o.api.SpanStatusCode.ERROR, message: code })
+          ),
         end: () => span.end(),
       };
     },
