@@ -95,11 +95,12 @@ jobs:
           ls -l out
       - name: Publish the tarballs (trusted publishing, provenance, dist-tag next)
         run: |
+          # The tarball path starts with ./ because npm reads a bare out/x.tgz as a GitHub user/repo shorthand.
           # core first: every other library depends on it. A version already on npm (a rerun) is skipped.
           for p in core runtime store-sqlite store-postgres workflow-conductor testkit; do
             name="$(node -p "require('./packages/$p/package.json').name")"
             version="$(node -p "require('./packages/$p/package.json').version")"
-            tarball="out/$(echo "${name#@}" | tr / -)-${version}.tgz"
+            tarball="./out/$(echo "${name#@}" | tr / -)-${version}.tgz"
             test -f "$tarball" || { echo "missing $tarball"; exit 1; }
             if npm view "${name}@${version}" version >/dev/null 2>&1; then
               echo "${name}@${version} is already on npm, skipped"
