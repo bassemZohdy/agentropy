@@ -4,14 +4,14 @@
 
 ## What is packaged
 
-| Package | Contents |
-|---|---|
-| `@agentropy/core` | Contracts: types, JSON Schemas, error catalog, lifecycle tables, pure resolvers |
-| `@agentropy/runtime` | Registries, task service, scheduler, communication providers (direct, A2A), local app facade |
-| `@agentropy/store-sqlite` | Store adapter on `node:sqlite` |
-| `@agentropy/store-postgres` | Store adapter for PostgreSQL (driver-neutral client port) |
-| `@agentropy/workflow-conductor` | WorkflowEngine adapter for Conductor |
-| `@agentropy/testkit` | Offline fakes and conformance suites |
+| Package                         | Contents                                                                                     |
+| ------------------------------- | -------------------------------------------------------------------------------------------- |
+| `@agentropy/core`               | Contracts: types, JSON Schemas, error catalog, lifecycle tables, pure resolvers              |
+| `@agentropy/runtime`            | Registries, task service, scheduler, communication providers (direct, A2A), local app facade |
+| `@agentropy/store-sqlite`       | Store adapter on `node:sqlite`                                                               |
+| `@agentropy/store-postgres`     | Store adapter for PostgreSQL (driver-neutral client port)                                    |
+| `@agentropy/workflow-conductor` | WorkflowEngine adapter for Conductor                                                         |
+| `@agentropy/testkit`            | Offline fakes and conformance suites                                                         |
 
 `@agentropy/examples` is not a library; it is shipped only inside the container image ([deployment](deployment.md)).
 
@@ -44,12 +44,12 @@ Nothing is published yet ([owner decisions](#owner-decisions)), so nothing is si
 
 `.github/workflows/release.yml` runs when a tag `vX.Y.Z` is pushed. It is written and checked but has **never run**: it cannot until the owner has created the npm organization and its trusted publishers ([owner setup](#owner-decisions)).
 
-| Job | Does | Permissions |
-|---|---|---|
-| `verify` | Every library version equals the tag; `pnpm audit --prod`; `pnpm check`; `pnpm build`; `node scripts/check-pack.mjs`; package SBOMs (artifact `sbom-packages`) | `contents: read` |
-| `publish` | Checks that npm is 11.5.1 or newer; packs each library with `pnpm pack` (which rewrites `workspace:*` ranges to the release version); runs `npm publish <tarball> --provenance --tag next --access public` for each, `@agentropy/core` first, skipping a version already on npm so the job can be rerun; no npm token, authentication is the OIDC identity of this workflow | `id-token: write` |
-| `image` | Builds `deploy/Dockerfile`, pushes `ghcr.io/<owner>/agentropy-host:<version>` (never `latest`), resolves the digest, scans it with syft, signs the digest with cosign (keyless), attaches the CycloneDX SBOM (`cosign attest`) and the build provenance (`actions/attest-build-provenance`) | `packages: write`, `id-token: write`, `attestations: write` |
-| `release` | Creates the GitHub release as a pre-release from the `CHANGELOG.md` section of the version (else `[Unreleased]`), with all SBOMs attached | `contents: write` |
+| Job       | Does                                                                                                                                                                                                                                                                                                                                                                        | Permissions                                                 |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `verify`  | Every library version equals the tag; `pnpm audit --prod`; `pnpm check`; `pnpm build`; `node scripts/check-pack.mjs`; package SBOMs (artifact `sbom-packages`)                                                                                                                                                                                                              | `contents: read`                                            |
+| `publish` | Checks that npm is 11.5.1 or newer; packs each library with `pnpm pack` (which rewrites `workspace:*` ranges to the release version); runs `npm publish <tarball> --provenance --tag next --access public` for each, `@agentropy/core` first, skipping a version already on npm so the job can be rerun; no npm token, authentication is the OIDC identity of this workflow | `id-token: write`                                           |
+| `image`   | Builds `deploy/Dockerfile`, pushes `ghcr.io/<owner>/agentropy-host:<version>` (never `latest`), resolves the digest, scans it with syft, signs the digest with cosign (keyless), attaches the CycloneDX SBOM (`cosign attest`) and the build provenance (`actions/attest-build-provenance`)                                                                                 | `packages: write`, `id-token: write`, `attestations: write` |
+| `release` | Creates the GitHub release as a pre-release from the `CHANGELOG.md` section of the version (else `[Unreleased]`), with all SBOMs attached                                                                                                                                                                                                                                   | `contents: write`                                           |
 
 `publish` and `image` run in parallel after `verify`, so a failure in one can leave the other done: rerun the failed job, never retag. `node scripts/check-deploy.mjs` parses every workflow, requires every action to be pinned by commit SHA, and holds the rules above for this file (verify first, provenance under `next`, no token, no `latest`).
 
@@ -68,12 +68,12 @@ The owner decided these on 2026-11-08 by accepting the defaults below; each was 
 
 The owner accepted these defaults. They take effect when the first release is cut: the [`release.yml` workflow](#release-workflow-task-0431) is written (TASK-043.1); removing `"private": true` and the version bump are TASK-043.2, not decisions.
 
-| Decision | Accepted default | Why |
-|---|---|---|
-| Version and stability | `0.1.0`, published under the npm dist-tag `next` | `0.x` allows breaking changes between minors while the TypeScript API is unfrozen; the contracts keep their own revision numbers, which is the compatibility promise that exists today. `latest` only at 1.0 |
-| Publishing identity | An `@agentropy` npm organization owned by the maintainer account, publishing through npm trusted publishing (GitHub OIDC) | No long-lived token to leak; provenance comes with it (see the signing plan above) |
-| Release flow | Tag `v0.1.0` → a `release.yml` workflow that runs `pnpm check` and `node scripts/check-pack.mjs`, publishes with `pnpm -r publish --provenance --tag next`, and creates a GitHub release from `CHANGELOG.md` with the package SBOMs attached; `"private": true` is removed in one reviewed commit | Everything the workflow needs already runs in CI; publishing is the only new step |
-| Image | GitHub Container Registry, `ghcr.io/<owner>/agentropy-host`, tags `0.1.0` and the digest (never `latest`), signed with cosign keyless and carrying the SBOM and provenance attestations | No second account or secret (the workflow's `GITHUB_TOKEN` suffices); deployments pin by digest, as the manifests already require |
+| Decision              | Accepted default                                                                                                                                                                                                                                                                                  | Why                                                                                                                                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Version and stability | `0.1.0`, published under the npm dist-tag `next`                                                                                                                                                                                                                                                  | `0.x` allows breaking changes between minors while the TypeScript API is unfrozen; the contracts keep their own revision numbers, which is the compatibility promise that exists today. `latest` only at 1.0 |
+| Publishing identity   | An `@agentropy` npm organization owned by the maintainer account, publishing through npm trusted publishing (GitHub OIDC)                                                                                                                                                                         | No long-lived token to leak; provenance comes with it (see the signing plan above)                                                                                                                           |
+| Release flow          | Tag `v0.1.0` → a `release.yml` workflow that runs `pnpm check` and `node scripts/check-pack.mjs`, publishes with `pnpm -r publish --provenance --tag next`, and creates a GitHub release from `CHANGELOG.md` with the package SBOMs attached; `"private": true` is removed in one reviewed commit | Everything the workflow needs already runs in CI; publishing is the only new step                                                                                                                            |
+| Image                 | GitHub Container Registry, `ghcr.io/<owner>/agentropy-host`, tags `0.1.0` and the digest (never `latest`), signed with cosign keyless and carrying the SBOM and provenance attestations                                                                                                           | No second account or secret (the workflow's `GITHUB_TOKEN` suffices); deployments pin by digest, as the manifests already require                                                                            |
 
 What the owner must do regardless: create the npm organization, configure the trusted publisher for each package (or choose a token), and decide the repository owner name that appears in the image path.
 
@@ -98,5 +98,7 @@ npm offers a trusted publisher only in the settings of a package that already ex
 4. **Restrict token publishing** (each package → Settings → Publishing access → require two-factor authentication and disallow tokens), so the only way to publish without the maintainer's second factor is the release workflow.
 5. **Image path.** No setting is needed: the workflow writes the repository owner in lower case, so the image is `ghcr.io/bassemzohdy/agentropy-host`. After the first image push the package appears under the account's GitHub packages. Set its visibility to public there, and link it to the repository if GitHub did not.
 6. **Record it.** When steps 1–4 are done, add a dated line to this section saying the owner setup is done, in the exact words that the Done-when command of TASK-043.3 in `TODO.md` checks for.
+
+**2026-11-23: owner setup done.** The organization `agentropy` exists, the six placeholders (`0.0.0-bootstrap.0`) are published and deprecated, each package has the trusted publisher for `bassemZohdy/agentropy` `release.yml` (npm publish allowed), and each requires two-factor authentication and disallows bypass tokens. The trusted publishers expire on 2026-11-24 (about 12:00 UTC) unless a publish succeeds through them first.
 
 After the v0.1.0 release: npm gives a new package a `latest` tag on its first publish whatever `--tag` says, so for each package `latest` still names the deprecated placeholder, and `npm install @agentropy/core` without a version would install it. Point `latest` at the release with `npm dist-tag add @agentropy/<package>@0.1.0 latest` for each package. `next` keeps naming the newest pre-1.0 version. This is a change from "`latest` only at 1.0" above, made for the owner to confirm: the other choice leaves the placeholder as what a plain install gets.
