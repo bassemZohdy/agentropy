@@ -44,6 +44,31 @@ const run = (args, cwd) => {
   }
 };
 
+// A freshly published package takes a few minutes to become visible, so the first deprecate calls can answer 404.
+const deprecateWhenVisible = (name, cwd) => {
+  for (let attempt = 1; attempt <= 40; attempt++) {
+    const r = spawnSync(npm, ['deprecate', `${name}@${VERSION}`, MESSAGE], {
+      cwd,
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+    });
+    if (r.status === 0) return;
+    // npm wants a browser approval: the piped call cannot show it, so run the same call with the terminal attached.
+    if (/EOTP/.test(`${r.stdout}${r.stderr}`)) {
+      run(['deprecate', `${name}@${VERSION}`, MESSAGE], cwd);
+      return;
+    }
+    if (!/E404|404 Not Found/.test(`${r.stdout}${r.stderr}`)) {
+      console.error(r.stdout, r.stderr);
+      process.exit(1);
+    }
+    console.log(`${name}: not visible yet, retrying the deprecate in 15 s`);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 15000);
+  }
+  console.error(`${name}: still not visible after 10 minutes`);
+  process.exit(1);
+};
+
 if (publish) {
   const who = spawnSync(npm, ['whoami'], {
     encoding: 'utf8',
@@ -68,7 +93,12 @@ for (const dir of PACKAGES) {
   if (existing.status === 0) {
     // A rerun after a failed deprecate: deprecate the placeholder again (harmless if it already is).
     const versions = [JSON.parse(existing.stdout || '[]')].flat();
-    if (publish && versions.includes(VERSION)) {
+    const deprecated = spawnSync(
+      npm,
+      ['view', `${name}@${VERSION}`, 'deprecated'],
+      { encoding: 'utf8', shell: process.platform === 'win32' },
+    );
+    if (publish && versions.includes(VERSION) && !deprecated.stdout.trim()) {
       run(['deprecate', `${name}@${VERSION}`, MESSAGE], root);
       console.log(`${name}: already on npm, placeholder deprecated`);
     } else {
@@ -99,7 +129,7 @@ for (const dir of PACKAGES) {
     );
     writeFileSync(join(tmp, 'README.md'), `# ${name}\n\n${MESSAGE}\n`);
     run(['publish', '--access', 'public', '--tag', TAG], tmp);
-    run(['deprecate', `${name}@${VERSION}`, MESSAGE], tmp);
+    deprecateWhenVisible(name, tmp);
     console.log(`${name}: published ${VERSION} and deprecated it`);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
