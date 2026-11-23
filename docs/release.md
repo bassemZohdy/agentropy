@@ -1,6 +1,6 @@
 # Release packaging
 
-**Status:** FEAT-030 (2026-11-06), decisions recorded 2026-11-08 (TASK-032). The six library packages are at version `0.1.0` and no longer `"private"` (TASK-043.2); `@agentropy/examples` and the workspace root stay private. **Nothing is published yet**: that waits for the owner setup and the tag, under the [accepted decisions](#owner-decisions).
+**Status:** FEAT-030 (2026-11-06), decisions recorded 2026-11-08 (TASK-032). The six library packages are at version `0.1.0` and no longer `"private"` (TASK-043.2); `@agentropy/examples` and the workspace root stay private. **Published as v0.1.0 on 2026-11-23** under the [accepted decisions](#owner-decisions).
 
 ## What is packaged
 
@@ -34,7 +34,7 @@ Each library is ESM-only (`"type": "module"`), needs Node.js 24 or newer (`engin
 
 ## Signing and provenance plan
 
-Nothing is published yet ([owner decisions](#owner-decisions)), so nothing is signed yet. When publishing starts, the release workflow is to:
+Version 0.1.0 was published on 2026-11-23 ([owner decisions](#owner-decisions)). The release workflow does the following on every release tag:
 
 1. **npm provenance.** Publish from GitHub Actions with `id-token: write` through npm trusted publishing (`npm publish --provenance` of the `pnpm pack` tarballs), so each package version carries a Sigstore-signed SLSA provenance statement linking it to the commit and workflow run. Attach the package SBOMs to the GitHub release.
 2. **Image signature and attestations.** Push the image by digest. Sign the digest with cosign keyless (`cosign sign --yes <registry>/agentropy-host@sha256:…`, identity = the release workflow), and attach the SBOM and build provenance as attestations (`cosign attest --type cyclonedx`, or `actions/attest-build-provenance` and `actions/attest-sbom`). Deployments verify with `cosign verify --certificate-identity-regexp '^https://github.com/<owner>/agentropy/' --certificate-oidc-issuer https://token.actions.githubusercontent.com`.
@@ -42,7 +42,7 @@ Nothing is published yet ([owner decisions](#owner-decisions)), so nothing is si
 
 ## Release workflow (TASK-043.1)
 
-`.github/workflows/release.yml` runs when a tag `vX.Y.Z` is pushed. It is written and checked but has **never run**: it cannot until the owner has created the npm organization and its trusted publishers ([owner setup](#owner-decisions)).
+`.github/workflows/release.yml` runs when a tag `vX.Y.Z` is pushed. Its first run (2026-11-23) failed in the publish step before anything was published, because of the tarball path; the fixed run published `v0.1.0`.
 
 | Job       | Does                                                                                                                                                                                                                                                                                                                                                                        | Permissions                                                 |
 | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
@@ -101,4 +101,4 @@ npm offers a trusted publisher only in the settings of a package that already ex
 
 **2026-11-23: owner setup done.** The organization `agentropy` exists, the six placeholders (`0.0.0-bootstrap.0`) are published and deprecated, each package has the trusted publisher for `bassemZohdy/agentropy` `release.yml` (npm publish allowed), and each requires two-factor authentication and disallows bypass tokens. The trusted publishers expire on 2026-11-24 (about 12:00 UTC) unless a publish succeeds through them first.
 
-After the v0.1.0 release: npm gives a new package a `latest` tag on its first publish whatever `--tag` says, so for each package `latest` still names the deprecated placeholder, and `npm install @agentropy/core` without a version would install it. Point `latest` at the release with `npm dist-tag add @agentropy/<package>@0.1.0 latest` for each package. `next` keeps naming the newest pre-1.0 version. This is a change from "`latest` only at 1.0" above, made for the owner to confirm: the other choice leaves the placeholder as what a plain install gets.
+After the v0.1.0 release (2026-11-23): npm gives a new package a `latest` tag on its first publish whatever `--tag` says, so `latest` named the deprecated placeholder. The owner decided to point `latest` at the release, done with `npm dist-tag add @agentropy/<package>@0.1.0 latest` for each package, so a plain `npm install @agentropy/core` installs 0.1.0. `next` also names 0.1.0 and keeps naming the newest pre-1.0 version. This is a change from "`latest` only at 1.0" above.
