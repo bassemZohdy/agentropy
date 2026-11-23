@@ -1,4 +1,4 @@
-// TASK-039: the Agent Skills this repository ships (skills/) and the plugin manifests that package them are valid.
+// TASK-039: the Agent Skills this repository ships (plugins/agentropy/skills/) and the plugin manifests that package them are valid.
 // The skills are checked with Agentropy's own loader (parseSkillMd, digestSkillDirectory), so a skill the project
 // publishes is one the project could load. Paths a skill mentions must exist in the repository.
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { digestSkillDirectory, parseSkillMd } from '../src/skills.js';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
-const skillsDir = join(root, 'skills');
+const skillsDir = join(root, 'plugins', 'agentropy', 'skills');
 const names = readdirSync(skillsDir).filter((n) =>
   statSync(join(skillsDir, n)).isDirectory(),
 );
@@ -60,7 +60,7 @@ describe('project skills', () => {
 });
 
 describe('plugin manifests', () => {
-  const plugin = json('.claude-plugin/plugin.json');
+  const plugin = json('plugins/agentropy/.claude-plugin/plugin.json');
   const market = json('.claude-plugin/marketplace.json');
 
   it('describe one plugin whose name the marketplace lists', () => {
@@ -69,7 +69,7 @@ describe('plugin manifests', () => {
     expect(String(plugin['version'])).toMatch(/^\d+\.\d+\.\d+$/);
     const listed = market['plugins'] as { name: string; source: string }[];
     expect(listed.map((p) => p.name)).toEqual(['agentropy']);
-    expect(listed[0]!.source).toBe('./');
+    expect(listed[0]!.source).toBe('./plugins/agentropy');
   });
 
   it('use the conventional skills/ folder, which exists', () => {
