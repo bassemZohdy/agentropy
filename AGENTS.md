@@ -4,7 +4,7 @@ Agentropy is a pnpm TypeScript monorepo (Node 24 or newer) for durable, capabili
 
 ## Skills
 
-Task-specific instructions are in `skills/`, one folder per skill (Agent Skills format):
+Task-specific instructions are in `plugins/agentropy/skills/`, one folder per skill (Agent Skills format):
 
 - `agentropy-build-agent`: write and test agents and apps.
 - `agentropy-deploy`: image, environment, Kubernetes, the kind live-cluster test.

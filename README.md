@@ -50,13 +50,13 @@ Definitions, instances, tasks, and executions are separate persisted concepts. D
 
 ## Initial profiles
 
-| Profile | Required / default (see [Capability v1](docs/contracts/capability-v1.md)) | Optional additions |
-|---|---|---|
-| Conversational | Conversation, session context; delegation by default | Memory, tools, reasoning |
-| Task | Durable execution; notification by default | Scheduling, events, workflow, reasoning, human input |
-| Monitoring | Event handling, durable execution; scheduling and notification by default | Delegation, reasoning |
-| Coordinator | Delegation, durable execution | Conversation, workflow, reasoning |
-| Specialist | Tool use by default | Reasoning, memory, conversation |
+| Profile        | Required / default (see [Capability v1](docs/contracts/capability-v1.md)) | Optional additions                                   |
+| -------------- | ------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Conversational | Conversation, session context; delegation by default                      | Memory, tools, reasoning                             |
+| Task           | Durable execution; notification by default                                | Scheduling, events, workflow, reasoning, human input |
+| Monitoring     | Event handling, durable execution; scheduling and notification by default | Delegation, reasoning                                |
+| Coordinator    | Delegation, durable execution                                             | Conversation, workflow, reasoning                    |
+| Specialist     | Tool use by default                                                       | Reasoning, memory, conversation                      |
 
 Profiles are templates, not a rigid inheritance hierarchy. Required capabilities are enforced; defaults may be overridden. A Task Agent need not be scheduled: scheduling is supported when needed.
 
@@ -69,7 +69,7 @@ Profiles are templates, not a rigid inheritance hierarchy. Required capabilities
 
 ## Agent Skills for coding agents
 
-[`skills/`](skills/) holds five [Agent Skills](https://agentskills.io) (build an agent, deploy, A2A, operate, contribute), packaged as a Claude Code plugin and readable by any harness that supports the format. In Claude Code:
+[`plugins/agentropy/skills/`](plugins/agentropy/skills/) holds five [Agent Skills](https://agentskills.io) (build an agent, deploy, A2A, operate, contribute), packaged as a Claude Code plugin and readable by any harness that supports the format. In Claude Code:
 
 ```text
 /plugin marketplace add bassemZohdy/agentropy
