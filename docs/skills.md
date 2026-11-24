@@ -39,6 +39,15 @@ Which folder to use is the harness's own convention, so check its documentation.
 
 Harnesses that read an `AGENTS.md` find [`AGENTS.md`](../AGENTS.md) at the repository root. It names the same skills and the commands an agent needs before it changes code.
 
+## Tested in
+
+| Harness                                                             | Version | Model          | Date       | Result                                                                                                                            |
+| ------------------------------------------------------------------- | ------- | -------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code (plugin)                                                | current | Claude         | 2026-11-08 | Manifests validate with `claude plugin validate`.                                                                                 |
+| [pi](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) | 1.6.0   | GLM-5.3 (Z.ai) | 2026-11-25 | All five skills were loaded from `plugins/agentropy/skills` (`pi --skill`) and each answered a task prompt from its own SKILL.md. |
+
+The pi run used one read-only prompt per skill (build and test an offline handler, build and deploy the image, serve and discover over A2A, an unready `/readyz` with a stuck task, and what to run before a change). Each answer named the matching skill and agreed with the repository docs it points at (for example `pnpm check`, `kubectl apply -k deploy/kubernetes`, `AGENTROPY_A2A_TOKENS`, and the DCO sign-off). It checks that the skills are found and followed, not the quality of the model.
+
 ## Use them from Agentropy itself
 
 Agentropy loads Agent Skills too ([Skill v1](contracts/skill-v1.md)): register a skill folder in an `InMemorySkillRegistry`, activate it, and list it in an agent definition. A test, `packages/runtime/test/project-skills.test.ts`, checks that these five parse with the project's own loader.
