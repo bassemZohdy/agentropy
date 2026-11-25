@@ -4,7 +4,13 @@
 
 Agentropy models agents as reusable definitions with configurable capability profiles, independent logical identities and lifecycles, and pluggable execution backends. It supports conversational, task-oriented, monitoring, and coordinating agents, with visible delegation and a unified user experience.
 
-> **Project stage:** M1 walking skeleton complete (2026-11-05, [retrospective](docs/review/2026-11-05-m1-retrospective.md)); M2 complete (2026-11-06) for a single-process runtime with pluggable remote providers — A2A 1.0 JSON-RPC and custom brokers, an OpenAI-compatible reasoning adapter, workflow engines, OpenTelemetry, tenant quotas and a [threat model](docs/security/threat-model.md). M3 complete (2026-11-06; see [CHANGELOG](CHANGELOG.md) FEAT-028 for what is and is not covered): a PostgreSQL store adapter ([ADR-0028](docs/adr/0028-postgresql-store-adapter.md)) passes the shared store conformance suite, and several workers (in-process or separate processes) can share one store with exactly-once dispatch, fair tenant ordering and cross-worker cancel; instances can be upgraded and rolled back with an audit trail, and checkpoints carry codec versions ([ADR-0029](docs/adr/0029-upgrades-and-version-migration.md)); the audit trail has retention floors, legal holds, receipted disposal and external anchors; a Conductor workflow adapter and a reusable [conformance kit](docs/conformance-kit.md) cover a second workflow engine; a container image and Kubernetes/OpenShift manifests come with a [self-hosting guide](docs/deployment.md), and [SLOs](docs/slo.md) are set from measurements; runtimes discover each other's agents through A2A agent cards. Not yet: PostgreSQL server benchmarks, live-cluster deployment tests, A2A streaming, an npm release or API stability. Only what is listed in [CHANGELOG.md](CHANGELOG.md) under a drained root is implemented and tested.
+> **Project stage:** M1 walking skeleton complete (2026-11-05, [retrospective](docs/review/2026-11-05-m1-retrospective.md)); M2 complete (2026-11-06) for a single-process runtime with pluggable remote providers — A2A 1.0 JSON-RPC and custom brokers, an OpenAI-compatible reasoning adapter, workflow engines, OpenTelemetry, tenant quotas and a [threat model](docs/security/threat-model.md). M3 complete (2026-11-06; see [CHANGELOG](CHANGELOG.md) FEAT-028 for what is and is not covered): a PostgreSQL store adapter ([ADR-0028](docs/adr/0028-postgresql-store-adapter.md)) passes the shared store conformance suite, and several workers (in-process or separate processes) can share one store with exactly-once dispatch, fair tenant ordering and cross-worker cancel; instances can be upgraded and rolled back with an audit trail, and checkpoints carry codec versions ([ADR-0029](docs/adr/0029-upgrades-and-version-migration.md)); the audit trail has retention floors, legal holds, receipted disposal and external anchors; a Conductor workflow adapter and a reusable [conformance kit](docs/conformance-kit.md) cover a second workflow engine; a container image and Kubernetes/OpenShift manifests come with a [self-hosting guide](docs/deployment.md), and [SLOs](docs/slo.md) are set from measurements; runtimes discover each other's agents through A2A agent cards. Release: v0.1.0 is on npm (`@agentropy/*`, with provenance) and GHCR (`agentropy-host`, signed with cosign); live-cluster tests and A2A streaming are done too. Not yet: PostgreSQL server benchmarks and API stability. Only what is listed in [CHANGELOG.md](CHANGELOG.md) under a drained root is implemented and tested.
+
+## See it run
+
+<p align="center"><img src="docs/media/quickstart-demo.svg" alt="A terminal runs pnpm example:quickstart and prints a completed task with the reminder stand-up in 5 minutes" width="720"></p>
+
+`pnpm example:quickstart` delegates a reminder to an agent that waits on a timer and then completes. Also as a [video](docs/media/quickstart-demo.mp4). The demo is rendered from the example's real output by `scripts/make-demo.mjs`.
 
 ## Why Agentropy?
 
@@ -46,6 +52,14 @@ flowchart TD
   I --> C
 ```
 
+How one delegated task runs, as the code does it (each box and line names its file; the policy is asked twice, at accept and again at dispatch):
+
+![A caller delegates through LocalApp to TaskService, which asks the policy, then writes the task and an outbox event to the store; the runtime tick finds the due execution, asks the policy again, runs the agent handler, stores the outcome, and the outbox relay carries it to the inbox.](docs/diagrams/delegation-flow.svg)
+
+A waiting task holds no worker: its checkpoint and wake-up are stored in one transaction, and a due wake-up queues a new activation.
+
+![The runtime calls the agent handler, which answers waiting with a checkpoint; the runtime stores the checkpoint and wake-up and frees the worker; when the timer is due the wake-up service queues an execution, and the runtime calls the handler again, which completes.](docs/diagrams/wait-and-wake.svg)
+
 Definitions, instances, tasks, and executions are separate persisted concepts. Delegations and results cross agent boundaries through explicit, authorized messages. The diagram is logical; components do not each require their own service.
 
 ## Initial profiles
@@ -80,6 +94,7 @@ Other harnesses: `node scripts/install-skills.mjs <skills folder>`. Details in [
 
 ## Documentation
 
+- **All documents:** [Documentation index](docs/README.md)
 - **Start here:** [Quickstart](docs/quickstart.md) (`pnpm example:quickstart`) · [API reference](docs/api.md) · [Compatibility matrix](docs/compatibility.md)
 - **Run it:** [Self-hosting guide](docs/deployment.md) · [SLOs](docs/slo.md) · [Conformance kit and failure matrix](docs/conformance-kit.md)
 - [Vision and scope](docs/vision.md)
