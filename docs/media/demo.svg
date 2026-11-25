@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 470" role="img" aria-labelledby="t d">
+<title id="t">Agentropy demo</title>
+<desc id="d">Three runs in a terminal. A reminder task waits on a timer and completes. A monitoring agent watches ACME and tells the user it fell to 99. An expense of 4200 waits for the manager to approve, then is paid.</desc>
+<style>
+text{font:18px Consolas,Menlo,'DejaVu Sans Mono',monospace;white-space:pre;opacity:0}
+.p{fill:#7ee787}.c{fill:#e6edf3}.cap{font-size:15px;fill:#8b949e}
+@keyframes k0{0%,1.336%{opacity:0}2.337%,32.721%{opacity:1}33.389%{opacity:0}100%{opacity:0}}@keyframes k1{0%,1.336%{opacity:0}1.503%,32.721%{opacity:1}33.389%{opacity:0}100%{opacity:0}}@keyframes k2{0%,3.339%{clip-path:inset(0 100% 0 0);opacity:1}7.179%{clip-path:inset(0 0 0 0);opacity:1}32.721%{clip-path:inset(0 0 0 0);opacity:1}33.389%,100%{clip-path:inset(0 0 0 0);opacity:0}}@keyframes k3{0%,9.850%{opacity:0}10.117%,32.721%{opacity:1}33.389%{opacity:0}100%{opacity:0}}@keyframes k4{0%,11.686%{opacity:0}11.953%,32.721%{opacity:1}33.389%{opacity:0}100%{opacity:0}}@keyframes k5{0%,13.523%{opacity:0}13.790%,32.721%{opacity:1}33.389%{opacity:0}100%{opacity:0}}@keyframes k6{0%,15.359%{opacity:0}15.626%,32.721%{opacity:1}33.389%{opacity:0}100%{opacity:0}}@keyframes k7{0%,17.195%{opacity:0}17.462%,32.721%{opacity:1}33.389%{opacity:0}100%{opacity:0}}@keyframes k8{0%,19.032%{opacity:0}19.299%,32.721%{opacity:1}33.389%{opacity:0}100%{opacity:0}}@keyframes k9{0%,20.868%{opacity:0}21.135%,32.721%{opacity:1}33.389%{opacity:0}100%{opacity:0}}@keyframes k10{0%,33.389%{opacity:0}34.391%,66.778%{opacity:1}67.446%{opacity:0}100%{opacity:0}}@keyframes k11{0%,33.389%{opacity:0}33.556%,66.778%{opacity:1}67.446%{opacity:0}100%{opacity:0}}@keyframes k12{0%,35.392%{clip-path:inset(0 100% 0 0);opacity:1}39.399%{clip-path:inset(0 0 0 0);opacity:1}66.778%{clip-path:inset(0 0 0 0);opacity:1}67.446%,100%{clip-path:inset(0 0 0 0);opacity:0}}@keyframes k13{0%,42.070%{opacity:0}42.337%,66.778%{opacity:1}67.446%{opacity:0}100%{opacity:0}}@keyframes k14{0%,43.907%{opacity:0}44.174%,66.778%{opacity:1}67.446%{opacity:0}100%{opacity:0}}@keyframes k15{0%,45.743%{opacity:0}46.010%,66.778%{opacity:1}67.446%{opacity:0}100%{opacity:0}}@keyframes k16{0%,47.579%{opacity:0}47.846%,66.778%{opacity:1}67.446%{opacity:0}100%{opacity:0}}@keyframes k17{0%,49.416%{opacity:0}49.683%,66.778%{opacity:1}67.446%{opacity:0}100%{opacity:0}}@keyframes k18{0%,51.252%{opacity:0}51.519%,66.778%{opacity:1}67.446%{opacity:0}100%{opacity:0}}@keyframes k19{0%,53.088%{opacity:0}53.356%,66.778%{opacity:1}67.446%{opacity:0}100%{opacity:0}}@keyframes k20{0%,54.925%{opacity:0}55.192%,66.778%{opacity:1}67.446%{opacity:0}100%{opacity:0}}@keyframes k21{0%,67.446%{opacity:0}68.447%,97.997%{opacity:1}98.664%{opacity:0}100%{opacity:0}}@keyframes k22{0%,67.446%{opacity:0}67.613%,97.997%{opacity:1}98.664%{opacity:0}100%{opacity:0}}@keyframes k23{0%,69.449%{clip-path:inset(0 100% 0 0);opacity:1}74.290%{clip-path:inset(0 0 0 0);opacity:1}97.997%{clip-path:inset(0 0 0 0);opacity:1}98.664%,100%{clip-path:inset(0 0 0 0);opacity:0}}@keyframes k24{0%,76.962%{opacity:0}77.229%,97.997%{opacity:1}98.664%{opacity:0}100%{opacity:0}}@keyframes k25{0%,78.798%{opacity:0}79.065%,97.997%{opacity:1}98.664%{opacity:0}100%{opacity:0}}@keyframes k26{0%,80.634%{opacity:0}80.902%,97.997%{opacity:1}98.664%{opacity:0}100%{opacity:0}}@keyframes k27{0%,82.471%{opacity:0}82.738%,97.997%{opacity:1}98.664%{opacity:0}100%{opacity:0}}@keyframes k28{0%,84.307%{opacity:0}84.574%,97.997%{opacity:1}98.664%{opacity:0}100%{opacity:0}}@keyframes k29{0%,86.144%{opacity:0}86.411%,97.997%{opacity:1}98.664%{opacity:0}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){text{animation:none!important}.final{opacity:1!important}.final text{opacity:1!important}}
+</style>
+<rect width="960" height="470" rx="10" fill="#0d1117"/>
+<rect width="960" height="40" rx="10" fill="#161b22"/><rect y="30" width="960" height="10" fill="#161b22"/>
+<circle cx="24" cy="20" r="6" fill="#ff5f56"/><circle cx="46" cy="20" r="6" fill="#ffbd2e"/><circle cx="68" cy="20" r="6" fill="#27c93f"/>
+<text x="480" y="26" text-anchor="middle" style="font-size:14px;fill:#8b949e;opacity:1">agentropy, examples</text>
+<line x1="32" x2="928" y1="422" y2="422" stroke="#21262d"/>
+<text x="32" y="446" class="cap" style="animation:k0 29.95s linear infinite">A task waits on a timer, holding no worker, then completes with its result</text>
+<g style="animation:k1 29.95s linear infinite"><text x="32" y="100" class="p">$ </text></g>
+<text x="53.599999999999994" y="100" class="c" style="animation:k2 29.95s linear infinite">pnpm example:quickstart</text>
+<text x="32" y="150" fill="#c9d1d9" style="animation:k3 29.95s linear infinite">{</text>
+<text x="32" y="175" fill="#7ee787" style="animation:k4 29.95s linear infinite">  "status": "completed",</text>
+<text x="32" y="200" fill="#c9d1d9" style="animation:k5 29.95s linear infinite">  "output": {</text>
+<text x="32" y="225" fill="#c9d1d9" style="animation:k6 29.95s linear infinite">    "reminder": "stand-up in 5 minutes",</text>
+<text x="32" y="250" fill="#c9d1d9" style="animation:k7 29.95s linear infinite">    "scheduledFor": "2026-11-25T02:42:03.779Z"</text>
+<text x="32" y="275" fill="#c9d1d9" style="animation:k8 29.95s linear infinite">  }</text>
+<text x="32" y="300" fill="#c9d1d9" style="animation:k9 29.95s linear infinite">}</text>
+<text x="32" y="446" class="cap" style="animation:k10 29.95s linear infinite">A monitoring agent watches a price feed and reports back through the assistant</text>
+<g style="animation:k11 29.95s linear infinite"><text x="32" y="100" class="p">$ </text></g>
+<text x="53.599999999999994" y="100" class="c" style="animation:k12 29.95s linear infinite">pnpm example:price-watch</text>
+<text x="32" y="150" fill="#ffa657" style="animation:k13 29.95s linear infinite">user&gt; Tell me when ACME drops below 100.</text>
+<text x="32" y="175" fill="#79c0ff" style="animation:k14 29.95s linear infinite">assistant&gt; A monitoring agent is watching ACME for you.</text>
+<text x="32" y="200" fill="#c9d1d9" style="animation:k15 29.95s linear infinite">feed&gt; ACME 120</text>
+<text x="32" y="225" fill="#c9d1d9" style="animation:k16 29.95s linear infinite">feed&gt; ACME 105</text>
+<text x="32" y="250" fill="#c9d1d9" style="animation:k17 29.95s linear infinite">feed&gt; ACME 99</text>
+<text x="32" y="275" fill="#ffa657" style="animation:k18 29.95s linear infinite">user&gt; Anything new?</text>
+<text x="32" y="300" fill="#79c0ff" style="animation:k19 29.95s linear infinite">assistant&gt; ACME is at 99 (below 100)</text>
+<text x="32" y="325" fill="#7ee787" style="animation:k20 29.95s linear infinite">monitor task: completed</text>
+<text x="32" y="446" class="cap" style="animation:k21 29.95s linear infinite">A task waits for a human approval in the manager’s inbox, then pays</text>
+<g style="animation:k22 29.95s linear infinite"><text x="32" y="100" class="p">$ </text></g>
+<text x="53.599999999999994" y="100" class="c" style="animation:k23 29.95s linear infinite">pnpm example:expense-approval</text>
+<text x="32" y="150" fill="#ffa657" style="animation:k24 29.95s linear infinite">employee&gt; submit expense 4200 (team offsite)</text>
+<text x="32" y="175" fill="#c9d1d9" style="animation:k25 29.95s linear infinite">task: waiting</text>
+<text x="32" y="200" fill="#d2a8ff" style="animation:k26 29.95s linear infinite">manager inbox&gt; Approve expense of 4200? Risk: medium. Amount above the 1,000</text>
+<text x="32" y="225" fill="#c9d1d9" style="animation:k27 29.95s linear infinite">  auto-approval limit.</text>
+<text x="32" y="250" fill="#ffa657" style="animation:k28 29.95s linear infinite">manager&gt; approve</text>
+<text x="32" y="275" fill="#7ee787" style="animation:k29 29.95s linear infinite">result&gt; paid pay-1; Risk: medium. Amount above the 1,000 auto-approval limit.</text>
+<g class="final" style="opacity:0">
+<text x="32" y="100" class="p">$ </text><text x="53.599999999999994" y="100" class="c">pnpm example:expense-approval</text>
+<text x="32" y="150" fill="#ffa657">employee&gt; submit expense 4200 (team offsite)</text>
+<text x="32" y="175" fill="#c9d1d9">task: waiting</text>
+<text x="32" y="200" fill="#d2a8ff">manager inbox&gt; Approve expense of 4200? Risk: medium. Amount above the 1,000</text>
+<text x="32" y="225" fill="#d2a8ff">  auto-approval limit.</text>
+<text x="32" y="250" fill="#ffa657">manager&gt; approve</text>
+<text x="32" y="275" fill="#7ee787">result&gt; paid pay-1; Risk: medium. Amount above the 1,000 auto-approval limit.</text>
+<text x="32" y="446" class="cap">A task waits for a human approval in the manager’s inbox, then pays</text>
+</g>
+</svg>

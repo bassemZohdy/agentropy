@@ -9,7 +9,7 @@ pnpm install
 pnpm example:quickstart
 ```
 
-It prints `{ "status": "completed", "output": { "reminder": "stand-up in 5 minutes", … } }` ([demo video](media/quickstart-demo.mp4)).
+It prints `{ "status": "completed", "output": { "reminder": "stand-up in 5 minutes", … } }` ([demo video](media/demo.mp4)).
 
 ## 2. Write an agent
 
