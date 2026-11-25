@@ -8,9 +8,9 @@ Agentropy models agents as reusable definitions with configurable capability pro
 
 ## See it run
 
-<p align="center"><img src="docs/media/quickstart-demo.svg" alt="A terminal runs pnpm example:quickstart and prints a completed task with the reminder stand-up in 5 minutes" width="720"></p>
+<p align="center"><img src="docs/media/demo.svg" alt="Three terminal runs: a reminder task waits on a timer and completes; a monitoring agent watches ACME and tells the user it fell to 99; an expense of 4200 waits for the manager to approve, then is paid" width="720"></p>
 
-`pnpm example:quickstart` delegates a reminder to an agent that waits on a timer and then completes. Also as a [video](docs/media/quickstart-demo.mp4). The demo is rendered from the example's real output by `scripts/make-demo.mjs`.
+Three runs of the examples, each with its real result: `pnpm example:quickstart` (a task that waits on a timer, then completes), `pnpm example:price-watch` (a monitoring agent reports through the assistant that ACME fell to 99) and `pnpm example:expense-approval` (a task waits for the manager's approval, then pays). Also as a [video](docs/media/demo.mp4). The demo is rendered from the examples' real output by `scripts/make-demo.mjs`.
 
 ## Why Agentropy?
 
