@@ -1,0 +1,26 @@
+archgram: 1
+diagram: sequence
+title: A waiting task holds no worker
+description: >-
+  An agent asks to wait. The runtime stores its checkpoint and wake-up in one
+  transaction and frees the worker. When the timer is due the wake-up service
+  queues a new activation, and the handler resumes from the checkpoint.
+participants:
+  - { id: sched, kind: service, label: Runtime, source: ../../packages/runtime/src/runtime.ts }
+  - { id: handler, kind: service, label: Agent handler, source: ../../packages/runtime/src/runtime.ts }
+  - { id: store, kind: database, label: Store, tech: sqlite, source: ../../packages/store-sqlite/src/index.ts }
+  - { id: wake, kind: service, label: Wake-up service, source: ../../packages/runtime/src/wakeups.ts }
+messages:
+  - phase: First activation
+  - { from: sched, to: handler, label: handle(activation 1), source: '../../packages/runtime/src/runtime.ts#await agent.handle(' }
+  - { reply: handler, label: waiting + checkpoint }
+  - phase: Dormant
+  - { from: sched, to: store, label: checkpoint + wake-up, source: '../../packages/runtime/src/runtime.ts#JSON.stringify(disposition.checkpoint' }
+  - { reply: store, label: committed, source: '../../packages/runtime/src/runtime.ts#JSON.stringify(disposition.checkpoint' }
+  - phase: Timer due
+  - { from: wake, to: store, label: fire due wake-up (queue execution), source: '../../packages/runtime/src/wakeups.ts#private async tryFire(' }
+  - { from: sched, to: store, label: find due executions, source: "../../packages/runtime/src/runtime.ts#tx.find<StoredExecution>('executions'" }
+  - { reply: store, label: queued execution }
+  - phase: Second activation
+  - { from: sched, to: handler, label: handle(activation 2), source: '../../packages/runtime/src/runtime.ts#await agent.handle(' }
+  - { reply: handler, label: completed + output }

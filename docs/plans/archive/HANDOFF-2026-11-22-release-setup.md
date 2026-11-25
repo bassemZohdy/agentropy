@@ -1,5 +1,7 @@
 # Handoff: guided npm setup and the v0.1.0 release (2026-11-22)
 
+> **Finished 2026-11-25.** The release v0.1.0 is out, TASK-043 and TASK-045 are closed (see CHANGELOG.md). Kept for the record.
+
 **For:** a local Claude Code session on the owner's own computer, where a browser is available. The cloud session that wrote this had no browser and no npm login, so it could not do the owner steps.
 
 **Goal:** walk the owner, one step at a time, through the remaining owner steps of TASK-043 and TASK-045, then finish the release. Do each step with the owner. Never do an owner step silently, and never write the "owner setup done" line before the owner has confirmed the steps.
@@ -68,7 +70,7 @@ Guide the owner through these in order, one at a time, and wait for "done" after
 ## TASK-045 (after the release, or in parallel)
 
 - Submit the plugin to a marketplace. The icon (`.claude-plugin/icon.png`) may become the listing image, and that can only be set once, the first time the plugin is saved or submitted. Show the owner the icon before they submit.
-- Run the five skills in `skills/` in a second AI coding tool (see [skills](../skills.md) for installing them), then record the tool under "Tested in" in `docs/skills.md`. Do not write that text before it has been done.
+- Run the five skills in `skills/` in a second AI coding tool (see [skills](../../skills.md) for installing them), then record the tool under "Tested in" in `docs/skills.md`. Do not write that text before it has been done.
 
 ## Rules for the agent
 
@@ -80,7 +82,7 @@ Guide the owner through these in order, one at a time, and wait for "done" after
 
 ## Where to read more
 
-- [Release packaging and the owner setup runbook](../release.md)
-- [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
-- [Skills plugin](../skills.md)
-- [Review of 2026-11-20](../review/2026-11-20-post-review-delta.md)
+- [Release packaging and the owner setup runbook](../../release.md)
+- [`.github/workflows/release.yml`](../../../.github/workflows/release.yml)
+- [Skills plugin](../../skills.md)
+- [Review of 2026-11-20](../../review/2026-11-20-post-review-delta.md)

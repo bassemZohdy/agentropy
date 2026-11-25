@@ -1,0 +1,35 @@
+archgram: 1
+title: How a delegated task runs
+description: >-
+  A caller delegates a task. The task service checks policy and writes the
+  task, its audit intent and an outbox event in one store transaction. The
+  runtime asks the policy again before it dispatches, runs the agent handler,
+  and the outbox relay carries the outcome to the user's inbox.
+direction: auto
+nodes:
+  - { id: caller, kind: browser, label: Caller }
+  - { id: app, kind: service, label: LocalApp, frame: runtime, source: ../../packages/runtime/src/app.ts }
+  - { id: tasks, kind: service, label: TaskService, frame: runtime, source: ../../packages/runtime/src/task-service.ts }
+  - { id: pdp, kind: service, label: Policy (PDP), variant: external, source: ../../packages/runtime/src/task-service.ts }
+  - { id: store, kind: database, label: Store, tech: sqlite, source: ../../packages/store-sqlite/src/index.ts }
+  - { id: sched, kind: service, label: Runtime tick, frame: runtime, source: ../../packages/runtime/src/runtime.ts }
+  - { id: handler, kind: service, label: Agent handler, source: ../../packages/runtime/src/runtime.ts }
+  - { id: relay, kind: queue, label: Outbox relay, frame: runtime, source: ../../packages/runtime/src/outbox.ts }
+  - { id: inbox, kind: service, label: Inbox, frame: runtime, source: ../../packages/runtime/src/inbox.ts }
+frames:
+  - { id: runtime, label: Agentropy runtime }
+edges:
+  - { from: caller, to: app, label: delegate, source: '../../packages/runtime/src/app.ts#tasks.delegate(r, c, trace)' }
+  - { from: app, to: tasks, source: '../../packages/runtime/src/app.ts#tasks.delegate(r, c, trace)' }
+  - { from: tasks, to: pdp, label: delegation:delegate, style: dashed, source: '../../packages/runtime/src/task-service.ts#await enforcePolicy(this.o.pdp,' }
+  - { from: tasks, to: store, label: task + outbox, source: "../../packages/runtime/src/task-service.ts#tx.insert<OutboxRecord>('outbox'" }
+  - { from: store, to: sched, label: due executions, source: "../../packages/runtime/src/runtime.ts#tx.find<StoredExecution>('executions'" }
+  - { from: sched, to: pdp, label: task:dispatch, style: dashed, source: '../../packages/runtime/src/runtime.ts#this.o.tasks.o.pdp.decide(' }
+  - { from: sched, to: handler, label: handle(), source: '../../packages/runtime/src/runtime.ts#await agent.handle(' }
+  - { from: handler, to: store, label: completed or waiting, source: '../../packages/runtime/src/runtime.ts#disposition.kind' }
+  - { from: store, to: relay, label: unpublished rows, source: '../../packages/runtime/src/outbox.ts#where: { published: 0 }' }
+  - { from: relay, to: inbox, label: event, source: '../../packages/runtime/src/inbox.ts#await this.project(event)' }
+flows:
+  - { name: a delegated task, steps: [caller, app, tasks, store, sched, handler, store, relay, inbox] }
+  - { name: policy checked at accept, steps: [tasks, pdp] }
+  - { name: policy checked again at dispatch, steps: [sched, pdp] }

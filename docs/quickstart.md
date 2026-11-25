@@ -9,7 +9,7 @@ pnpm install
 pnpm example:quickstart
 ```
 
-It prints `{ "status": "completed", "output": { "reminder": "stand-up in 5 minutes", … } }`.
+It prints `{ "status": "completed", "output": { "reminder": "stand-up in 5 minutes", … } }` ([demo video](media/quickstart-demo.mp4)).
 
 ## 2. Write an agent
 
@@ -20,9 +20,16 @@ const reminder: Agent<{ message: string; delayMs: number }> = {
   handle: async (inv) => {
     if (inv.activation === 1) {
       const at = new Date(Date.now() + inv.input.delayMs).toISOString();
-      return { kind: 'waiting', wakeup: { anyOf: [{ kind: 'timer', at }] }, checkpoint: { scheduledFor: at } };
+      return {
+        kind: 'waiting',
+        wakeup: { anyOf: [{ kind: 'timer', at }] },
+        checkpoint: { scheduledFor: at },
+      };
     }
-    return { kind: 'completed', output: { reminder: inv.input.message, ...(inv.checkpoint as object) } };
+    return {
+      kind: 'completed',
+      output: { reminder: inv.input.message, ...(inv.checkpoint as object) },
+    };
   },
 };
 ```
@@ -32,7 +39,10 @@ While it waits, no worker is held; the checkpoint and wake-up are stored in the 
 ## 3. Create the app
 
 ```ts
-const app = createLocalApp({ store: new SqliteStore({ path: './app.db' }), pdp: myPolicy });
+const app = createLocalApp({
+  store: new SqliteStore({ path: './app.db' }),
+  pdp: myPolicy,
+});
 app.define(definition('reminder'), reminder);
 ```
 
@@ -43,8 +53,23 @@ app.define(definition('reminder'), reminder);
 ## 4. Create an instance and delegate
 
 ```ts
-const instance = await app.createInstance({ definition: { id: 'reminder', version: '1.0.0' }, ownerId: 'alice', idempotencyKey: 'my-reminder' }, alice);
-const task = await app.delegate({ target: { instanceId: instance.id }, input: { message: '…', delayMs: 200 }, idempotencyKey: 'reminder-1', correlationId: 'quickstart' }, alice);
+const instance = await app.createInstance(
+  {
+    definition: { id: 'reminder', version: '1.0.0' },
+    ownerId: 'alice',
+    idempotencyKey: 'my-reminder',
+  },
+  alice,
+);
+const task = await app.delegate(
+  {
+    target: { instanceId: instance.id },
+    input: { message: '…', delayMs: 200 },
+    idempotencyKey: 'reminder-1',
+    correlationId: 'quickstart',
+  },
+  alice,
+);
 ```
 
 Callers are `TrustedPrincipal`s your transport has authenticated. Repeating a call with the same idempotency key returns the same task.
@@ -52,7 +77,7 @@ Callers are `TrustedPrincipal`s your transport has authenticated. Repeating a ca
 ## 5. Run and read the result
 
 ```ts
-const stop = app.start(250);          // scheduler loop: wake-ups, dispatch, relay
+const stop = app.start(250); // scheduler loop: wake-ups, dispatch, relay
 // … later
 const snapshot = await app.getTask(task.taskId, alice);
 const output = await app.getResult(task.taskId, alice);
@@ -63,13 +88,13 @@ Tests and scripts can use `await app.runUntilIdle()` with a fake clock instead.
 
 ## Where next
 
-| To | Read |
-|---|---|
-| Ask a human to approve something | [human actions](human-actions.md), example `pnpm example:expense-approval` |
-| React to events over a long time | example `pnpm example:price-watch` |
-| Give an agent Agent Skills | `createLocalApp({ …, skills: { registry } })` with an `InMemorySkillRegistry` (register and activate a skill folder), then `skills: [{ id, versionRange }]` in the definition; the handler reads `ctx.skills` ([Skill v1](contracts/skill-v1.md)) |
-| Call tools and models | [Tool v1](contracts/tool-v1.md), [Capability v1](contracts/capability-v1.md) (`reasoning`) |
-| Delegate to agents in other runtimes | [Communication v1](contracts/communication-v1.md) (A2A, federation) |
-| Run several workers, upgrade safely | [runtime contract](runtime-contract.md), [ADR-0029](adr/0029-upgrades-and-version-migration.md) |
-| Deploy | [self-hosting guide](deployment.md), [SLOs](slo.md) |
-| Secure it | [Security v1](contracts/security-v1.md), [threat model](security/threat-model.md) |
+| To                                   | Read                                                                                                                                                                                                                                              |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ask a human to approve something     | [human actions](human-actions.md), example `pnpm example:expense-approval`                                                                                                                                                                        |
+| React to events over a long time     | example `pnpm example:price-watch`                                                                                                                                                                                                                |
+| Give an agent Agent Skills           | `createLocalApp({ …, skills: { registry } })` with an `InMemorySkillRegistry` (register and activate a skill folder), then `skills: [{ id, versionRange }]` in the definition; the handler reads `ctx.skills` ([Skill v1](contracts/skill-v1.md)) |
+| Call tools and models                | [Tool v1](contracts/tool-v1.md), [Capability v1](contracts/capability-v1.md) (`reasoning`)                                                                                                                                                        |
+| Delegate to agents in other runtimes | [Communication v1](contracts/communication-v1.md) (A2A, federation)                                                                                                                                                                               |
+| Run several workers, upgrade safely  | [runtime contract](runtime-contract.md), [ADR-0029](adr/0029-upgrades-and-version-migration.md)                                                                                                                                                   |
+| Deploy                               | [self-hosting guide](deployment.md), [SLOs](slo.md)                                                                                                                                                                                               |
+| Secure it                            | [Security v1](contracts/security-v1.md), [threat model](security/threat-model.md)                                                                                                                                                                 |
